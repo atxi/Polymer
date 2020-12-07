@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.2)
 
 project(polymer VERSION 0.0.1 LANGUAGES CXX)
 
+add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+
 include(GNUInstallDirs)
 
 add_subdirectory(src)
