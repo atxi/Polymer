@@ -126,7 +126,7 @@ int run() {
 
   connection->SetBlocking(false);
 
-  SendHandshake(connection, 753, "127.0.0.1", 25565, ProtocolState::Login);
+  SendHandshake(connection, 754, "127.0.0.1", 25565, ProtocolState::Login);
   SendLoginStart(connection, "polymer");
 
   bool compression = false;
@@ -228,6 +228,90 @@ int run() {
 
           SendKeepAlive(connection, id);
           printf("Sending keep alive %llu\n", id);
+        } else if (pkt_id == 0x20) { // Chunk data
+          s32 chunk_x = rb->ReadU32();
+          s32 chunk_z = rb->ReadU32();
+          bool is_full = rb->ReadU8();
+          u64 bitmask;
+          rb->ReadVarInt(&bitmask);
+
+          sized_string sstr;
+          sstr.str = memory_arena_push_type_count(&trans_arena, char, 32767);
+          sstr.size = 32767;
+
+          // TODO: Implement simple NBT parsing api
+          // Tag Compound
+          u8 nbt_type = rb->ReadU8();
+          assert(nbt_type == 10);
+          
+          u16 length = rb->ReadU16();
+
+          // Root compound name - empty
+          rb->ReadRawString(&sstr, length);
+
+          for (int i = 0; i < 2; ++i) {
+            // Tag Long Array
+            nbt_type = rb->ReadU8();
+            assert(nbt_type == 12);
+
+            length = rb->ReadU16();
+            // LongArray tag name
+            rb->ReadRawString(&sstr, length);
+
+            u32 count = rb->ReadU32();
+            for (u32 j = 0; j < count; ++j) {
+              u64 data = rb->ReadU64();
+            }
+          }
+          u8 end_tag = rb->ReadU8();
+          assert(end_tag == 0);
+
+          if (is_full) {
+            u64 biome_length;
+            rb->ReadVarInt(&biome_length);
+
+            for (u64 i = 0; i < biome_length; ++i) {
+              u64 biome;
+
+              rb->ReadVarInt(&biome);
+
+              int a = 0;
+            }
+          }
+          u64 data_size;
+          rb->ReadVarInt(&data_size);
+          
+          if (data_size > 0) {
+            // Read Chunk data here
+            u16 block_count = rb->ReadU16();
+            u8 bpb = rb->ReadU8();
+
+            if (bpb < 4) {
+              bpb = 4;
+            }
+
+            if (bpb < 9) {
+              u64 palette_length;
+              rb->ReadVarInt(&palette_length);
+              for (u64 i = 0; i < palette_length; ++i) {
+                u64 palette_data;
+                rb->ReadVarInt(&palette_data);
+              }
+            } else {
+              // Direct palette
+            }
+
+            u64 data_array_length;
+            rb->ReadVarInt(&data_array_length);
+            for (u64 i = 0; i < data_array_length; ++i) {
+              u64 data_value;
+              rb->ReadVarInt(&data_value);
+            }
+          }
+
+          u64 block_entity_count;
+          rb->ReadVarInt(&block_entity_count);
+          printf("Block entity count: %llu\n", block_entity_count);
         }
 
         // skip every packet until they are implemented

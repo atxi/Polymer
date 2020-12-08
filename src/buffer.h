@@ -40,6 +40,7 @@ struct RingBuffer {
   float ReadFloat();
   double ReadDouble();
   size_t ReadString(sized_string* str);
+  void ReadRawString(sized_string* str, size_t size);
 
   size_t GetFreeSize() const;
   size_t GetReadAmount() const;

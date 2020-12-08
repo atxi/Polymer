@@ -203,9 +203,9 @@ void RingBuffer::WriteString(sized_string& str) {
 }
 
 u8 RingBuffer::ReadU8() {
-  u8 result = this->data[this->write_offset];
+  u8 result = this->data[this->read_offset];
 
-  this->write_offset = (this->write_offset + sizeof(u8)) % this->size;
+  this->read_offset = (this->read_offset + sizeof(u8)) % this->size;
 
   return result;
 }
@@ -364,13 +364,33 @@ size_t RingBuffer::ReadString(sized_string* str) {
     str->str[i] = this->data[this->read_offset++];
   }
 
-  this->read_offset = 0;
+  if (length - remaining > 0) {
+    this->read_offset = 0;
 
-  for (size_t i = 0; i < (size_t)length - remaining; ++i) {
-    str->str[i + remaining] = this->data[this->read_offset++];
+    for (size_t i = 0; i < (size_t)length - remaining; ++i) {
+      str->str[i + remaining] = this->data[this->read_offset++];
+    }
   }
 
   return (size_t)length;
+}
+
+void RingBuffer::ReadRawString(sized_string* str, size_t size) {
+  size_t remaining = this->size - this->read_offset;
+
+  if (remaining > size) {
+    remaining = size;
+  }
+
+  memcpy(str->str, this->data + this->read_offset, remaining);
+
+  this->read_offset = (this->read_offset + remaining) % this->size;
+  
+  if (size - remaining > 0) {
+    this->read_offset = 0;
+    memcpy(str->str + remaining, this->data, remaining);
+    this->read_offset = size - remaining;
+  }
 }
 
 size_t GetVarIntSize(u64 value) {
