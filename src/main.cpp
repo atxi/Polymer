@@ -17,6 +17,80 @@
 
 namespace polymer {
 
+struct BlockState {
+  u32 id;
+  char* name;
+};
+
+char block_names[32768][32];
+size_t block_name_count;
+
+size_t block_state_count;
+BlockState block_states[32768];
+
+void LoadBlocks(MemoryArena* arena) {
+  block_state_count = 0;
+
+  FILE* f = fopen("blocks.json", "r");
+  fseek(f, 0, SEEK_END);
+  long file_size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  
+  char* buffer = memory_arena_push_type_count(arena, char, file_size);
+
+  fread(buffer, 1, file_size, f);
+  fclose(f);
+
+  json_value_s* root = json_parse(buffer, file_size);
+  assert(root->type == json_type_object);
+  
+  json_object_s* root_obj = json_value_as_object(root);
+  assert(root_obj);
+
+  json_object_element_s* element = root_obj->start;
+  while (element) {
+    json_object_s* block_obj = json_value_as_object(element->value);
+    assert(block_obj);
+
+    char* block_name = block_names[block_name_count++];
+    memcpy(block_name, element->name->string, element->name->string_size);
+
+    json_object_element_s* block_element = block_obj->start;
+    while (block_element) {
+      if (strncmp(block_element->name->string, "states", block_element->name->string_size) == 0) {
+        json_array_s* states = json_value_as_array(block_element->value);
+        json_array_element_s* state_array_element = states->start;
+
+        while (state_array_element) {
+          json_object_s* state_obj = json_value_as_object(state_array_element->value);
+
+          json_object_element_s* state_element = state_obj->start;
+          while (state_element) {
+            if (strncmp(state_element->name->string, "id", state_element->name->string_size) == 0) {
+              block_states[block_state_count].name = block_name;
+
+              long block_id = strtol(json_value_as_number(state_element->value)->number, nullptr, 10);
+
+              block_states[block_state_count].id = block_id;
+
+              ++block_state_count;
+            }
+            state_element = state_element->next;
+          }
+
+          state_array_element = state_array_element->next;
+        }
+      }
+
+      block_element = block_element->next;
+    }
+
+    element = element->next;
+  }
+
+  free(root);
+}
+
 enum class ProtocolState { Handshake, Status, Login, Play };
 
 void SendHandshake(Connection* connection, u32 version, const char* address, u16 port, ProtocolState state_request) {
@@ -90,6 +164,8 @@ int run() {
   MemoryArena trans_arena(trans_memory, kTransientSize);
 
   printf("Polymer\n");
+
+  LoadBlocks(&trans_arena);
 
   Connection* connection = memory_arena_construct_type(&perm_arena, Connection, perm_arena);
 
@@ -311,10 +387,6 @@ int run() {
                 }
               }
 
-              u64 base_x = chunk_x * 16LL;
-              u64 base_y = i * 16;
-              u64 base_z = chunk_z * 16LL;
-
               u32* chunk = memory_arena_push_type_count(&trans_arena, u32, 16 * 16 * 16);
 
               u64 data_array_length;
@@ -334,6 +406,19 @@ int run() {
                     chunk[block_index++] = palette_index;
                   }
                 }
+              }
+
+
+              if (chunk_x == 11 && i == 4 && chunk_z == 21) {
+                u64 x = chunk_x * 16LL + 7; // 183
+                u64 y = i * 16 + 3; // 67
+                u64 z = chunk_z * 16LL + 10; // 346
+
+                size_t index = 3 * 16 * 16 + 10 * 16 + 7;
+                u32 block_state_id = chunk[index];
+                BlockState* state = block_states + block_state_id;
+                
+                printf("Block at %llu, %llu, %llu - %s\n", x, y, z, state->name);
               }
             }
           }
