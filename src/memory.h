@@ -25,16 +25,16 @@ struct MemoryArena {
 
   MemoryArena(u8* memory, size_t max_size);
 
-  u8* allocate(size_t size, size_t alignment = 4);
-  void reset();
+  u8* Allocate(size_t size, size_t alignment = 4);
+  void Reset();
 };
 
-#define memory_arena_push_type(arena, type) (type*)(arena)->allocate(sizeof(type))
+#define memory_arena_push_type(arena, type) (type*)(arena)->Allocate(sizeof(type))
 #define memory_arena_construct_type(arena, type, ...)                                                                  \
-  (type*)(arena)->allocate(sizeof(type));                                                                              \
+  (type*)(arena)->Allocate(sizeof(type));                                                                              \
   new ((arena)->current - sizeof(type)) type(__VA_ARGS__)
 
-#define memory_arena_push_type_count(arena, type, count) (type*)(arena)->allocate(sizeof(type) * count)
+#define memory_arena_push_type_count(arena, type, count) (type*)(arena)->Allocate(sizeof(type) * count)
 
 } // namespace polymer
 

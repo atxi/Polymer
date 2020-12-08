@@ -19,7 +19,8 @@ struct Connection {
   SocketType fd = -1;
   bool connected = false;
 
-  RingBuffer buffer;
+  RingBuffer read_buffer;
+  RingBuffer write_buffer;
 
   Connection(MemoryArena& arena);
 

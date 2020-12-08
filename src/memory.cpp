@@ -6,7 +6,7 @@ namespace polymer {
 
 MemoryArena::MemoryArena(u8* memory, size_t max_size) : base(memory), current(memory), max_size(max_size) {}
 
-u8* MemoryArena::allocate(size_t size, size_t alignment) {
+u8* MemoryArena::Allocate(size_t size, size_t alignment) {
   assert(alignment > 0);
 
   size_t adj = alignment - 1;
@@ -18,7 +18,7 @@ u8* MemoryArena::allocate(size_t size, size_t alignment) {
   return result;
 }
 
-void MemoryArena::reset() {
+void MemoryArena::Reset() {
   this->current = this->base;
 }
 

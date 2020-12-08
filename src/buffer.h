@@ -13,6 +13,7 @@ struct sized_string {
 
 // Simple circular buffer where the read and write methods assume there's space to operate
 // The only method that checks for read/write cursor wrapping is ReadVarInt.
+// This could be simplified greatly by using virtual memory wrapping.
 struct RingBuffer {
   size_t read_offset;
   size_t write_offset;
@@ -38,9 +39,10 @@ struct RingBuffer {
   bool ReadVarInt(u64* value);
   float ReadFloat();
   double ReadDouble();
-  bool ReadString(sized_string* str);
+  size_t ReadString(sized_string* str);
 
   size_t GetFreeSize() const;
+  size_t GetReadAmount() const;
 };
 
 size_t GetVarIntSize(u64 value);

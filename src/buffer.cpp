@@ -18,13 +18,20 @@
 namespace polymer {
 
 RingBuffer::RingBuffer(MemoryArena& arena, size_t size) {
-  this->data = arena.allocate(size);
+  this->data = arena.Allocate(size);
   this->size = size;
   this->read_offset = this->write_offset = 0;
 }
 
 size_t RingBuffer::GetFreeSize() const {
   return size - write_offset;
+}
+
+size_t RingBuffer::GetReadAmount() const {
+  if (this->write_offset >= this->read_offset) {
+    return this->write_offset - this->read_offset;
+  }
+  return this->size - this->read_offset + this->write_offset;
 }
 
 void RingBuffer::WriteU8(u8 value) {
@@ -328,20 +335,18 @@ double RingBuffer::ReadDouble() {
   return result;
 }
 
-bool RingBuffer::ReadString(sized_string* str) {
+size_t RingBuffer::ReadString(sized_string* str) {
   u64 length = 0;
   size_t offset_snapshot = this->read_offset;
 
   if (!this->ReadVarInt(&length)) {
-    str->size = 0;
     this->read_offset = offset_snapshot;
-    return false;
+    return 0;
   }
 
   if (str->str == nullptr) {
-    str->size = (size_t)length;
     this->read_offset = offset_snapshot;
-    return false;
+    return (size_t)length;
   }
 
   size_t remaining = this->size - this->read_offset;
@@ -360,7 +365,7 @@ bool RingBuffer::ReadString(sized_string* str) {
     str->str[i + remaining] = this->data[this->read_offset++];
   }
 
-  return true;
+  return (size_t)length;
 }
 
 size_t GetVarIntSize(u64 value) {
