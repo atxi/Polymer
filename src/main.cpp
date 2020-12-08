@@ -2,6 +2,7 @@
 #include "inflate.h"
 #include "memory.h"
 #include "polymer.h"
+#include "json.h"
 
 #include <cassert>
 #include <cstdio>
