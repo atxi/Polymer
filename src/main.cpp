@@ -26,9 +26,9 @@ int run() {
 
   printf("Polymer\n");
 
-  Connection connection(perm_arena);
+  Connection* connection = memory_arena_construct_type(&perm_arena, Connection, perm_arena);
 
-  ConnectResult connect_result = connection.Connect("127.0.0.1", 25565);
+  ConnectResult connect_result = connection->Connect("127.0.0.1", 25566);
 
   switch (connect_result) {
   case ConnectResult::ErrorSocket: {
@@ -49,7 +49,35 @@ int run() {
 
   printf("Connected to server.\n");
 
-  connection.Disconnect();
+  connection->SetBlocking(false);
+
+  while (connection->connected) {
+    int bytes_recv = recv(connection->fd, (char*)connection->buffer.data + connection->buffer.write_offset,
+                          (u32)connection->buffer.GetFreeSize(), 0);
+
+    if (bytes_recv == 0) {
+      fprintf(stderr, "Bytes recv zero\n");
+      connection->connected = false;
+      break;
+    } else if (bytes_recv < 0) {
+      int err = WSAGetLastError();
+
+      if (err == WSAEWOULDBLOCK) {
+        continue;
+      }
+
+      fprintf(stderr, "Error: %d\n", err);
+      connection->Disconnect();
+      break;
+    }
+
+    connection->buffer.write_offset = (connection->buffer.write_offset + bytes_recv) % connection->buffer.size;
+
+    printf("%.*s\n", bytes_recv, connection->buffer.data + connection->buffer.read_offset);
+
+    connection->buffer.read_offset = (connection->buffer.read_offset + bytes_recv) % connection->buffer.size;
+  }
+
   return 0;
 }
 

@@ -22,10 +22,4 @@ void MemoryArena::reset() {
   this->current = this->base;
 }
 
-RingBuffer::RingBuffer(MemoryArena& arena, size_t size) {
-  this->data = arena.allocate(size);
-  this->size = size;
-  this->read_offset = this->write_offset = 0;
-}
-
 } // namespace polymer

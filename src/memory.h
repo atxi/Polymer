@@ -2,6 +2,7 @@
 #define POLYMER_MEMORY_H_
 
 #include "polymer.h"
+#include <new>
 
 namespace polymer {
 
@@ -29,17 +30,11 @@ struct MemoryArena {
 };
 
 #define memory_arena_push_type(arena, type) (type*)(arena)->allocate(sizeof(type))
+#define memory_arena_construct_type(arena, type, ...)                                                                  \
+  (type*)(arena)->allocate(sizeof(type));                                                                              \
+  new ((arena)->current - sizeof(type)) type(__VA_ARGS__)
+
 #define memory_arena_push_type_count(arena, type, count) (type*)(arena)->allocate(sizeof(type) * count)
-
-struct RingBuffer {
-  u32 read_offset;
-  u32 write_offset;
-
-  size_t size;
-  u8* data;
-
-  RingBuffer(MemoryArena& arena, size_t size);
-};
 
 } // namespace polymer
 

@@ -62,6 +62,20 @@ void Connection::Disconnect() {
   this->connected = false;
 }
 
+void Connection::SetBlocking(bool blocking) {
+  unsigned long mode = blocking ? 0 : 1;
+
+#ifdef _WIN32
+  ioctlsocket(this->fd, FIONBIO, &mode);
+#else
+  int flags = fcntl(this->fd, F_GETFL, 0);
+
+  flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+
+  fcntl(this->fd, F_SETFL, flags);
+#endif
+}
+
 #ifdef _WIN32
 struct NetworkInitializer {
   NetworkInitializer() {
