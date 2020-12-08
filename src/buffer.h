@@ -6,7 +6,7 @@
 
 namespace polymer {
 
-struct sized_string {
+struct SizedString {
   char* str;
   size_t size;
 };
@@ -30,7 +30,7 @@ struct RingBuffer {
   void WriteVarInt(u64 value);
   void WriteFloat(float value);
   void WriteDouble(double value);
-  void WriteString(sized_string& str);
+  void WriteString(SizedString& str);
 
   u8 ReadU8();
   u16 ReadU16();
@@ -39,8 +39,8 @@ struct RingBuffer {
   bool ReadVarInt(u64* value);
   float ReadFloat();
   double ReadDouble();
-  size_t ReadString(sized_string* str);
-  void ReadRawString(sized_string* str, size_t size);
+  size_t ReadString(SizedString* str);
+  void ReadRawString(SizedString* str, size_t size);
 
   size_t GetFreeSize() const;
   size_t GetReadAmount() const;

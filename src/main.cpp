@@ -1,13 +1,15 @@
 #include "connection.h"
 #include "inflate.h"
+#include "json.h"
 #include "memory.h"
 #include "polymer.h"
-#include "json.h"
 
 #include <cassert>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <cmath>
+#include <thread>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -35,7 +37,7 @@ void LoadBlocks(MemoryArena* arena) {
   fseek(f, 0, SEEK_END);
   long file_size = ftell(f);
   fseek(f, 0, SEEK_SET);
-  
+
   char* buffer = memory_arena_push_type_count(arena, char, file_size);
 
   fread(buffer, 1, file_size, f);
@@ -43,7 +45,7 @@ void LoadBlocks(MemoryArena* arena) {
 
   json_value_s* root = json_parse(buffer, file_size);
   assert(root->type == json_type_object);
-  
+
   json_object_s* root_obj = json_value_as_object(root);
   assert(root_obj);
 
@@ -96,7 +98,7 @@ enum class ProtocolState { Handshake, Status, Login, Play };
 void SendHandshake(Connection* connection, u32 version, const char* address, u16 port, ProtocolState state_request) {
   RingBuffer& wb = connection->write_buffer;
 
-  sized_string sstr;
+  SizedString sstr;
   sstr.str = (char*)address;
   sstr.size = strlen(address);
 
@@ -127,7 +129,7 @@ void SendPingRequest(Connection* connection) {
 void SendLoginStart(Connection* connection, const char* username) {
   RingBuffer& wb = connection->write_buffer;
 
-  sized_string sstr;
+  SizedString sstr;
   sstr.str = (char*)username;
   sstr.size = strlen(username);
 
@@ -150,6 +152,19 @@ void SendKeepAlive(Connection* connection, u64 id) {
   wb.WriteVarInt(pid);
 
   wb.WriteU64(id);
+}
+
+void SendTeleportConfirm(Connection* connection, u64 id) {
+  RingBuffer& wb = connection->write_buffer;
+  u32 pid = 0x00;
+
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize(id);
+
+  wb.WriteVarInt(size);
+  wb.WriteVarInt(0);
+  wb.WriteVarInt(pid);
+
+  wb.WriteVarInt(id);
 }
 
 int run() {
@@ -242,6 +257,8 @@ int run() {
       int err = WSAGetLastError();
 
       if (err == WSAEWOULDBLOCK) {
+        // TODO: Remove this once rendering is started. This is just to reduce cpu usage for now.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
         continue;
       }
 
@@ -291,7 +308,7 @@ int run() {
         if (pkt_id == 0x03) {
           compression = true;
         } else if (pkt_id == 0x0E) {
-          sized_string sstr;
+          SizedString sstr;
           sstr.str = memory_arena_push_type_count(&trans_arena, char, 32767);
           sstr.size = 32767;
 
@@ -306,6 +323,20 @@ int run() {
           SendKeepAlive(connection, id);
           printf("Sending keep alive %llu\n", id);
           fflush(stdout);
+        } else if (pkt_id == 0x34) { // PlayerPositionAndLook
+          double x = rb->ReadDouble();
+          double y = rb->ReadDouble();
+          double z = rb->ReadDouble();
+          float yaw = rb->ReadFloat();
+          float pitch = rb->ReadFloat();
+          u8 flags = rb->ReadU8();
+
+          u64 teleport_id;
+          rb->ReadVarInt(&teleport_id);
+
+          SendTeleportConfirm(connection, teleport_id);
+          // TODO: Relative/Absolute
+          printf("Position: (%f, %f, %f)\n", x, y, z);
         } else if (pkt_id == 0x20) { // Chunk data
           s32 chunk_x = rb->ReadU32();
           s32 chunk_z = rb->ReadU32();
@@ -313,7 +344,7 @@ int run() {
           u64 bitmask;
           rb->ReadVarInt(&bitmask);
 
-          sized_string sstr;
+          SizedString sstr;
           sstr.str = memory_arena_push_type_count(&trans_arena, char, 32767);
           sstr.size = 32767;
 
@@ -391,7 +422,7 @@ int run() {
 
               u64 data_array_length;
               rb->ReadVarInt(&data_array_length);
-              u64 id_mask = (u64)std::pow(2, bpb) - 1;
+              u64 id_mask = (1LL << bpb) - 1;
               u64 block_index = 0;
 
               for (u64 i = 0; i < data_array_length; ++i) {
@@ -403,21 +434,20 @@ int run() {
                   if (palette) {
                     chunk[block_index++] = (u32)palette[palette_index];
                   } else {
-                    chunk[block_index++] = palette_index;
+                    chunk[block_index++] = (u32)palette_index;
                   }
                 }
               }
 
-
               if (chunk_x == 11 && i == 4 && chunk_z == 21) {
-                u64 x = chunk_x * 16LL + 7; // 183
-                u64 y = i * 16 + 3; // 67
+                u64 x = chunk_x * 16LL + 7;  // 183
+                u64 y = i * 16 + 3;          // 67
                 u64 z = chunk_z * 16LL + 10; // 346
 
                 size_t index = 3 * 16 * 16 + 10 * 16 + 7;
                 u32 block_state_id = chunk[index];
                 BlockState* state = block_states + block_state_id;
-                
+
                 printf("Block at %llu, %llu, %llu - %s\n", x, y, z, state->name);
               }
             }
