@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -227,6 +228,7 @@ int run() {
 
           SendKeepAlive(connection, id);
           printf("Sending keep alive %llu\n", id);
+          fflush(stdout);
         } else if (pkt_id == 0x20) { // Chunk data
           s32 chunk_x = rb->ReadU32();
           s32 chunk_z = rb->ReadU32();
@@ -294,11 +296,9 @@ int run() {
                 bpb = 4;
               }
 
-              // TODO: direct palette
               u64* palette = nullptr;
-
+              u64 palette_length = 0;
               if (bpb < 9) {
-                u64 palette_length;
                 rb->ReadVarInt(&palette_length);
 
                 palette = memory_arena_push_type_count(&trans_arena, u64, (size_t)palette_length);
@@ -308,15 +308,31 @@ int run() {
                   rb->ReadVarInt(&palette_data);
                   palette[i] = palette_data;
                 }
-              } else {
-                // Direct palette
               }
+
+              u64 base_x = chunk_x * 16LL;
+              u64 base_y = i * 16;
+              u64 base_z = chunk_z * 16LL;
+
+              u32* chunk = memory_arena_push_type_count(&trans_arena, u32, 16 * 16 * 16);
 
               u64 data_array_length;
               rb->ReadVarInt(&data_array_length);
+              u64 id_mask = (u64)std::pow(2, bpb) - 1;
+              u64 block_index = 0;
+
               for (u64 i = 0; i < data_array_length; ++i) {
-                u64 data_value;
-                rb->ReadVarInt(&data_value);
+                u64 data_value = rb->ReadU64();
+
+                for (u64 j = 0; j < 64 / bpb; ++j) {
+                  size_t palette_index = (size_t)((data_value >> (j * bpb)) & id_mask);
+
+                  if (palette) {
+                    chunk[block_index++] = (u32)palette[palette_index];
+                  } else {
+                    chunk[block_index++] = palette_index;
+                  }
+                }
               }
             }
           }
