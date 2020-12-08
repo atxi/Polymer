@@ -10,7 +10,7 @@
 
 namespace polymer {
 
-Connection::Connection(MemoryArena& arena) : read_buffer(arena, kilobytes(64)), write_buffer(arena, kilobytes(64)) {}
+Connection::Connection(MemoryArena& arena) : read_buffer(arena, 0), write_buffer(arena, 0) {}
 
 ConnectResult Connection::Connect(const char* ip, u16 port) {
   addrinfo hints = {0}, *result = nullptr;

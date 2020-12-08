@@ -36,6 +36,9 @@ struct MemoryArena {
 
 #define memory_arena_push_type_count(arena, type, count) (type*)(arena)->Allocate(sizeof(type) * count)
 
+// Allocate virtual pages that mirror the first half
+u8* AllocateMirroredBuffer(size_t size);
+
 } // namespace polymer
 
 #endif

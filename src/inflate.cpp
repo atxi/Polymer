@@ -24,7 +24,7 @@
  *
  **************************************************************************/
 
-#include "Inflate.h"
+#include "inflate.h"
 
 #include <cassert>
 #include <cstdlib>

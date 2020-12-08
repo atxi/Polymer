@@ -18,7 +18,12 @@
 namespace polymer {
 
 RingBuffer::RingBuffer(MemoryArena& arena, size_t size) {
-  this->data = arena.Allocate(size);
+  if (size > 0) {
+    this->data = arena.Allocate(size);
+  } else {
+    this->data = nullptr;
+  }
+
   this->size = size;
   this->read_offset = this->write_offset = 0;
 }
