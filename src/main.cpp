@@ -204,7 +204,6 @@ int run() {
             assert(result == MZ_OK);
             rb->read_offset = target_offset;
             rb = &inflate_buffer;
-            int b = 0;
           }
         }
 
@@ -243,7 +242,7 @@ int run() {
           // Tag Compound
           u8 nbt_type = rb->ReadU8();
           assert(nbt_type == 10);
-          
+
           u16 length = rb->ReadU16();
 
           // Root compound name - empty
@@ -274,44 +273,63 @@ int run() {
               u64 biome;
 
               rb->ReadVarInt(&biome);
-
-              int a = 0;
             }
           }
           u64 data_size;
           rb->ReadVarInt(&data_size);
-          
+
+          size_t new_offset = (rb->read_offset + data_size) % rb->size;
+
           if (data_size > 0) {
-            // Read Chunk data here
-            u16 block_count = rb->ReadU16();
-            u8 bpb = rb->ReadU8();
-
-            if (bpb < 4) {
-              bpb = 4;
-            }
-
-            if (bpb < 9) {
-              u64 palette_length;
-              rb->ReadVarInt(&palette_length);
-              for (u64 i = 0; i < palette_length; ++i) {
-                u64 palette_data;
-                rb->ReadVarInt(&palette_data);
+            for (u64 i = 0; i < 16; ++i) {
+              if (!(bitmask & (1LL << i))) {
+                continue;
               }
-            } else {
-              // Direct palette
-            }
 
-            u64 data_array_length;
-            rb->ReadVarInt(&data_array_length);
-            for (u64 i = 0; i < data_array_length; ++i) {
-              u64 data_value;
-              rb->ReadVarInt(&data_value);
+              // Read Chunk data here
+              u16 block_count = rb->ReadU16();
+              u8 bpb = rb->ReadU8();
+
+              if (bpb < 4) {
+                bpb = 4;
+              }
+
+              // TODO: direct palette
+              u64* palette = nullptr;
+
+              if (bpb < 9) {
+                u64 palette_length;
+                rb->ReadVarInt(&palette_length);
+
+                palette = memory_arena_push_type_count(&trans_arena, u64, (size_t)palette_length);
+
+                for (u64 i = 0; i < palette_length; ++i) {
+                  u64 palette_data;
+                  rb->ReadVarInt(&palette_data);
+                  palette[i] = palette_data;
+                }
+              } else {
+                // Direct palette
+              }
+
+              u64 data_array_length;
+              rb->ReadVarInt(&data_array_length);
+              for (u64 i = 0; i < data_array_length; ++i) {
+                u64 data_value;
+                rb->ReadVarInt(&data_value);
+              }
             }
           }
 
+          // Jump to after the data because the data_size can be larger than actual chunk data sent according to
+          // documentation.
+          rb->read_offset = new_offset;
           u64 block_entity_count;
           rb->ReadVarInt(&block_entity_count);
-          printf("Block entity count: %llu\n", block_entity_count);
+
+          if (block_entity_count > 0) {
+            printf("Block entity count: %llu in chunk (%d, %d)\n", block_entity_count, chunk_x, chunk_z);
+          }
         }
 
         // skip every packet until they are implemented
