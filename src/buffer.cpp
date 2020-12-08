@@ -103,9 +103,9 @@ void RingBuffer::WriteU64(u64 value) {
 
   if (remaining >= sizeof(value)) {
     *(u64*)(this->data + this->write_offset) = value;
+    this->write_offset = (this->write_offset + sizeof(value)) % this->size;
   } else {
     WriteSplitData(*this, remaining, &value, sizeof(value));
-    this->write_offset = (this->write_offset + sizeof(value)) % this->size;
   }
 }
 

@@ -1,4 +1,5 @@
 #include "connection.h"
+#include "inflate.h"
 #include "memory.h"
 #include "polymer.h"
 
@@ -13,6 +14,56 @@
 #include <Windows.h>
 
 namespace polymer {
+
+// Allocate virtual pages that mirror the first half
+u8* AllocateMirrorRingBuffer(size_t size) {
+  SYSTEM_INFO sys_info = {0};
+
+  GetSystemInfo(&sys_info);
+
+  size_t granularity = sys_info.dwAllocationGranularity;
+
+  if (((size / granularity) * granularity) != size) {
+    fprintf(stderr, "Incorrect size. Must be multiple of %zd\n", granularity);
+    return 0;
+  }
+
+  HANDLE map_handle =
+      CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE | SEC_COMMIT, 0, (DWORD)size * 2, NULL);
+
+  if (map_handle == NULL) {
+    return 0;
+  }
+
+  u8* buffer = (u8*)VirtualAlloc(NULL, size * 2, MEM_RESERVE, PAGE_READWRITE);
+
+  if (buffer == NULL) {
+    CloseHandle(map_handle);
+    return 0;
+  }
+
+  VirtualFree(buffer, 0, MEM_RELEASE);
+
+  u8* view = (u8*)MapViewOfFileEx(map_handle, FILE_MAP_ALL_ACCESS, 0, 0, size, buffer);
+
+  if (view == NULL) {
+    u32 error = GetLastError();
+    CloseHandle(map_handle);
+    return 0;
+  }
+
+  u8* mirror_view = (u8*)MapViewOfFileEx(map_handle, FILE_MAP_ALL_ACCESS, 0, 0, size, buffer + size);
+
+  if (mirror_view == NULL) {
+    u32 error = GetLastError();
+
+    UnmapViewOfFile(view);
+    CloseHandle(map_handle);
+    return 0;
+  }
+
+  return view;
+}
 
 enum class ProtocolState { Handshake, Status, Login, Play };
 
@@ -47,6 +98,34 @@ void SendPingRequest(Connection* connection) {
   wb.WriteVarInt(pid);
 }
 
+void SendLoginStart(Connection* connection, const char* username) {
+  RingBuffer& wb = connection->write_buffer;
+
+  sized_string sstr;
+  sstr.str = (char*)username;
+  sstr.size = strlen(username);
+
+  u32 pid = 0;
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(sstr.size) + sstr.size;
+
+  wb.WriteVarInt(size);
+  wb.WriteVarInt(pid);
+  wb.WriteString(sstr);
+}
+
+void SendKeepAlive(Connection* connection, u64 id) {
+  RingBuffer& wb = connection->write_buffer;
+
+  u32 pid = 0x10;
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + sizeof(id);
+
+  wb.WriteVarInt(size);
+  wb.WriteVarInt(0); // compression
+  wb.WriteVarInt(pid);
+
+  wb.WriteU64(id);
+}
+
 int run() {
   constexpr size_t perm_size = megabytes(32);
   u8* perm_memory = (u8*)VirtualAlloc(NULL, perm_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -62,6 +141,15 @@ int run() {
   Connection* connection = memory_arena_construct_type(&perm_arena, Connection, perm_arena);
 
   ConnectResult connect_result = connection->Connect("127.0.0.1", 25565);
+
+  // Allocate mirrored ring buffers so they can always be inflated
+  connection->read_buffer.size = 65536 * 32;
+  connection->read_buffer.data = AllocateMirrorRingBuffer(connection->read_buffer.size);
+  connection->write_buffer.size = 65536 * 32;
+  connection->write_buffer.data = AllocateMirrorRingBuffer(connection->write_buffer.size);
+
+  assert(connection->read_buffer.data);
+  assert(connection->write_buffer.data);
 
   switch (connect_result) {
   case ConnectResult::ErrorSocket: {
@@ -84,13 +172,19 @@ int run() {
 
   connection->SetBlocking(false);
 
-  SendHandshake(connection, 754, "127.0.0.1", 25565, ProtocolState::Status);
-  SendPingRequest(connection);
+  SendHandshake(connection, 753, "127.0.0.1", 25565, ProtocolState::Login);
+  // SendPingRequest(connection);
+
+  SendLoginStart(connection, "polymer");
+
+  bool compression = false;
+
+  RingBuffer inflate_buffer(perm_arena, 65536 * 32);
 
   while (connection->connected) {
     trans_arena.Reset();
 
-    RingBuffer* rb = &connection->write_buffer;
+    RingBuffer* rb = &connection->read_buffer;
     RingBuffer* wb = &connection->write_buffer;
 
     while (wb->write_offset != wb->read_offset) {
@@ -112,7 +206,7 @@ int run() {
     int bytes_recv = recv(connection->fd, (char*)rb->data + rb->write_offset, (u32)rb->GetFreeSize(), 0);
 
     if (bytes_recv == 0) {
-      fprintf(stderr, "Bytes recv zero\n");
+      fprintf(stderr, "Connection closed by server.\n");
       connection->connected = false;
       break;
     } else if (bytes_recv < 0) {
@@ -128,30 +222,68 @@ int run() {
     } else if (bytes_recv > 0) {
       rb->write_offset = (rb->write_offset + bytes_recv) % rb->size;
 
-      size_t offset_snapshot = rb->read_offset;
-      u64 pkt_size;
-      u64 pkt_id;
+      do {
+        size_t offset_snapshot = rb->read_offset;
+        u64 pkt_size;
+        u64 pkt_id;
 
-      if (!rb->ReadVarInt(&pkt_size)) {
-        continue;
-      }
+        if (!rb->ReadVarInt(&pkt_size)) {
+          break;
+        }
 
-      if (rb->GetReadAmount() < pkt_size) {
-        continue;
-      }
+        if (rb->GetReadAmount() < pkt_size) {
+          rb->read_offset = offset_snapshot;
+          break;
+        }
 
-      assert(rb->ReadVarInt(&pkt_id));
+        size_t target_offset = (rb->read_offset + pkt_size) % rb->size;
 
-      sized_string sstr;
-      sstr.size = 65535;
-      sstr.str = memory_arena_push_type_count(&trans_arena, char, sstr.size);
+        if (compression) {
+          u64 payload_size;
 
-      size_t ping_size = rb->ReadString(&sstr);
+          rb->ReadVarInt(&payload_size);
 
-      printf("%.*s\n", ping_size, sstr.str);
+          if (payload_size > 0) {
+            inflate_buffer.write_offset = inflate_buffer.read_offset = 0;
+            
+            mz_ulong mz_size = inflate_buffer.size;
+            int result = mz_uncompress((u8*)inflate_buffer.data, (mz_ulong*)&mz_size,
+                                       (u8*)rb->data + rb->read_offset, (mz_ulong)payload_size);
 
-      rb->read_offset = (rb->read_offset + bytes_recv) % rb->size;
-      connection->Disconnect();
+            assert(result == MZ_OK);
+            rb->read_offset = target_offset;
+            rb = &inflate_buffer;
+            int b = 0;
+          }
+        }
+
+        assert(rb->ReadVarInt(&pkt_id));
+
+        if (pkt_id == 0x03) {
+          compression = true;
+        } else if (pkt_id == 0x0E) {
+          sized_string sstr;
+          sstr.str = memory_arena_push_type_count(&trans_arena, char, 32767);
+          sstr.size = 32767;
+
+          size_t length = rb->ReadString(&sstr);
+
+          if (length > 0) {
+            printf("%.*s\n", length, sstr.str);
+          }
+        } else if (pkt_id == 0x1F) { // Keep-alive
+          u64 id = rb->ReadU64();
+
+          SendKeepAlive(connection, id);
+          printf("Sending keep alive\n");
+        }
+
+        // skip every packet until they are implemented
+        rb->read_offset = target_offset;
+
+        rb = &connection->read_buffer;
+        //printf("%llu\n", pkt_id);
+      } while (rb->read_offset != rb->write_offset);
     }
   }
 
