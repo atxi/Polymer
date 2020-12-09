@@ -42,7 +42,7 @@
 
 #include <stddef.h>
 
-#if defined(__clang__) || defined(__GNUC__)
+#if defined(__GNUC__)
 #define json_weak __attribute__((weak))
 #elif defined(_MSC_VER)
 #define json_weak __inline

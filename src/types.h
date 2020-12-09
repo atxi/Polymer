@@ -1,5 +1,5 @@
-#ifndef POLYMER_POLYMER_H_
-#define POLYMER_POLYMER_H_
+#ifndef POLYMER_TYPES_H_
+#define POLYMER_TYPES_H_
 
 #include <stdint.h>
 

@@ -1,7 +1,7 @@
 #ifndef POLYMER_MEMORY_H_
 #define POLYMER_MEMORY_H_
 
-#include "polymer.h"
+#include "types.h"
 #include <new>
 
 namespace polymer {

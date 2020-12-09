@@ -2,7 +2,7 @@
 #define POLYMER_BUFFER_H_
 
 #include "memory.h"
-#include "polymer.h"
+#include "types.h"
 
 namespace polymer {
 
