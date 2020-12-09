@@ -23,6 +23,7 @@ struct Connection {
 
   SocketType fd = -1;
   bool connected = false;
+  ProtocolState protocol_state = ProtocolState::Handshake;
 
   RingBuffer read_buffer;
   RingBuffer write_buffer;
@@ -42,6 +43,9 @@ struct Connection {
   void SendLoginStart(const char* username);
   void SendKeepAlive(u64 id);
   void SendTeleportConfirm(u64 id);
+
+  enum class ClientStatusAction { Respawn, Stats };
+  void SendClientStatus(ClientStatusAction action);
 };
 
 } // namespace polymer

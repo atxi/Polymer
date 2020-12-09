@@ -17,6 +17,11 @@ struct PacketInterpreter {
   PacketInterpreter(GameState* game);
 
   void Interpret();
+
+private:
+  void InterpretStatus(RingBuffer* rb, u64 pkt_id, size_t pkt_size);
+  void InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_size);
+  void InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_size);
 };
 
 } // namespace polymer

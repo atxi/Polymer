@@ -5,8 +5,8 @@
 #include "packet_interpreter.h"
 #include "types.h"
 
-#include <cstdio>
 #include <cassert>
+#include <cstdio>
 
 #pragma comment(lib, "ws2_32.lib")
 

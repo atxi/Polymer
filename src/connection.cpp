@@ -147,6 +147,8 @@ void Connection::SendHandshake(u32 version, const char* address, u16 port, Proto
   wb.WriteString(sstr);
   wb.WriteU16(port);
   wb.WriteVarInt((u64)state_request);
+
+  this->protocol_state = state_request;
 }
 
 void Connection::SendPingRequest() {
@@ -198,6 +200,19 @@ void Connection::SendTeleportConfirm(u64 id) {
   wb.WriteVarInt(pid);
 
   wb.WriteVarInt(id);
+}
+
+void Connection::SendClientStatus(ClientStatusAction action) {
+  RingBuffer& wb = write_buffer;
+  u32 pid = 0x04;
+
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize((u64)action);
+
+  wb.WriteVarInt(size);
+  wb.WriteVarInt(0);
+  wb.WriteVarInt(pid);
+
+  wb.WriteVarInt((u64)action);
 }
 
 #ifdef _WIN32
