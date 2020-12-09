@@ -199,6 +199,35 @@ void SendTeleportConfirm(Connection* connection, u64 id) {
   wb.WriteVarInt(id);
 }
 
+void OnBlockChange(Polymer* polymer, s32 x, s32 y, s32 z, u32 new_bid) {
+  s32 chunk_x = (s32)std::floor(x / 16.0f);
+  s32 chunk_z = (s32)std::floor(z / 16.0f);
+
+  ChunkSection* section = &polymer->chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+
+  // It should be in the loaded cache otherwise the server is sending about an unloaded chunk.
+  assert(section->x == chunk_x);
+  assert(section->z == chunk_z);
+
+  s32 relative_x = x % 16;
+  s32 relative_z = z % 16;
+
+  if (relative_x < 0) {
+    relative_x += 16;
+  }
+
+  if (relative_z < 0) {
+    relative_z += 16;
+  }
+
+  u32 old_bid = section->chunks[y / 16].blocks[y % 16][relative_z][relative_x];
+
+  section->chunks[y / 16].blocks[y % 16][relative_z][relative_x] = (u32)new_bid;
+
+  printf("Block changed at (%d, %d, %d) from %s to %s\n", x, y, z, polymer->block_states[old_bid].name,
+         polymer->block_states[new_bid].name);
+}
+
 int run() {
   constexpr size_t kMirrorBufferSize = 65536 * 32;
   constexpr size_t kPermanentSize = gigabytes(1);
@@ -391,32 +420,38 @@ int run() {
             z -= 0x4000000;
           }
 
-          s32 chunk_x = (s32)std::floor(x / 16.0f);
-          s32 chunk_z = (s32)std::floor(z / 16.0f);
+          OnBlockChange(polymer, x, y, z, (u32)new_bid);
+        } else if (pkt_id == 0x3B) { // MultiBlockChange
+          u64 xzy = rb->ReadU64();
+          bool inverse = rb->ReadU8();
 
-          ChunkSection* section = &polymer->chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+          s32 chunk_x = xzy >> (22 + 20);
+          s32 chunk_z = (xzy >> 20) & ((1 << 22) - 1);
+          s32 chunk_y = xzy & ((1 << 20) - 1);
 
-          // It should be in the loaded cache otherwise the server is sending about an unloaded chunk.
-          assert(section->x == chunk_x);
-          assert(section->z == chunk_z);
-
-          s32 relative_x = x % 16;
-          s32 relative_z = z % 16;
-
-          if (relative_x < 0) {
-            relative_x += 16;
+          if (chunk_x >= (1 << 21)) {
+            chunk_x -= (1 << 22);
           }
 
-          if (relative_z < 0) {
-            relative_z += 16;
+          if (chunk_z >= (1 << 21)) {
+            chunk_z -= (1 << 22);
           }
 
-          u32 old_bid = section->chunks[y / 16].blocks[y % 16][relative_z][relative_x];
+          u64 count;
+          rb->ReadVarInt(&count);
 
-          section->chunks[y / 16].blocks[y % 16][relative_z][relative_x] = (u32)new_bid;
+          for (size_t i = 0; i < count; ++i) {
+            u64 data;
 
-          printf("Block changed at (%d, %d, %d) from %s to %s\n", x, y, z, polymer->block_states[old_bid].name,
-                 polymer->block_states[new_bid].name);
+            rb->ReadVarInt(&data);
+
+            u32 new_bid = (u32)(data >> 12);
+            u32 relative_x = (data >> 8) & 0x0F;
+            u32 relative_z = (data >> 4) & 0x0F;
+            u32 relative_y = data & 0x0F;
+
+            OnBlockChange(polymer, chunk_x * 16 + relative_x, chunk_y * 16 + relative_y, chunk_z * 16 + relative_z, new_bid);
+          }
 
         } else if (pkt_id == 0x20) { // ChunkData
           s32 chunk_x = rb->ReadU32();
