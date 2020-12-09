@@ -17,4 +17,6 @@ using u64 = uint64_t;
 
 } // namespace polymer
 
+#define polymer_array_count(arr) (sizeof(arr) / (sizeof(*arr)))
+
 #endif
