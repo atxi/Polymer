@@ -15,7 +15,7 @@ constexpr size_t megabytes(size_t n) {
 }
 
 constexpr size_t gigabytes(size_t n) {
-  return n * kilobytes(1024);
+  return n * megabytes(1024);
 }
 
 struct MemoryArena {

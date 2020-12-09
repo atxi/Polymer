@@ -24,13 +24,45 @@ struct BlockState {
   char* name;
 };
 
-char block_names[32768][32];
-size_t block_name_count;
+constexpr size_t kChunkCacheSize = 48;
 
-size_t block_state_count;
-BlockState block_states[32768];
+struct Chunk {
+  u32 blocks[16][16][16];
+};
 
-void LoadBlocks(MemoryArena* arena) {
+struct ChunkSection {
+  s32 x;
+  s32 z;
+
+  Chunk chunks[16];
+};
+
+u32 GetChunkCacheIndex(s32 v) {
+  return ((v % (s32)kChunkCacheSize) + (s32)kChunkCacheSize) % (s32)kChunkCacheSize;
+}
+
+struct Polymer {
+  MemoryArena* perm_arena;
+  MemoryArena* trans_arena;
+
+  Connection connection;
+
+  size_t block_name_count = 0;
+  char block_names[32768][32];
+
+  size_t block_state_count = 0;
+  BlockState block_states[32768];
+
+  // Chunk cache
+  ChunkSection chunks[kChunkCacheSize][kChunkCacheSize];
+
+  Polymer(MemoryArena* perm_arena, MemoryArena* trans_arena)
+      : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena) {}
+
+  void LoadBlocks();
+};
+
+void Polymer::LoadBlocks() {
   block_state_count = 0;
 
   FILE* f = fopen("blocks.json", "r");
@@ -38,7 +70,7 @@ void LoadBlocks(MemoryArena* arena) {
   long file_size = ftell(f);
   fseek(f, 0, SEEK_SET);
 
-  char* buffer = memory_arena_push_type_count(arena, char, file_size);
+  char* buffer = memory_arena_push_type_count(trans_arena, char, file_size);
 
   fread(buffer, 1, file_size, f);
   fclose(f);
@@ -169,7 +201,7 @@ void SendTeleportConfirm(Connection* connection, u64 id) {
 
 int run() {
   constexpr size_t kMirrorBufferSize = 65536 * 32;
-  constexpr size_t kPermanentSize = megabytes(32);
+  constexpr size_t kPermanentSize = gigabytes(1);
   constexpr size_t kTransientSize = megabytes(32);
 
   u8* perm_memory = (u8*)VirtualAlloc(NULL, kPermanentSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -180,9 +212,11 @@ int run() {
 
   printf("Polymer\n");
 
-  LoadBlocks(&trans_arena);
+  Polymer* polymer = memory_arena_construct_type(&perm_arena, Polymer, &perm_arena, &trans_arena);
 
-  Connection* connection = memory_arena_construct_type(&perm_arena, Connection, perm_arena);
+  polymer->LoadBlocks();
+
+  Connection* connection = &polymer->connection;
 
   // Allocate mirrored ring buffers so they can always be inflated
   connection->read_buffer.size = kMirrorBufferSize;
@@ -337,7 +371,54 @@ int run() {
           SendTeleportConfirm(connection, teleport_id);
           // TODO: Relative/Absolute
           printf("Position: (%f, %f, %f)\n", x, y, z);
-        } else if (pkt_id == 0x20) { // Chunk data
+        } else if (pkt_id == 0x0B) { // BlockChange
+          u64 position_data = rb->ReadU64();
+
+          u64 new_bid;
+          rb->ReadVarInt(&new_bid);
+
+          s32 x = (position_data >> (26 + 12)) & 0x3FFFFFF;
+          s32 y = position_data & 0x0FFF;
+          s32 z = (position_data >> 12) & 0x3FFFFFF;
+
+          if (x >= 0x2000000) {
+            x -= 0x4000000;
+          }
+          if (y >= 0x800) {
+            y -= 0x1000;
+          }
+          if (z >= 0x2000000) {
+            z -= 0x4000000;
+          }
+
+          s32 chunk_x = (s32)std::floor(x / 16.0f);
+          s32 chunk_z = (s32)std::floor(z / 16.0f);
+
+          ChunkSection* section = &polymer->chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+
+          // It should be in the loaded cache otherwise the server is sending about an unloaded chunk.
+          assert(section->x == chunk_x);
+          assert(section->z == chunk_z);
+
+          s32 relative_x = x % 16;
+          s32 relative_z = z % 16;
+
+          if (relative_x < 0) {
+            relative_x += 16;
+          }
+
+          if (relative_z < 0) {
+            relative_z += 16;
+          }
+
+          u32 old_bid = section->chunks[y / 16].blocks[y % 16][relative_z][relative_x];
+
+          section->chunks[y / 16].blocks[y % 16][relative_z][relative_x] = (u32)new_bid;
+
+          printf("Block changed at (%d, %d, %d) from %s to %s\n", x, y, z, polymer->block_states[old_bid].name,
+                 polymer->block_states[new_bid].name);
+
+        } else if (pkt_id == 0x20) { // ChunkData
           s32 chunk_x = rb->ReadU32();
           s32 chunk_z = rb->ReadU32();
           bool is_full = rb->ReadU8();
@@ -391,8 +472,8 @@ int run() {
           size_t new_offset = (rb->read_offset + data_size) % rb->size;
 
           if (data_size > 0) {
-            for (u64 i = 0; i < 16; ++i) {
-              if (!(bitmask & (1LL << i))) {
+            for (u64 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+              if (!(bitmask & (1LL << chunk_y))) {
                 continue;
               }
 
@@ -418,7 +499,10 @@ int run() {
                 }
               }
 
-              u32* chunk = memory_arena_push_type_count(&trans_arena, u32, 16 * 16 * 16);
+              ChunkSection* section = &polymer->chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+              section->x = chunk_x;
+              section->z = chunk_z;
+              u32* chunk = (u32*)section->chunks[chunk_y].blocks;
 
               u64 data_array_length;
               rb->ReadVarInt(&data_array_length);
@@ -439,14 +523,14 @@ int run() {
                 }
               }
 
-              if (chunk_x == 11 && i == 4 && chunk_z == 21) {
+              if (chunk_x == 11 && chunk_y == 4 && chunk_z == 21) {
                 u64 x = chunk_x * 16LL + 7;  // 183
-                u64 y = i * 16 + 3;          // 67
+                u64 y = chunk_y * 16 + 3;    // 67
                 u64 z = chunk_z * 16LL + 10; // 346
 
                 size_t index = 3 * 16 * 16 + 10 * 16 + 7;
                 u32 block_state_id = chunk[index];
-                BlockState* state = block_states + block_state_id;
+                BlockState* state = polymer->block_states + block_state_id;
 
                 printf("Block at %llu, %llu, %llu - %s\n", x, y, z, state->name);
               }
