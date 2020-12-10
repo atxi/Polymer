@@ -343,23 +343,22 @@ void PacketInterpreter::Interpret() {
 
     switch (connection->protocol_state) {
     case ProtocolState::Status:
-      this->InterpretStatus(rb, pkt_id, pkt_size);
+      this->InterpretStatus(rb, pkt_id, (size_t)pkt_size);
       break;
     case ProtocolState::Login:
-      this->InterpretLogin(rb, pkt_id, pkt_size);
+      this->InterpretLogin(rb, pkt_id, (size_t)pkt_size);
       break;
     case ProtocolState::Play:
-      this->InterpretPlay(rb, pkt_id, pkt_size);
+      this->InterpretPlay(rb, pkt_id, (size_t)pkt_size);
       break;
     default:
       break;
     }
 
-    // skip every packet until they are implemented
+    // Always skip to the next packet in case some data wasn't read.
     rb->read_offset = target_offset;
 
     rb = &connection->read_buffer;
-    // printf("%llu\n", pkt_id);
   } while (rb->read_offset != rb->write_offset);
 }
 

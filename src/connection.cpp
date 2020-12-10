@@ -45,8 +45,6 @@ Connection::TickResult Connection::Tick() {
     int err = WSAGetLastError();
 
     if (err == WSAEWOULDBLOCK) {
-      // TODO: Remove this once rendering is started. This is just to reduce cpu usage for now.
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
       return TickResult::Success;
     }
 
@@ -107,9 +105,6 @@ ConnectResult Connection::Connect(const char* ip, u16 port) {
 }
 
 void Connection::Disconnect() {
-  assert(this->fd >= 0);
-  assert(this->connected);
-
   closesocket(this->fd);
   this->connected = false;
 }
