@@ -23,4 +23,4 @@ bench_results
 /clang
 blocks.json
 /x64
-.spv
+*.spv
