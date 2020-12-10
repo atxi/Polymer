@@ -26,18 +26,7 @@ constexpr u32 kWidth = 1280;
 // Window surface height
 constexpr u32 kHeight = 720;
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-  switch (msg) {
-  case WM_DESTROY: {
-    PostQuitMessage(0);
-  } break;
-  default:
-    return DefWindowProc(hwnd, msg, wParam, lParam);
-  }
-
-  return 0;
-}
-
+constexpr size_t kMaxFramesInFlight = 2;
 const char* const kRequiredExtensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_utils"};
 const char* const kDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 const char* const kValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
@@ -75,6 +64,28 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
   }
 }
 
+SizedString ReadEntireFile(const char* filename, MemoryArena* arena) {
+  SizedString result = {};
+  FILE* f = fopen(filename, "rb");
+
+  if (!f) {
+    return result;
+  }
+
+  fseek(f, 0, SEEK_END);
+  long size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+
+  char* buffer = memory_arena_push_type_count(arena, char, size);
+  fread(buffer, 1, size, f);
+  fclose(f);
+
+  result.str = buffer;
+  result.size = size;
+
+  return result;
+}
+
 struct QueueFamilyIndices {
   u32 graphics;
   bool has_graphics;
@@ -99,6 +110,7 @@ struct SwapChainSupportDetails {
 
 struct VulkanRenderer {
   MemoryArena* trans_arena;
+  HWND hwnd;
 
   VkInstance instance;
   VkDebugUtilsMessengerEXT debug_messenger;
@@ -111,10 +123,32 @@ struct VulkanRenderer {
 
   u32 swap_image_count;
   VkImage swap_images[6];
+  VkImageView swap_image_views[6];
+  VkFramebuffer swap_framebuffers[6];
   VkFormat swap_format;
   VkExtent2D swap_extent;
+  VkRenderPass render_pass;
+  VkPipelineLayout pipeline_layout;
+  VkPipeline graphics_pipeline;
+
+  VkCommandPool command_pool;
+  VkCommandBuffer command_buffers[6];
+  VkSemaphore image_available_semaphores[kMaxFramesInFlight];
+  VkSemaphore render_finished_semaphores[kMaxFramesInFlight];
+  VkFence frame_fences[kMaxFramesInFlight];
+  VkFence image_fences[6];
+
+  size_t current_frame = 0;
+  bool render_paused;
+  bool invalid_swapchain;
 
   bool Initialize(HWND hwnd) {
+    this->hwnd = hwnd;
+    this->render_paused = false;
+    this->invalid_swapchain = false;
+
+    swapchain = VK_NULL_HANDLE;
+
     if (!CreateInstance()) {
       return false;
     }
@@ -128,21 +162,492 @@ struct VulkanRenderer {
 
     PickPhysicalDevice();
     CreateLogicalDevice();
-    CreateSwapChain();
+
+    CreateCommandPool();
+    RecreateSwapchain();
+    CreateSyncObjects();
 
     return true;
   }
 
-  void CreateSwapChain() {
+  void Render() {
+    vkWaitForFences(device, 1, frame_fences + current_frame, VK_TRUE, UINT64_MAX);
+
+    if (render_paused || invalid_swapchain) {
+      RecreateSwapchain();
+      return;
+    }
+
+    u32 image_index;
+
+    VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphores[current_frame],
+                                            VK_NULL_HANDLE, &image_index);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+      RecreateSwapchain();
+      return;
+    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+      fprintf(stderr, "Failed to acquire swapchain image.\n");
+    }
+
+    if (image_fences[image_index] != VK_NULL_HANDLE) {
+      vkWaitForFences(device, 1, &image_fences[image_index], VK_TRUE, UINT64_MAX);
+    }
+
+    image_fences[image_index] = frame_fences[current_frame];
+
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore waitSemaphores[] = {image_available_semaphores[current_frame]};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = waitSemaphores;
+    submit_info.pWaitDstStageMask = waitStages;
+
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = command_buffers + image_index;
+
+    VkSemaphore signal_semaphores[] = {render_finished_semaphores[current_frame]};
+
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+
+    vkResetFences(device, 1, frame_fences + current_frame);
+
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, frame_fences[current_frame]) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to submit draw command buffer.\n");
+    }
+
+    VkSwapchainKHR swapchains[] = {swapchain};
+
+    VkPresentInfoKHR present_info = {};
+
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = signal_semaphores;
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = swapchains;
+    present_info.pImageIndices = &image_index;
+    present_info.pResults = nullptr;
+
+    result = vkQueuePresentKHR(present_queue, &present_info);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+      RecreateSwapchain();
+    } else if (result != VK_SUCCESS) {
+      fprintf(stderr, "Failed to present swapchain image.\n");
+    }
+
+    current_frame = (current_frame + 1) % kMaxFramesInFlight;
+  }
+
+  void CleanupSwapchain() {
+    if (swapchain == VK_NULL_HANDLE || swap_image_count == 0)
+      return;
+
+    for (u32 i = 0; i < swap_image_count; i++) {
+      vkDestroyFramebuffer(device, swap_framebuffers[i], nullptr);
+    }
+
+    vkFreeCommandBuffers(device, command_pool, swap_image_count, command_buffers);
+
+    vkDestroyPipeline(device, graphics_pipeline, nullptr);
+    vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
+    vkDestroyRenderPass(device, render_pass, nullptr);
+
+    for (u32 i = 0; i < swap_image_count; i++) {
+      vkDestroyImageView(device, swap_image_views[i], nullptr);
+    }
+
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+  }
+
+  void RecreateSwapchain() {
+    vkDeviceWaitIdle(device);
+
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+
+    if (rect.right - rect.left == 0 || rect.bottom - rect.top == 0) {
+      this->render_paused = true;
+      return;
+    }
+
+    CleanupSwapchain();
+
+    CreateSwapchain();
+    CreateImageViews();
+    CreateRenderPass();
+    CreateGraphicsPipeline();
+    CreateFramebuffers();
+    CreateCommandBuffers();
+
+    this->render_paused = false;
+    this->invalid_swapchain = false;
+  }
+
+  void CreateSyncObjects() {
+    VkSemaphoreCreateInfo semaphore_info = {};
+
+    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fence_info = {};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
+      if (vkCreateSemaphore(device, &semaphore_info, nullptr, image_available_semaphores + i) != VK_SUCCESS ||
+          vkCreateSemaphore(device, &semaphore_info, nullptr, render_finished_semaphores + i) != VK_SUCCESS) {
+
+        fprintf(stderr, "Failed to create semaphores.\n");
+      }
+
+      if (vkCreateFence(device, &fence_info, nullptr, frame_fences + i) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create frame fence.\n");
+      }
+    }
+
+    for (u32 i = 0; i < swap_image_count; ++i) {
+      image_fences[i] = VK_NULL_HANDLE;
+    }
+  }
+
+  void CreateCommandBuffers() {
+    VkCommandBufferAllocateInfo alloc_info = {};
+
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = command_pool;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = swap_image_count;
+
+    if (vkAllocateCommandBuffers(device, &alloc_info, command_buffers) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to allocate command buffers.\n");
+    }
+
+    for (size_t i = 0; i < swap_image_count; i++) {
+      VkCommandBufferBeginInfo begin_info = {};
+
+      begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      begin_info.flags = 0;
+      begin_info.pInheritanceInfo = nullptr;
+
+      if (vkBeginCommandBuffer(command_buffers[i], &begin_info) != VK_SUCCESS) {
+        fprintf(stderr, "Failed ot begin recording command buffer.\n");
+      }
+
+      VkRenderPassBeginInfo render_pass_info = {};
+
+      render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+      render_pass_info.renderPass = render_pass;
+      render_pass_info.framebuffer = swap_framebuffers[i];
+      render_pass_info.renderArea.offset = {0, 0};
+      render_pass_info.renderArea.extent = swap_extent;
+
+      VkClearValue clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+      render_pass_info.clearValueCount = 1;
+      render_pass_info.pClearValues = &clear_color;
+
+      vkCmdBeginRenderPass(command_buffers[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+      {
+        vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+        vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+      }
+      vkCmdEndRenderPass(command_buffers[i]);
+
+      if (vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to record command buffer.\n");
+      }
+    }
+  }
+
+  void CreateCommandPool() {
+    QueueFamilyIndices indices = FindQueueFamilies(physical_device);
+
+    VkCommandPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = indices.graphics;
+    pool_info.flags = 0;
+
+    if (vkCreateCommandPool(device, &pool_info, nullptr, &command_pool) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create command pool.\n");
+    }
+  }
+
+  void CreateFramebuffers() {
+    for (u32 i = 0; i < swap_image_count; i++) {
+      VkImageView attachments[] = {swap_image_views[i]};
+
+      VkFramebufferCreateInfo framebuffer_info = {};
+      framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+      framebuffer_info.renderPass = render_pass;
+      framebuffer_info.attachmentCount = 1;
+      framebuffer_info.pAttachments = attachments;
+      framebuffer_info.width = swap_extent.width;
+      framebuffer_info.height = swap_extent.height;
+      framebuffer_info.layers = 1;
+
+      if (vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_framebuffers[i]) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create framebuffer.\n");
+      }
+    }
+  }
+
+  void CreateRenderPass() {
+    VkAttachmentDescription color_attachment = {};
+
+    color_attachment.format = swap_format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference color_attachment_ref = {};
+    color_attachment_ref.attachment = 0;
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_ref;
+
+    VkRenderPassCreateInfo render_pass_info = {};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_info.attachmentCount = 1;
+    render_pass_info.pAttachments = &color_attachment;
+    render_pass_info.subpassCount = 1;
+    render_pass_info.pSubpasses = &subpass;
+
+    VkSubpassDependency dependency = {};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    render_pass_info.dependencyCount = 1;
+    render_pass_info.pDependencies = &dependency;
+
+    if (vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create render pass.\n");
+    }
+  }
+
+  void CreateGraphicsPipeline() {
+    SizedString vert_code = ReadEntireFile("shaders/vert.spv", trans_arena);
+    SizedString frag_code = ReadEntireFile("shaders/frag.spv", trans_arena);
+
+    if (vert_code.size == 0) {
+      fprintf(stderr, "Failed to read vertex shader file.\n");
+      return;
+    }
+
+    if (frag_code.size == 0) {
+      fprintf(stderr, "Failed to read fragment shader file.\n");
+      return;
+    }
+
+    VkShaderModule vertex_shader = CreateShaderModule(vert_code);
+    VkShaderModule frag_shader = CreateShaderModule(frag_code);
+
+    VkPipelineShaderStageCreateInfo vert_shader_create_info = {};
+    vert_shader_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vert_shader_create_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vert_shader_create_info.module = vertex_shader;
+    vert_shader_create_info.pName = "main";
+
+    VkPipelineShaderStageCreateInfo frag_shader_create_info = {};
+    frag_shader_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    frag_shader_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    frag_shader_create_info.module = frag_shader;
+    frag_shader_create_info.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shader_stages[] = {vert_shader_create_info, frag_shader_create_info};
+
+    VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
+    vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_info.vertexBindingDescriptionCount = 0;
+    vertex_input_info.pVertexBindingDescriptions = nullptr;
+    vertex_input_info.vertexAttributeDescriptionCount = 0;
+    vertex_input_info.pVertexAttributeDescriptions = nullptr;
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
+    input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly.primitiveRestartEnable = VK_FALSE;
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)swap_extent.width;
+    viewport.height = (float)swap_extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor = {};
+    scissor.offset = {0, 0};
+    scissor.extent = swap_extent;
+
+    VkPipelineViewportStateCreateInfo viewport_state = {};
+    viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_state.viewportCount = 1;
+    viewport_state.pViewports = &viewport;
+    viewport_state.scissorCount = 1;
+    viewport_state.pScissors = &scissor;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer = {};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+    rasterizer.depthBiasConstantFactor = 0.0f;
+    rasterizer.depthBiasClamp = 0.0f;
+    rasterizer.depthBiasSlopeFactor = 0.0f;
+
+    VkPipelineMultisampleStateCreateInfo multisampling = {};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampling.minSampleShading = 1.0f;
+    multisampling.pSampleMask = nullptr;
+    multisampling.alphaToCoverageEnable = VK_FALSE;
+    multisampling.alphaToOneEnable = VK_FALSE;
+
+    VkPipelineColorBlendAttachmentState blend_attachment = {};
+    blend_attachment.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    blend_attachment.blendEnable = VK_FALSE;
+    blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+    blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo blend = {};
+    blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    blend.logicOpEnable = VK_FALSE;
+    blend.logicOp = VK_LOGIC_OP_COPY;
+    blend.attachmentCount = 1;
+    blend.pAttachments = &blend_attachment;
+    blend.blendConstants[0] = 0.0f;
+    blend.blendConstants[1] = 0.0f;
+    blend.blendConstants[2] = 0.0f;
+    blend.blendConstants[3] = 0.0f;
+
+    VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH};
+
+    VkPipelineDynamicStateCreateInfo dynamic_state = {};
+    dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic_state.dynamicStateCount = 2;
+    dynamic_state.pDynamicStates = dynamic_states;
+
+    VkPipelineLayoutCreateInfo pipeline_layout_create_info = {};
+    pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_create_info.setLayoutCount = 0;
+    pipeline_layout_create_info.pSetLayouts = nullptr;
+    pipeline_layout_create_info.pushConstantRangeCount = 0;
+    pipeline_layout_create_info.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &pipeline_layout) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create pipeline layout.\n");
+    }
+
+    VkGraphicsPipelineCreateInfo pipeline_info = {};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline_info.stageCount = 2;
+    pipeline_info.pStages = shader_stages;
+
+    pipeline_info.pVertexInputState = &vertex_input_info;
+    pipeline_info.pInputAssemblyState = &input_assembly;
+    pipeline_info.pViewportState = &viewport_state;
+    pipeline_info.pRasterizationState = &rasterizer;
+    pipeline_info.pMultisampleState = &multisampling;
+    pipeline_info.pDepthStencilState = nullptr;
+    pipeline_info.pColorBlendState = &blend;
+    pipeline_info.pDynamicState = nullptr;
+    pipeline_info.layout = pipeline_layout;
+    pipeline_info.renderPass = render_pass;
+    pipeline_info.subpass = 0;
+    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
+    pipeline_info.basePipelineIndex = -1;
+
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline) !=
+        VK_SUCCESS) {
+      fprintf(stderr, "Failed to create graphics pipeline.\n");
+    }
+
+    vkDestroyShaderModule(device, vertex_shader, nullptr);
+    vkDestroyShaderModule(device, frag_shader, nullptr);
+  }
+
+  VkShaderModule CreateShaderModule(SizedString code) {
+    VkShaderModuleCreateInfo create_info{};
+
+    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    create_info.codeSize = code.size;
+    create_info.pCode = (u32*)code.str;
+
+    VkShaderModule shader;
+
+    if (vkCreateShaderModule(device, &create_info, nullptr, &shader) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create shader module.\n");
+    }
+
+    return shader;
+  }
+
+  void CreateImageViews() {
+    for (u32 i = 0; i < swap_image_count; ++i) {
+      VkImageViewCreateInfo create_info = {};
+      create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+      create_info.image = swap_images[i];
+      create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      create_info.format = swap_format;
+      create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+      create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+      create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+      create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+      create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      create_info.subresourceRange.baseMipLevel = 0;
+      create_info.subresourceRange.levelCount = 1;
+      create_info.subresourceRange.baseArrayLayer = 0;
+      create_info.subresourceRange.layerCount = 1;
+
+      if (vkCreateImageView(device, &create_info, nullptr, &swap_image_views[i]) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create SwapChain image view.\n");
+      }
+    }
+  }
+
+  void CreateSwapchain() {
     SwapChainSupportDetails swapchain_support = QuerySwapChainSupport(physical_device);
 
-    VkSurfaceFormatKHR surface_format = ChooseSwapSurfaceFormat(swapchain_support.formats, swapchain_support.format_count);
-    VkPresentModeKHR present_mode = ChooseSwapPresentMode(swapchain_support.present_modes, swapchain_support.present_mode_count);
+    VkSurfaceFormatKHR surface_format =
+        ChooseSwapSurfaceFormat(swapchain_support.formats, swapchain_support.format_count);
+    VkPresentModeKHR present_mode =
+        ChooseSwapPresentMode(swapchain_support.present_modes, swapchain_support.present_mode_count);
     VkExtent2D extent = ChooseSwapExtent(swapchain_support.capabilities);
+
+    if (extent.width == 0 || extent.height == 0) {
+      swapchain = VK_NULL_HANDLE;
+      swap_image_count = 0;
+      return;
+    }
 
     u32 image_count = swapchain_support.capabilities.minImageCount + 1;
 
-    if (swapchain_support.capabilities.maxImageCount > 0 && image_count > swapchain_support.capabilities.maxImageCount) {
+    if (swapchain_support.capabilities.maxImageCount > 0 &&
+        image_count > swapchain_support.capabilities.maxImageCount) {
       image_count = swapchain_support.capabilities.maxImageCount;
     }
 
@@ -157,7 +662,7 @@ struct VulkanRenderer {
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
     QueueFamilyIndices indices = FindQueueFamilies(physical_device);
-    uint32_t queue_indices[] = { indices.graphics, indices.present };
+    uint32_t queue_indices[] = {indices.graphics, indices.present};
 
     if (indices.graphics != indices.present) {
       create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -192,7 +697,13 @@ struct VulkanRenderer {
       return capabilities.currentExtent;
     }
 
-    VkExtent2D extent = {kWidth, kHeight};
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+
+    u32 width = (u32)(rect.right - rect.left);
+    u32 height = (u32)(rect.bottom - rect.top);
+
+    VkExtent2D extent = {width, height};
 
     return extent;
   }
@@ -510,7 +1021,18 @@ struct VulkanRenderer {
   }
 
   void Cleanup() {
-    vkDestroySwapchainKHR(device, swapchain, nullptr);
+    vkDeviceWaitIdle(device);
+
+    CleanupSwapchain();
+
+    for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
+      vkDestroySemaphore(device, image_available_semaphores[i], nullptr);
+      vkDestroySemaphore(device, render_finished_semaphores[i], nullptr);
+      vkDestroyFence(device, frame_fences[i], nullptr);
+    }
+
+    vkDestroyCommandPool(device, command_pool, nullptr);
+
     vkDestroySurfaceKHR(instance, surface, nullptr);
 
     vkDestroyDevice(device, nullptr);
@@ -525,6 +1047,21 @@ struct VulkanRenderer {
 
 VulkanRenderer vk_render;
 
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  switch (msg) {
+  case WM_SIZE: {
+    vk_render.invalid_swapchain = true;
+  } break;
+  case WM_DESTROY: {
+    PostQuitMessage(0);
+  } break;
+  default:
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+  }
+
+  return 0;
+}
+
 int run() {
   constexpr size_t kMirrorBufferSize = 65536 * 32;
   constexpr size_t kPermanentSize = gigabytes(1);
@@ -537,6 +1074,51 @@ int run() {
   MemoryArena trans_arena(trans_memory, kTransientSize);
 
   vk_render.trans_arena = &trans_arena;
+
+  printf("Polymer\n");
+
+  GameState* game = memory_arena_construct_type(&perm_arena, GameState, &perm_arena, &trans_arena);
+  PacketInterpreter interpreter(game);
+  Connection* connection = &game->connection;
+
+  connection->interpreter = &interpreter;
+
+  game->LoadBlocks();
+
+  // Allocate mirrored ring buffers so they can always be inflated
+  connection->read_buffer.size = kMirrorBufferSize;
+  connection->read_buffer.data = AllocateMirroredBuffer(connection->read_buffer.size);
+  connection->write_buffer.size = kMirrorBufferSize;
+  connection->write_buffer.data = AllocateMirroredBuffer(connection->write_buffer.size);
+
+  assert(connection->read_buffer.data);
+  assert(connection->write_buffer.data);
+
+  ConnectResult connect_result = connection->Connect("127.0.0.1", 25565);
+
+  switch (connect_result) {
+  case ConnectResult::ErrorSocket: {
+    fprintf(stderr, "Failed to create socket\n");
+    return 1;
+  }
+  case ConnectResult::ErrorAddrInfo: {
+    fprintf(stderr, "Failed to get address info\n");
+    return 1;
+  }
+  case ConnectResult::ErrorConnect: {
+    fprintf(stderr, "Failed to connect\n");
+    return 1;
+  }
+  default:
+    break;
+  }
+
+  printf("Connected to server.\n");
+
+  connection->SetBlocking(false);
+
+  connection->SendHandshake(754, "127.0.0.1", 25565, ProtocolState::Login);
+  connection->SendLoginStart("polymer");
 
   WNDCLASSEX wc = {};
 
@@ -569,70 +1151,6 @@ int run() {
   vk_render.Initialize(hwnd);
 
   MSG msg = {};
-  bool running = true;
-  while (running) {
-    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-      TranslateMessage(&msg);
-      DispatchMessage(&msg);
-
-      if (msg.message == WM_QUIT) {
-        running = false;
-        break;
-      }
-    }
-  }
-
-  vk_render.Cleanup();
-
-  return 0;
-  printf("Polymer\n");
-
-  GameState* game = memory_arena_construct_type(&perm_arena, GameState, &perm_arena, &trans_arena);
-  PacketInterpreter interpreter(game);
-  Connection* connection = &game->connection;
-
-  connection->interpreter = &interpreter;
-
-  game->LoadBlocks();
-
-  // Allocate mirrored ring buffers so they can always be inflated
-  connection->read_buffer.size = kMirrorBufferSize;
-  connection->read_buffer.data = AllocateMirroredBuffer(connection->read_buffer.size);
-  connection->write_buffer.size = kMirrorBufferSize;
-  connection->write_buffer.data = AllocateMirroredBuffer(connection->write_buffer.size);
-
-  assert(connection->read_buffer.data);
-  assert(connection->write_buffer.data);
-
-  // Inflate buffer doesn't need mirrored because it always operates from byte zero.
-  RingBuffer inflate_buffer(perm_arena, kMirrorBufferSize);
-
-  ConnectResult connect_result = connection->Connect("127.0.0.1", 25565);
-
-  switch (connect_result) {
-  case ConnectResult::ErrorSocket: {
-    fprintf(stderr, "Failed to create socket\n");
-    return 1;
-  }
-  case ConnectResult::ErrorAddrInfo: {
-    fprintf(stderr, "Failed to get address info\n");
-    return 1;
-  }
-  case ConnectResult::ErrorConnect: {
-    fprintf(stderr, "Failed to connect\n");
-    return 1;
-  }
-  default:
-    break;
-  }
-
-  printf("Connected to server.\n");
-
-  connection->SetBlocking(false);
-
-  connection->SendHandshake(754, "127.0.0.1", 25565, ProtocolState::Login);
-  connection->SendLoginStart("polymer");
-
   while (connection->connected) {
     trans_arena.Reset();
 
@@ -641,7 +1159,21 @@ int run() {
     if (result == Connection::TickResult::ConnectionClosed) {
       fprintf(stderr, "Connection closed by server.\n");
     }
+
+    vk_render.Render();
+
+    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+      TranslateMessage(&msg);
+      DispatchMessage(&msg);
+
+      if (msg.message == WM_QUIT) {
+        connection->Disconnect();
+        break;
+      }
+    }
   }
+
+  vk_render.Cleanup();
 
   return 0;
 }
