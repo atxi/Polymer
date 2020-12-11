@@ -4,6 +4,7 @@
 #include "memory.h"
 #include "packet_interpreter.h"
 #include "types.h"
+#include "vector.h"
 
 #include <cassert>
 #include <cstdio>
@@ -1052,6 +1053,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   case WM_SIZE: {
     vk_render.invalid_swapchain = true;
   } break;
+  case WM_CLOSE: {
+    DestroyWindow(hwnd);
+  } break;
   case WM_DESTROY: {
     PostQuitMessage(0);
   } break;
@@ -1127,6 +1131,9 @@ int run() {
   wc.lpfnWndProc = WndProc;
   wc.hInstance = GetModuleHandle(nullptr);
   wc.lpszClassName = L"polymer";
+  wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+  wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+  wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
   if (!RegisterClassEx(&wc)) {
     fprintf(stderr, "Failed to register window.\n");
