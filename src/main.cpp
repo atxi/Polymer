@@ -37,6 +37,14 @@ constexpr bool kEnableValidationLayers = false;
 constexpr bool kEnableValidationLayers = true;
 #endif
 
+struct Vertex {
+  Vector2f pos;
+  Vector3f color;
+};
+
+const Vertex vertices[] = {
+    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}, {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}};
+
 static VkBool32 VKAPI_PTR DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                         VkDebugUtilsMessageTypeFlagsEXT messageTypes,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
@@ -132,6 +140,9 @@ struct VulkanRenderer {
   VkPipelineLayout pipeline_layout;
   VkPipeline graphics_pipeline;
 
+  VkBuffer vertex_buffer;
+  VkDeviceMemory vertex_buffer_memory;
+
   VkCommandPool command_pool;
   VkCommandBuffer command_buffers[6];
   VkSemaphore image_available_semaphores[kMaxFramesInFlight];
@@ -165,6 +176,7 @@ struct VulkanRenderer {
     CreateLogicalDevice();
 
     CreateCommandPool();
+    CreateVertexBuffer();
     RecreateSwapchain();
     CreateSyncObjects();
 
@@ -242,6 +254,58 @@ struct VulkanRenderer {
     }
 
     current_frame = (current_frame + 1) % kMaxFramesInFlight;
+  }
+
+  u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties memory_properties;
+
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+
+    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i) {
+      if (type_filter & (1 << i) && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+        return i;
+      }
+    }
+
+    fprintf(stderr, "Failed to find suitable memory type.\n");
+    return 0;
+  }
+
+  void CreateVertexBuffer() {
+    VkBufferCreateInfo buffer_info = {};
+
+    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size = sizeof(vertices[0]) * polymer_array_count(vertices);
+    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &buffer_info, nullptr, &vertex_buffer) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create vertex buffer.\n");
+      return;
+    }
+
+    VkMemoryRequirements memory_req;
+
+    vkGetBufferMemoryRequirements(device, vertex_buffer, &memory_req);
+
+    VkMemoryAllocateInfo alloc_info = {};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = memory_req.size;
+    alloc_info.memoryTypeIndex = FindMemoryType(memory_req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if (vkAllocateMemory(device, &alloc_info, nullptr, &vertex_buffer_memory) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to allocate vertex buffer memory.\n");
+      return;
+    }
+
+    vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
+
+    void* data;
+
+    vkMapMemory(device, vertex_buffer_memory, 0, buffer_info.size, 0, &data);
+    memcpy(data, vertices, (size_t)buffer_info.size);
+    vkUnmapMemory(device, vertex_buffer_memory);
   }
 
   void CleanupSwapchain() {
@@ -353,7 +417,10 @@ struct VulkanRenderer {
       vkCmdBeginRenderPass(command_buffers[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
       {
         vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-        vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+        VkBuffer vertex_buffers[] = {vertex_buffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+        vkCmdDraw(command_buffers[i], polymer_array_count(vertices), 1, 0, 0);
       }
       vkCmdEndRenderPass(command_buffers[i]);
 
@@ -470,12 +537,29 @@ struct VulkanRenderer {
 
     VkPipelineShaderStageCreateInfo shader_stages[] = {vert_shader_create_info, frag_shader_create_info};
 
+    VkVertexInputBindingDescription binding_description = {};
+
+    binding_description.binding = 0;
+    binding_description.stride = sizeof(Vertex);
+    binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkVertexInputAttributeDescription attribute_descriptions[2];
+    attribute_descriptions[0].binding = 0;
+    attribute_descriptions[0].location = 0;
+    attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attribute_descriptions[0].offset = offsetof(Vertex, pos);
+
+    attribute_descriptions[1].binding = 0;
+    attribute_descriptions[1].location = 1;
+    attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attribute_descriptions[1].offset = offsetof(Vertex, color);
+
     VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
     vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.pVertexBindingDescriptions = nullptr;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
-    vertex_input_info.pVertexAttributeDescriptions = nullptr;
+    vertex_input_info.vertexBindingDescriptionCount = 1;
+    vertex_input_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_info.vertexAttributeDescriptionCount = 2;
+    vertex_input_info.pVertexAttributeDescriptions = attribute_descriptions;
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
     input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -1025,6 +1109,9 @@ struct VulkanRenderer {
     vkDeviceWaitIdle(device);
 
     CleanupSwapchain();
+
+    vkDestroyBuffer(device, vertex_buffer, nullptr);
+    vkFreeMemory(device, vertex_buffer_memory, nullptr);
 
     for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
       vkDestroySemaphore(device, image_available_semaphores[i], nullptr);
