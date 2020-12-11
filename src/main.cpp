@@ -7,6 +7,7 @@
 #include "vector.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 
@@ -15,7 +16,7 @@
 #include <Windows.h>
 
 #define VK_USE_PLATFORM_WIN32_KHR
-#include <vulkan/vulkan.h>
+#include "vk_mem_alloc.h"
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma warning(disable : 26812) // disable unscoped enum warning
@@ -1245,7 +1246,14 @@ int run() {
   vk_render.Initialize(hwnd);
 
   MSG msg = {};
+  float total_time = 0.0f;
+  float average_frame_time = 0.0f;
+  float last_display_time = 0.0f;
+
+  using ms_float = std::chrono::duration<float, std::milli>;
   while (connection->connected) {
+    auto start = std::chrono::high_resolution_clock::now();
+
     trans_arena.Reset();
 
     Connection::TickResult result = connection->Tick();
@@ -1264,6 +1272,18 @@ int run() {
         connection->Disconnect();
         break;
       }
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+
+    float frame_time = std::chrono::duration_cast<ms_float>(end - start).count();
+
+    total_time += frame_time;
+    average_frame_time = average_frame_time * 0.9f + frame_time * 0.1f;
+
+    if (total_time - last_display_time > 10000.0f) {
+      printf("%f\n", 1000.0f / average_frame_time);
+      last_display_time = total_time;
     }
   }
 

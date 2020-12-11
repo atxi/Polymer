@@ -33,8 +33,10 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
 
   section->chunks[y / 16].blocks[y % 16][relative_z][relative_x] = (u32)new_bid;
 
+#if 0
   printf("Block changed at (%d, %d, %d) from %s to %s\n", x, y, z, block_states[old_bid].name,
          block_states[new_bid].name);
+#endif
 }
 
 void GameState::LoadBlocks() {
