@@ -51,6 +51,7 @@ struct GameState {
   void LoadBlocks();
 
   void OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid);
+  void OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z);
 };
 
 } // namespace polymer

@@ -141,11 +141,13 @@ struct VulkanRenderer {
   VkPipelineLayout pipeline_layout;
   VkPipeline graphics_pipeline;
 
+  VmaAllocator allocator;
   VkBuffer vertex_buffer;
-  VkDeviceMemory vertex_buffer_memory;
+  VmaAllocation vertex_allocation;
 
   VkCommandPool command_pool;
   VkCommandBuffer command_buffers[6];
+  VkCommandBuffer oneshot_command_buffer;
   VkSemaphore image_available_semaphores[kMaxFramesInFlight];
   VkSemaphore render_finished_semaphores[kMaxFramesInFlight];
   VkFence frame_fences[kMaxFramesInFlight];
@@ -177,6 +179,20 @@ struct VulkanRenderer {
     CreateLogicalDevice();
 
     CreateCommandPool();
+
+
+    VkCommandBufferAllocateInfo alloc_info = {};
+
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = command_pool;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1;
+
+    if (vkAllocateCommandBuffers(device, &alloc_info, &oneshot_command_buffer) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to allocate oneshot command buffer.\n");
+      return false;
+    }
+
     CreateVertexBuffer();
     RecreateSwapchain();
     CreateSyncObjects();
@@ -272,41 +288,91 @@ struct VulkanRenderer {
     return 0;
   }
 
+  void BeginOneShotCommandBuffer() {
+    VkCommandBufferBeginInfo begin_info = {};
+
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = 0;
+    begin_info.pInheritanceInfo = nullptr;
+
+    if (vkBeginCommandBuffer(oneshot_command_buffer, &begin_info) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to begin recording oneshot command buffer.\n");
+    }
+  }
+
+  void EndOneShotCommandBuffer() {
+    if (vkEndCommandBuffer(oneshot_command_buffer) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to record oneshot command buffer.\n");
+    }
+
+    VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &oneshot_command_buffer;
+
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to submit oneshot command buffer.\n");
+    }
+
+    vkQueueWaitIdle(graphics_queue);
+  }
+
   void CreateVertexBuffer() {
+    VmaAllocatorCreateInfo allocator_info = {};
+    allocator_info.vulkanApiVersion = VK_API_VERSION_1_0;
+    allocator_info.physicalDevice = physical_device;
+    allocator_info.device = device;
+    allocator_info.instance = instance;
+
+    if (vmaCreateAllocator(&allocator_info, &allocator) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create vma allocator.\n");
+      return;
+    }
+
     VkBufferCreateInfo buffer_info = {};
 
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buffer_info.size = sizeof(vertices[0]) * polymer_array_count(vertices);
-    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(device, &buffer_info, nullptr, &vertex_buffer) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to create vertex buffer.\n");
+    VmaAllocationCreateInfo alloc_create_info = {};
+    alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+    alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VkBuffer staging_buffer = VK_NULL_HANDLE;
+    VmaAllocation staging_alloc = VK_NULL_HANDLE;
+    VmaAllocationInfo staging_alloc_info = {};
+
+    if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info) != VK_SUCCESS) {
+      printf("Failed to create staging buffer.\n");
       return;
     }
 
-    VkMemoryRequirements memory_req;
+    if (staging_alloc_info.pMappedData) {
+      memcpy(staging_alloc_info.pMappedData, vertices, (size_t)buffer_info.size);
+    }
 
-    vkGetBufferMemoryRequirements(device, vertex_buffer, &memory_req);
+    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    alloc_create_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    alloc_create_info.flags = 0;
 
-    VkMemoryAllocateInfo alloc_info = {};
-    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = memory_req.size;
-    alloc_info.memoryTypeIndex = FindMemoryType(memory_req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    if (vkAllocateMemory(device, &alloc_info, nullptr, &vertex_buffer_memory) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to allocate vertex buffer memory.\n");
+    if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &vertex_buffer, &vertex_allocation, nullptr) != VK_SUCCESS) {
+      printf("Failed to create vertex buffer.\n");
       return;
     }
 
-    vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
+    VkBufferCopy copy = {};
+    copy.srcOffset = 0;
+    copy.dstOffset = 0;
+    copy.size = buffer_info.size;
 
-    void* data;
+    BeginOneShotCommandBuffer();
 
-    vkMapMemory(device, vertex_buffer_memory, 0, buffer_info.size, 0, &data);
-    memcpy(data, vertices, (size_t)buffer_info.size);
-    vkUnmapMemory(device, vertex_buffer_memory);
+    vkCmdCopyBuffer(oneshot_command_buffer, staging_buffer, vertex_buffer, 1, &copy);
+
+    EndOneShotCommandBuffer();
+
+    vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
   }
 
   void CleanupSwapchain() {
@@ -1111,8 +1177,8 @@ struct VulkanRenderer {
 
     CleanupSwapchain();
 
-    vkDestroyBuffer(device, vertex_buffer, nullptr);
-    vkFreeMemory(device, vertex_buffer_memory, nullptr);
+    vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
+    vmaDestroyAllocator(allocator);
 
     for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
       vkDestroySemaphore(device, image_available_semaphores[i], nullptr);
@@ -1283,6 +1349,7 @@ int run() {
 
     if (total_time - last_display_time > 10000.0f) {
       printf("%f\n", 1000.0f / average_frame_time);
+      fflush(stdout);
       last_display_time = total_time;
     }
   }

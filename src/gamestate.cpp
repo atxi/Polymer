@@ -8,6 +8,10 @@
 
 namespace polymer {
 
+void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
+  
+}
+
 void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   s32 chunk_x = (s32)std::floor(x / 16.0f);
   s32 chunk_z = (s32)std::floor(z / 16.0f);

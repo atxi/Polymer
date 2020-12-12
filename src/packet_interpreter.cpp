@@ -233,6 +233,15 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           printf("Block at %llu, %llu, %llu - %s\n", x, y, z, state->name);
         }
       }
+
+      // Delay the chunk load call until the entire section is loaded.
+      for (u64 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+        if (!(bitmask & (1LL << chunk_y))) {
+          continue;
+        }
+
+        game->OnChunkLoad(chunk_x, (s32)chunk_y, chunk_z);
+      }
     }
 
     // Jump to after the data because the data_size can be larger than actual chunk data sent according to
