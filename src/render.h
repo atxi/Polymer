@@ -38,6 +38,13 @@ struct SwapChainSupportDetails {
   VkPresentModeKHR* present_modes;
 };
 
+struct RenderMesh {
+  VkBuffer vertex_buffer;
+  VmaAllocation vertex_allocation;
+  size_t vertex_buffer_size;
+  size_t vertex_count;
+};
+
 struct VulkanRenderer {
   MemoryArena* trans_arena;
   HWND hwnd;
@@ -80,6 +87,10 @@ struct VulkanRenderer {
   bool Initialize(HWND hwnd);
   void Render();
   void Cleanup();
+
+  // Uses staging buffer to push data to the gpu and returns the allocation buffers.
+  RenderMesh AllocateMesh(u8* data, size_t size, size_t count);
+  void FreeMesh(RenderMesh* mesh);
 
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);

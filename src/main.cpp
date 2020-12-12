@@ -60,7 +60,7 @@ int run() {
 
   printf("Polymer\n");
 
-  GameState* game = memory_arena_construct_type(&perm_arena, GameState, &perm_arena, &trans_arena);
+  GameState* game = memory_arena_construct_type(&perm_arena, GameState, &vk_render, &perm_arena, &trans_arena);
   PacketInterpreter interpreter(game);
   Connection* connection = &game->connection;
 

@@ -18,6 +18,14 @@ struct Vector2f {
 
   Vector2f() : x(0), y(0) {}
   Vector2f(float x, float y) : x(x), y(y) {}
+  Vector2f(const Vector2f& other) : x(other.x), y(other.y) {}
+
+  Vector2f& operator=(const Vector2f& other) {
+    x = other.x;
+    y = other.y;
+
+    return *this;
+  }
 
   inline bool operator==(const Vector2f& other) {
     return x == other.x && y == other.y;
@@ -174,6 +182,15 @@ struct Vector3f {
   Vector3f() : x(0), y(0), z(0) {}
   Vector3f(float x, float y, float z) : x(x), y(y), z(z) {}
   Vector3f(const Vector2f& v2, float z) : x(v2.x), y(v2.y), z(z) {}
+  Vector3f(const Vector3f& other) : x(other.x), y(other.y), z(other.z) {}
+
+  Vector3f& operator=(const Vector3f& other) {
+    x = other.x;
+    y = other.y;
+    z = other.z;
+
+    return *this;
+  }
 
   inline bool operator==(const Vector3f& other) {
     return x == other.x && y == other.y && z == other.z;

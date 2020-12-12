@@ -234,6 +234,67 @@ void VulkanRenderer::EndOneShotCommandBuffer() {
   vkQueueWaitIdle(graphics_queue);
 }
 
+RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
+  RenderMesh mesh = {};
+
+  VkBufferCreateInfo buffer_info = {};
+
+  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffer_info.size = size;
+  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+  VmaAllocationCreateInfo alloc_create_info = {};
+  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+  alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+  VkBuffer staging_buffer = VK_NULL_HANDLE;
+  VmaAllocation staging_alloc = VK_NULL_HANDLE;
+  VmaAllocationInfo staging_alloc_info = {};
+
+  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &staging_buffer, &staging_alloc,
+                      &staging_alloc_info) != VK_SUCCESS) {
+    printf("Failed to create staging buffer.\n");
+    return mesh;
+  }
+
+  if (staging_alloc_info.pMappedData) {
+    memcpy(staging_alloc_info.pMappedData, data, (size_t)buffer_info.size);
+  }
+
+  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+  alloc_create_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+  alloc_create_info.flags = 0;
+
+  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &mesh.vertex_buffer, &mesh.vertex_allocation,
+                      nullptr) != VK_SUCCESS) {
+    printf("Failed to create vertex buffer.\n");
+    return mesh;
+  }
+
+  VkBufferCopy copy = {};
+  copy.srcOffset = 0;
+  copy.dstOffset = 0;
+  copy.size = buffer_info.size;
+
+  BeginOneShotCommandBuffer();
+
+  vkCmdCopyBuffer(oneshot_command_buffer, staging_buffer, mesh.vertex_buffer, 1, &copy);
+
+  EndOneShotCommandBuffer();
+
+  vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
+
+  mesh.vertex_buffer_size = size;
+  mesh.vertex_count = count;
+
+  return mesh;
+}
+
+void VulkanRenderer::FreeMesh(RenderMesh* mesh) {
+  vmaDestroyBuffer(allocator, mesh->vertex_buffer, mesh->vertex_allocation);
+}
+
 void VulkanRenderer::CreateVertexBuffer() {
   VmaAllocatorCreateInfo allocator_info = {};
   allocator_info.vulkanApiVersion = VK_API_VERSION_1_0;
@@ -423,7 +484,7 @@ void VulkanRenderer::CreateCommandPool() {
   VkCommandPoolCreateInfo pool_info = {};
   pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
   pool_info.queueFamilyIndex = indices.graphics;
-  pool_info.flags = 0;
+  pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
   if (vkCreateCommandPool(device, &pool_info, nullptr, &command_pool) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create command pool.\n");

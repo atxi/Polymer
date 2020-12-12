@@ -2,6 +2,7 @@
 #define POLYMER_GAMESTATE_H_
 
 #include "connection.h"
+#include "render.h"
 #include "types.h"
 
 namespace polymer {
@@ -33,6 +34,7 @@ inline u32 GetChunkCacheIndex(s32 v) {
 struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
+  VulkanRenderer* renderer;
 
   Connection connection;
 
@@ -45,8 +47,8 @@ struct GameState {
   // Chunk cache
   ChunkSection chunks[kChunkCacheSize][kChunkCacheSize];
 
-  GameState(MemoryArena* perm_arena, MemoryArena* trans_arena)
-      : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena) {}
+  GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
+      : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer) {}
 
   void LoadBlocks();
 

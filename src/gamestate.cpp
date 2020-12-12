@@ -1,6 +1,8 @@
 #include "gamestate.h"
 
 #include "json.h"
+#include "vector.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -8,8 +10,59 @@
 
 namespace polymer {
 
+struct ChunkVertex {
+  Vector3f position;
+};
+
+void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, Vector3f position) {
+  arena->Allocate(sizeof(ChunkVertex), 1);
+
+  vertices[*count].position = position;
+
+  ++*count;
+}
+
 void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
-  
+  // TODO:
+  // Generate the chunk based on viewable blocks.
+  // Skip air chunks.
+  // The vertices will then be sent to the GPU and a handle will be stored to the allocation here.
+  // When a chunk is unloaded, it will be freed from the GPU memory.
+  // This should probably be done on a separate thread or in a compute shader ideally.
+
+  // Either an index buffer or face merging should be done to reduce buffer size.
+
+  ChunkSection* section = &chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+
+  u8* arena_snapshot = trans_arena->current;
+  // Create an initial pointer to transient memory with zero vertices allocated.
+  // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
+  ChunkVertex* vertices = (ChunkVertex*)trans_arena->Allocate(0);
+  u32 vertex_count = 0;
+
+  for (u32 y = 0; y < 16; ++y) {
+    for (u32 z = 0; z < 16; ++z) {
+      for (u32 x = 0; x < 16; ++x) {
+        u32 state_id = section->chunks[chunk_y].blocks[y][z][x];
+
+        // TODO: Load the models/elements from the jar.
+        if (state_id != 0) {
+          // Render a single triangle on the top of the block
+          PushVertex(trans_arena, vertices, &vertex_count, Vector3f((float)x, (float)y + 1, (float)z));
+          PushVertex(trans_arena, vertices, &vertex_count, Vector3f((float)x + 1, (float)y + 1, (float)z + 1));
+          PushVertex(trans_arena, vertices, &vertex_count, Vector3f((float)x + 1, (float)y + 1, (float)z));
+        }
+      }
+    }
+  }
+
+  //RenderMesh mesh = renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
+  // TODO: Free the mesh when chunk is unloaded, dimension is changed, or game is unloaded.
+  //renderer->FreeMesh(&mesh);
+
+  // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
+  // useful.
+  trans_arena->current = arena_snapshot;
 }
 
 void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
