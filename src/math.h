@@ -1,11 +1,30 @@
-#ifndef POLYMER_VECTOR_H_
-#define POLYMER_VECTOR_H_
+#ifndef POLYMER_MATH_H_
+#define POLYMER_MATH_H_
 
 #include "types.h"
 
 #include <cmath>
 
+#ifdef near
+#undef near
+#endif
+#ifdef far
+#undef far
+#endif
+
+constexpr float kPi = 3.14159265f;
+
 namespace polymer {
+
+inline constexpr float Radians(float degrees) {
+  constexpr float kDegreeToRadians = kPi / 180.0f;
+  return degrees * kDegreeToRadians;
+}
+
+inline constexpr float Degrees(float radians) {
+  constexpr float kRadianToDegrees = 180.0f / kPi;
+  return radians * kRadianToDegrees;
+}
 
 struct Vector2f {
   union {
@@ -341,6 +360,117 @@ inline Vector3f Normalize(const Vector3f& v) {
   }
 
   return v;
+}
+
+struct Vector4f {
+  union {
+    struct {
+      float x;
+      float y;
+      float z;
+      float w;
+    };
+    float values[4];
+  };
+
+  Vector4f() : x(0), y(0), z(0), w(0) {}
+  Vector4f(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+  Vector4f(const Vector2f& v2, float z, float w) : x(v2.x), y(v2.y), z(z), w(w) {}
+  Vector4f(const Vector3f& other, float w) : x(other.x), y(other.y), z(other.z), w(w) {}
+
+  Vector4f& operator=(const Vector4f& other) {
+    x = other.x;
+    y = other.y;
+    z = other.z;
+    w = other.w;
+
+    return *this;
+  }
+
+  inline bool operator==(const Vector4f& other) {
+    return x == other.x && y == other.y && z == other.z && w == other.w;
+  }
+
+  inline bool operator!=(const Vector4f& other) {
+    return !(x == other.x && y == other.y && z == other.z && w == other.w);
+  }
+
+  inline float& operator[](size_t index) {
+    return values[index];
+  }
+
+  inline float operator[](size_t index) const {
+    return values[index];
+  }
+};
+
+// Column major matrix4x4
+struct mat4 {
+  float data[4][4];
+
+  Vector4f Multiply(const Vector3f& v, float w) {
+    Vector4f result;
+
+    for (size_t row = 0; row < 4; ++row) {
+      result[row] = v.x * data[0][row] + v.y * data[1][row] + v.z * data[2][row] + w * data[3][row];
+    }
+
+    return result;
+  }
+
+  static mat4 Identity() {
+    mat4 result = {};
+
+    result.data[0][0] = 1;
+    result.data[1][1] = 1;
+    result.data[2][2] = 1;
+    result.data[3][3] = 1;
+
+    return result;
+  }
+};
+
+inline mat4 LookAt(const Vector3f& eye, const Vector3f& to, Vector3f world_up = Vector3f(0, 1, 0)) {
+  // Compute camera axes
+  Vector3f z = Normalize(to - eye);
+  Vector3f x = Normalize(world_up.Cross(z));
+  Vector3f y = Normalize(z.Cross(x));
+
+  // Insert camera axes in column major order and transform eye into the camera space for translation
+  mat4 result = {
+      {{x.x, y.x, z.x, -Dot(x, eye)}, {x.y, y.y, z.y, -Dot(y, eye)}, {x.z, y.z, z.z, -Dot(z, eye)}, {0, 0, 0, 0}}};
+
+  float zl = z.Length();
+  float xl = x.Length();
+  float yl = y.Length();
+
+  return result;
+}
+
+// fov: field of view for y-axis
+// aspect_ratio: width / height
+// near: near plane in camera space
+// far: far plane in camera space
+inline mat4 Perspective(float fov, float aspect_ratio, float near, float far) {
+  float half_tan = std::tan(fov / 2.0f);
+  mat4 result = {{
+      {1.0f / (aspect_ratio * half_tan), 0, 0, 0},
+      {0, -1.0f / half_tan, 0, 0},
+      {0, 0, -(far + near) / (far - near), -(2.0f * far * near) / (far - near)},
+      {0, 0, -1.0f, 0},
+  }};
+
+  return result;
+}
+
+inline Vector4f operator*(const mat4& M, const Vector4f& v) {
+  Vector4f result;
+
+  for (size_t row = 0; row < 4; ++row) {
+    result[row] = v.x * M.data[0][row] + v.y * M.data[1][row] + v.z * M.data[2][row] + v.w * M.data[3][row];
+  }
+
+  return result;
 }
 
 } // namespace polymer

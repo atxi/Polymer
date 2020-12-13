@@ -1,11 +1,9 @@
 #include "connection.h"
 #include "gamestate.h"
-#include "inflate.h"
 #include "memory.h"
 #include "packet_interpreter.h"
-#include "types.h"
-#include "vector.h"
 #include "render.h"
+#include "types.h"
 
 #include <cassert>
 #include <chrono>

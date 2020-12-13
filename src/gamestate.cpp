@@ -1,7 +1,7 @@
 #include "gamestate.h"
 
 #include "json.h"
-#include "vector.h"
+#include "math.h"
 
 #include <cassert>
 #include <cmath>
