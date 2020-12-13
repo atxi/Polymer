@@ -31,6 +31,32 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       printf("%.*s\n", (int)length, sstr.str);
     }
   } break;
+  case PlayProtocol::Disconnect: {
+    SizedString sstr;
+    sstr.str = memory_arena_push_type_count(trans_arena, char, 32767);
+    sstr.size = 32767;
+
+    size_t length = rb->ReadString(&sstr);
+
+    if (length > 0) {
+      printf("Disconnected: %.*s\n", (int)length, sstr.str);
+    }
+  } break;
+  case PlayProtocol::Explosion: {
+    float x = rb->ReadFloat();
+    float y = rb->ReadFloat();
+    float z = rb->ReadFloat();
+    float strength = rb->ReadFloat();
+    u32 records = rb->ReadU32();
+
+    for (u32 i = 0; i < records; ++i) {
+      s8 x_offset = rb->ReadU8();
+      s8 y_offset = rb->ReadU8();
+      s8 z_offset = rb->ReadU8();
+
+      game->OnBlockChange((s32)x + x_offset, (s32)y + y_offset, (s32)z + z_offset, 0);
+    }
+  } break;
   case PlayProtocol::KeepAlive: {
     u64 id = rb->ReadU64();
 
