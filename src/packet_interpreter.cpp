@@ -1,7 +1,7 @@
 #include "packet_interpreter.h"
 
 #include "gamestate.h"
-#include "inflate.h"
+#include "miniz.h"
 #include "protocol.h"
 #include <cassert>
 #include <cstdio>
