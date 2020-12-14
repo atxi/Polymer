@@ -14,6 +14,8 @@
 #include <WS2tcpip.h>
 #include <Windows.h>
 
+#define RENDER_ONLY 0
+
 #pragma comment(lib, "ws2_32.lib")
 
 namespace polymer {
@@ -66,6 +68,7 @@ int run() {
 
   game->LoadBlocks();
 
+#if !RENDER_ONLY
   // Allocate mirrored ring buffers so they can always be inflated
   connection->read_buffer.size = kMirrorBufferSize;
   connection->read_buffer.data = AllocateMirroredBuffer(connection->read_buffer.size);
@@ -100,6 +103,9 @@ int run() {
 
   connection->SendHandshake(754, "127.0.0.1", 25565, ProtocolState::Login);
   connection->SendLoginStart("polymer");
+#else
+  connection->connected = true;
+#endif
 
   WNDCLASSEX wc = {};
 
@@ -119,7 +125,7 @@ int run() {
 
   RECT rect = {0, 0, kWidth, kHeight};
   DWORD ex_style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE | WS_OVERLAPPEDWINDOW;
-  AdjustWindowRectEx(&rect, wc.style, FALSE, ex_style);
+  AdjustWindowRect(&rect, ex_style, FALSE);
 
   u32 window_width = rect.right - rect.left;
   u32 window_height = rect.bottom - rect.top;
@@ -131,6 +137,8 @@ int run() {
     fprintf(stderr, "Failed to create window.\n");
     exit(1);
   }
+
+  GetClientRect(hwnd, &rect);
 
   vk_render.Initialize(hwnd);
 
@@ -145,11 +153,13 @@ int run() {
 
     trans_arena.Reset();
 
+#if !RENDER_ONLY
     Connection::TickResult result = connection->Tick();
 
     if (result == Connection::TickResult::ConnectionClosed) {
       fprintf(stderr, "Connection closed by server.\n");
     }
+#endif
 
     vk_render.Render();
 

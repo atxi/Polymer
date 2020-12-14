@@ -72,6 +72,12 @@ struct VulkanRenderer {
   VkBuffer vertex_buffer;
   VmaAllocation vertex_allocation;
 
+  VkDescriptorPool descriptor_pool;
+  VkDescriptorSetLayout descriptor_layout;
+  VkDescriptorSet descriptor_sets[6];
+  VkBuffer uniform_buffers[6];
+  VmaAllocation uniform_allocations[6];
+
   VkCommandPool command_pool;
   VkCommandBuffer command_buffers[6];
   VkCommandBuffer oneshot_command_buffer;
@@ -94,8 +100,11 @@ struct VulkanRenderer {
 
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
+  void UpdateUniforms(u32 index);
+
   void BeginOneShotCommandBuffer();
   void EndOneShotCommandBuffer();
+  void CreateUniformBuffers();
   void CreateVertexBuffer();
   void CleanupSwapchain();
   void RecreateSwapchain();
@@ -104,6 +113,9 @@ private:
   void CreateCommandPool();
   void CreateFramebuffers();
   void CreateRenderPass();
+  void CreateDescriptorPool();
+  void CreateDescriptorSets();
+  void CreateDescriptorSetLayout();
   void CreateGraphicsPipeline();
   VkShaderModule CreateShaderModule(SizedString code);
   void CreateImageViews();
