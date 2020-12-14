@@ -50,7 +50,7 @@ struct GameState {
   GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
       : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer) {}
 
-  void LoadBlocks();
+  bool LoadBlocks();
 
   void OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid);
   void OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z);

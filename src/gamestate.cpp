@@ -2,6 +2,7 @@
 
 #include "json.h"
 #include "math.h"
+#include "zip_archive.h"
 
 #include <cassert>
 #include <cmath>
@@ -56,9 +57,9 @@ void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
     }
   }
 
-  //RenderMesh mesh = renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
+  // RenderMesh mesh = renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
   // TODO: Free the mesh when chunk is unloaded, dimension is changed, or game is unloaded.
-  //renderer->FreeMesh(&mesh);
+  // renderer->FreeMesh(&mesh);
 
   // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
   // useful.
@@ -96,7 +97,15 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
 #endif
 }
 
-void GameState::LoadBlocks() {
+bool GameState::LoadBlocks() {
+  // TODO:
+  // Read in all of the models in the jar
+  // Read in blocks.json
+  //  Serialize the properties into the same format as the jar's blockstates
+  // Read in each blockstate from the jar
+  //  Match the blockstate variant name to the blocks.json property value and store the id ?
+  //  Read the model name for the block variant and match it to the model
+
   block_state_count = 0;
 
   FILE* f = fopen("blocks.json", "r");
@@ -108,6 +117,9 @@ void GameState::LoadBlocks() {
 
   fread(buffer, 1, file_size, f);
   fclose(f);
+
+  // Transient arena is used as a push buffer of property strings here
+  char* properties = memory_arena_push_type(trans_arena, char);
 
   json_value_s* root = json_parse(buffer, file_size);
   assert(root->type == json_type_object);
@@ -142,6 +154,34 @@ void GameState::LoadBlocks() {
               block_states[block_state_count].id = block_id;
 
               ++block_state_count;
+            } else if (strncmp(state_element->name->string, "properties", state_element->name->string_size) == 0) {
+              // Loop over each property and create a single string that matches the format of blockstates in the jar
+              json_object_s* property_object = json_value_as_object(state_element->value);
+              json_object_element_s* property_element = property_object->start;
+
+              while (property_element) {
+                json_string_s* property_value = json_value_as_string(property_element->value);
+                // Allocate enough for property_name=property_value
+                size_t alloc_size = property_element->name->string_size + 1 + property_value->string_size + 1;
+
+                char* p = (char*)trans_arena->Allocate(alloc_size, 1);
+
+                // Allocate space for a comma to separate the properties
+                if (property_element != property_object->start) {
+                  trans_arena->Allocate(1, 1);
+                  p[0] = ',';
+                  ++p;
+                }
+
+                memcpy(p, property_element->name->string, property_element->name->string_size);
+                p[property_element->name->string_size] = '=';
+
+                memcpy(p + property_element->name->string_size + 1, property_value->string,
+                       property_value->string_size);
+                p[property_element->name->string_size + 1 + property_value->string_size] = 0;
+
+                property_element = property_element->next;
+              }
             }
             state_element = state_element->next;
           }
@@ -157,6 +197,22 @@ void GameState::LoadBlocks() {
   }
 
   free(root);
+
+  ZipArchive zip;
+  if (!zip.Open("1.16.4.jar")) {
+    fprintf(stderr, "Requires 1.16.4.jar.\n");
+    return false;
+  }
+
+  size_t count;
+  ZipArchiveElement* files = zip.ListFiles(trans_arena, "assets/minecraft/blockstates/", &count);
+
+  for (size_t i = 0; i < count; ++i) {
+  }
+
+  zip.Close();
+
+  return true;
 }
 
 } // namespace polymer

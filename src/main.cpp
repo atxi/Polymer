@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "miniz.h"
+
 #define WIN32_LEAN_AND_MEAN
 #include <WS2tcpip.h>
 #include <Windows.h>
@@ -66,7 +68,10 @@ int run() {
 
   connection->interpreter = &interpreter;
 
-  game->LoadBlocks();
+  if (!game->LoadBlocks()) {
+    fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
+    return 1;
+  }
 
 #if !RENDER_ONLY
   // Allocate mirrored ring buffers so they can always be inflated
@@ -138,8 +143,6 @@ int run() {
     exit(1);
   }
 
-  GetClientRect(hwnd, &rect);
-
   vk_render.Initialize(hwnd);
 
   MSG msg = {};
@@ -159,6 +162,17 @@ int run() {
     if (result == Connection::TickResult::ConnectionClosed) {
       fprintf(stderr, "Connection closed by server.\n");
     }
+#else
+
+    Chunk chunk;
+
+    memset(chunk.blocks, 0, sizeof(chunk.blocks));
+    for (size_t z = 0; z < 16; ++z) {
+      for (size_t x = 0; x < 16; ++x) {
+        chunk.blocks[0][z][x] = 1;
+      }
+    }
+
 #endif
 
     vk_render.Render();
