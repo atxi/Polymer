@@ -221,7 +221,82 @@ bool GameState::LoadBlocks() {
   size_t count;
   ZipArchiveElement* files = zip.ListFiles(trans_arena, "assets/minecraft/blockstates/", &count);
 
+  // Loop through each blockstate asset and match the variant properties to the blocks.json list
+  // TODO: Some of this could be sped up with hash maps, but not really necessary for now.
   for (size_t i = 0; i < count; ++i) {
+    u8* arena_snapshot = trans_arena->current;
+    size_t size;
+    char* data = zip.ReadFile(trans_arena, files[i].name, &size);
+
+    // Temporarily cut off the .json from the file name so the blockstate name is easily compared against
+    files[i].name[strlen(files[i].name) - 5] = 0;
+    // Amount of characters to skip over to get to the blockstate asset name
+    constexpr size_t kBlockStateAssetSkip = 29;
+    char* file_blockstate_name = files[i].name + kBlockStateAssetSkip;
+
+    assert(data);
+
+    json_value_s* root = json_parse(data, size);
+    assert(root->type == json_type_object);
+
+    json_object_s* root_obj = json_value_as_object(root);
+    assert(root_obj);
+
+    json_object_element_s* root_element = root_obj->start;
+
+    while (root_element) {
+      if (strncmp("variants", root_element->name->string, root_element->name->string_size) == 0) {
+        json_object_s* variant_obj = json_value_as_object(root_element->value);
+
+        json_object_element_s* variant_element = variant_obj->start;
+
+        while (variant_element) {
+          size_t block_id = -1;
+
+          for (size_t bid = 0; bid < block_state_count; ++bid) {
+            char* file_name = files[i].name;
+            char* bid_name = block_states[bid].name + 10;
+
+            if (strcmp(bid_name, file_blockstate_name) == 0) {
+              block_id = bid;
+              break;
+            }
+          }
+
+          if (block_id != -1) {
+            json_object_s* state_details = nullptr;
+
+            if (variant_element->value->type == json_type_array) {
+              // TODO: Find out why multiple models are listed under one variant type. Just default to first for now.
+              state_details = json_value_as_object(json_value_as_array(variant_element->value)->start->value);
+            } else {
+              state_details = json_value_as_object(variant_element->value);
+            }
+
+            json_object_element_s* state_element = state_details->start;
+
+            while (state_element) {
+              if (strcmp(state_element->name->string, "model") == 0) {
+                json_string_s* model_name_str = json_value_as_string(state_element->value);
+
+                // Do a lookup on the model name then store the model in the BlockState.
+                // Model lookup is going to need to be recursive with the root parent data being filled out first then cascaded down.
+              }
+              state_element = state_element->next;
+            }
+          }
+
+          variant_element = variant_element->next;
+        }
+      }
+      root_element = root_element->next;
+    }
+
+    // Restore the .json to filename
+    files[i].name[strlen(files[i].name) - 5] = '.';
+
+    // Pop the current file off the stack allocator
+    trans_arena->current = arena_snapshot;
   }
 
   zip.Close();

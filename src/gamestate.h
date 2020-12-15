@@ -9,9 +9,19 @@ namespace polymer {
 
 struct MemoryArena;
 
+struct BlockModel {
+  u32 m;
+};
+
 struct BlockState {
   u32 id;
   char* name;
+
+  // Probably shouldn't be a pointer since BlockState should never be iterated over in the game
+  BlockModel* model;
+  float x;
+  float y;
+  bool uvlock;
 };
 
 constexpr size_t kChunkCacheSize = 48;
