@@ -118,14 +118,16 @@ bool GameState::LoadBlocks() {
   fread(buffer, 1, file_size, f);
   fclose(f);
 
-  // Transient arena is used as a push buffer of property strings here
-  char* properties = memory_arena_push_type(trans_arena, char);
-
   json_value_s* root = json_parse(buffer, file_size);
   assert(root->type == json_type_object);
 
   json_object_s* root_obj = json_value_as_object(root);
   assert(root_obj);
+
+  // Create a list of pointers to property strings stored in the transient arena
+  char** properties = (char**)trans_arena->Allocate(sizeof(char*) * 32768);
+
+  // Transient arena is used as a push buffer of property strings through parsing
 
   json_object_element_s* element = root_obj->start;
   while (element) {
@@ -144,6 +146,8 @@ bool GameState::LoadBlocks() {
         while (state_array_element) {
           json_object_s* state_obj = json_value_as_object(state_array_element->value);
 
+          properties[block_state_count] = nullptr;
+
           json_object_element_s* state_element = state_obj->start;
           while (state_element) {
             if (strncmp(state_element->name->string, "id", state_element->name->string_size) == 0) {
@@ -159,10 +163,17 @@ bool GameState::LoadBlocks() {
               json_object_s* property_object = json_value_as_object(state_element->value);
               json_object_element_s* property_element = property_object->start;
 
+              // Realign the arena for the property pointer to be 32-bit aligned.
+              char* property = (char*)trans_arena->Allocate(0, 4);
+              properties[block_state_count] = property;
+              size_t property_length = 0;
+
               while (property_element) {
                 json_string_s* property_value = json_value_as_string(property_element->value);
                 // Allocate enough for property_name=property_value
-                size_t alloc_size = property_element->name->string_size + 1 + property_value->string_size + 1;
+                size_t alloc_size = property_element->name->string_size + 1 + property_value->string_size;
+
+                property_length += alloc_size;
 
                 char* p = (char*)trans_arena->Allocate(alloc_size, 1);
 
@@ -171,6 +182,7 @@ bool GameState::LoadBlocks() {
                   trans_arena->Allocate(1, 1);
                   p[0] = ',';
                   ++p;
+                  ++property_length;
                 }
 
                 memcpy(p, property_element->name->string, property_element->name->string_size);
@@ -178,10 +190,12 @@ bool GameState::LoadBlocks() {
 
                 memcpy(p + property_element->name->string_size + 1, property_value->string,
                        property_value->string_size);
-                p[property_element->name->string_size + 1 + property_value->string_size] = 0;
 
                 property_element = property_element->next;
               }
+
+              trans_arena->Allocate(1, 1);
+              properties[block_state_count][property_length] = 0;
             }
             state_element = state_element->next;
           }
