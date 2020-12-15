@@ -223,6 +223,7 @@ bool GameState::LoadBlocks() {
 
   // Loop through each blockstate asset and match the variant properties to the blocks.json list
   // TODO: Some of this could be sped up with hash maps, but not really necessary for now.
+  // Alternatively, this data could all be loaded once, associated, and written off to a new asset file for faster loads
   for (size_t i = 0; i < count; ++i) {
     u8* arena_snapshot = trans_arena->current;
     size_t size;
@@ -280,7 +281,8 @@ bool GameState::LoadBlocks() {
                 json_string_s* model_name_str = json_value_as_string(state_element->value);
 
                 // Do a lookup on the model name then store the model in the BlockState.
-                // Model lookup is going to need to be recursive with the root parent data being filled out first then cascaded down.
+                // Model lookup is going to need to be recursive with the root parent data being filled out first then
+                // cascaded down.
               }
               state_element = state_element->next;
             }

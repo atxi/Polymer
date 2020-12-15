@@ -137,31 +137,79 @@ bool VulkanRenderer::Initialize(HWND hwnd) {
   return true;
 }
 
-void VulkanRenderer::Render() {
+bool VulkanRenderer::BeginFrame() {
   vkWaitForFences(device, 1, frame_fences + current_frame, VK_TRUE, UINT64_MAX);
 
   if (render_paused || invalid_swapchain) {
     RecreateSwapchain();
-    return;
+    return false;
   }
 
   u32 image_index;
 
   VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphores[current_frame],
-                                          VK_NULL_HANDLE, &image_index);
+    VK_NULL_HANDLE, &image_index);
+
+  current_image = image_index;
 
   if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
     RecreateSwapchain();
-    return;
+    return false;
   } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
     fprintf(stderr, "Failed to acquire swapchain image.\n");
+    return false;
   }
+
+  VkCommandBufferBeginInfo begin_info = {};
+
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = 0;
+  begin_info.pInheritanceInfo = nullptr;
+
+  if (vkBeginCommandBuffer(command_buffers[current_frame], &begin_info) != VK_SUCCESS) {
+    fprintf(stderr, "Failed ot begin recording command buffer.\n");
+    return false;
+  }
+
+  VkRenderPassBeginInfo render_pass_info = {};
+
+  render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  render_pass_info.renderPass = render_pass;
+  render_pass_info.framebuffer = swap_framebuffers[current_image];
+  render_pass_info.renderArea.offset = { 0, 0 };
+  render_pass_info.renderArea.extent = swap_extent;
+
+  VkClearValue clear_color = { 0.0f, 0.0f, 0.0f, 1.0f };
+  render_pass_info.clearValueCount = 1;
+  render_pass_info.pClearValues = &clear_color;
+
+  vkCmdBeginRenderPass(command_buffers[current_frame], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+  {
+    vkCmdBindPipeline(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+    VkBuffer vertex_buffers[] = { vertex_buffer };
+    VkDeviceSize offsets[] = { 0 };
+    vkCmdBindVertexBuffers(command_buffers[current_frame], 0, 1, vertex_buffers, offsets);
+    vkCmdBindDescriptorSets(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, descriptor_sets + current_image, 0, nullptr);
+    vkCmdDraw(command_buffers[current_frame], polymer_array_count(vertices), 1, 0, 0);
+  }
+
+  return true;
+}
+
+void VulkanRenderer::Render() {
+  u32 image_index = current_image;
 
   if (image_fences[image_index] != VK_NULL_HANDLE) {
     vkWaitForFences(device, 1, &image_fences[image_index], VK_TRUE, UINT64_MAX);
   }
 
   image_fences[image_index] = frame_fences[current_frame];
+
+  vkCmdEndRenderPass(command_buffers[current_frame]);
+
+  if (vkEndCommandBuffer(command_buffers[current_frame]) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to record command buffer.\n");
+  }
 
   UpdateUniforms(image_index);
 
@@ -176,7 +224,7 @@ void VulkanRenderer::Render() {
   submit_info.pWaitDstStageMask = waitStages;
 
   submit_info.commandBufferCount = 1;
-  submit_info.pCommandBuffers = command_buffers + image_index;
+  submit_info.pCommandBuffers = command_buffers + current_frame;
 
   VkSemaphore signal_semaphores[] = {render_finished_semaphores[current_frame]};
 
@@ -201,7 +249,7 @@ void VulkanRenderer::Render() {
   present_info.pImageIndices = &image_index;
   present_info.pResults = nullptr;
 
-  result = vkQueuePresentKHR(present_queue, &present_info);
+  VkResult result = vkQueuePresentKHR(present_queue, &present_info);
 
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
     RecreateSwapchain();
@@ -478,7 +526,7 @@ void VulkanRenderer::CleanupSwapchain() {
 
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
-  vkFreeCommandBuffers(device, command_pool, swap_image_count, command_buffers);
+  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, command_buffers);
 
   vkDestroyPipeline(device, graphics_pipeline, nullptr);
   vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
@@ -550,49 +598,10 @@ void VulkanRenderer::CreateCommandBuffers() {
   alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   alloc_info.commandPool = command_pool;
   alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  alloc_info.commandBufferCount = swap_image_count;
+  alloc_info.commandBufferCount = kMaxFramesInFlight;
 
   if (vkAllocateCommandBuffers(device, &alloc_info, command_buffers) != VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate command buffers.\n");
-  }
-
-  for (size_t i = 0; i < swap_image_count; i++) {
-    VkCommandBufferBeginInfo begin_info = {};
-
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin_info.flags = 0;
-    begin_info.pInheritanceInfo = nullptr;
-
-    if (vkBeginCommandBuffer(command_buffers[i], &begin_info) != VK_SUCCESS) {
-      fprintf(stderr, "Failed ot begin recording command buffer.\n");
-    }
-
-    VkRenderPassBeginInfo render_pass_info = {};
-
-    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    render_pass_info.renderPass = render_pass;
-    render_pass_info.framebuffer = swap_framebuffers[i];
-    render_pass_info.renderArea.offset = {0, 0};
-    render_pass_info.renderArea.extent = swap_extent;
-
-    VkClearValue clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
-    render_pass_info.clearValueCount = 1;
-    render_pass_info.pClearValues = &clear_color;
-
-    vkCmdBeginRenderPass(command_buffers[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-    {
-      vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-      VkBuffer vertex_buffers[] = {vertex_buffer};
-      VkDeviceSize offsets[] = {0};
-      vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-      vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, descriptor_sets + i, 0, nullptr);
-      vkCmdDraw(command_buffers[i], polymer_array_count(vertices), 1, 0, 0);
-    }
-    vkCmdEndRenderPass(command_buffers[i]);
-
-    if (vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to record command buffer.\n");
-    }
   }
 }
 

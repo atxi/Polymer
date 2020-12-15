@@ -18,6 +18,8 @@
 
 #define RENDER_ONLY 0
 
+#include "math.h"
+
 #pragma comment(lib, "ws2_32.lib")
 
 namespace polymer {
@@ -47,6 +49,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   return 0;
 }
 
+struct ChunkVertex {
+  Vector3f position;
+};
+
+void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, const Vector3f& position) {
+  arena->Allocate(sizeof(ChunkVertex), 1);
+
+  vertices[*count].position = position;
+
+  ++*count;
+}
+
 int run() {
   constexpr size_t kMirrorBufferSize = 65536 * 32;
   constexpr size_t kPermanentSize = gigabytes(1);
@@ -68,10 +82,12 @@ int run() {
 
   connection->interpreter = &interpreter;
 
+#if 0
   if (!game->LoadBlocks()) {
     fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
     return 1;
   }
+#endif
 
 #if !RENDER_ONLY
   // Allocate mirrored ring buffers so they can always be inflated
@@ -151,6 +167,76 @@ int run() {
   float last_display_time = 0.0f;
 
   using ms_float = std::chrono::duration<float, std::milli>;
+
+#if RENDER_ONLY
+  Chunk chunk;
+
+  // Create a simple chunk for test generation
+  memset(chunk.blocks, 0, sizeof(chunk.blocks));
+  for (size_t z = 0; z < 16; ++z) {
+    for (size_t x = 0; x < 16; ++x) {
+      chunk.blocks[0][z][x] = 1;
+    }
+  }
+
+  // Chunk generation requires a border around the chunk for accessing neighbors
+  // Assume air for now but populate from chunk neighbors later
+  u32 bordered_chunk[18 * 18 * 18];
+  memset(bordered_chunk, 0, sizeof(bordered_chunk));
+
+  for (s64 y = 0; y < 16; ++y) {
+    for (s64 z = 0; z < 16; ++z) {
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1);
+        bordered_chunk[index] = chunk.blocks[y][z][x];
+      }
+    }
+  }
+
+  ChunkVertex* vertices = (ChunkVertex*)trans_arena.Allocate(0);
+  u32 vertex_count = 0;
+  for (size_t y = 0; y < 16; ++y) {
+    for (size_t z = 0; z < 16; ++z) {
+      for (size_t x = 0; x < 16; ++x) {
+        size_t index = (y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1);
+
+        u32 bid = bordered_chunk[index];
+
+        if (bid == 0) {
+          continue;
+        }
+
+        size_t above_index = (y + 2) * 18 * 18 + (z + 1) * 18 + (x + 1);
+        size_t below_index = (y)*18 * 18 + (z + 1) * 18 + (x + 1);
+        size_t north_index = (y + 1) * 18 * 18 + (z)*18 + (x + 1);
+        size_t south_index = (y + 1) * 18 * 18 + (z + 2) * 18 + (x + 1);
+        size_t east_index = (y + 1) * 18 * 18 + (z + 1) * 18 + (x + 2);
+        size_t west_index = (y + 1) * 18 * 18 + (z + 1) * 18 + (x);
+
+        u32 above_id = bordered_chunk[above_index];
+        u32 below_id = bordered_chunk[above_index];
+        u32 north_id = bordered_chunk[above_index];
+        u32 south_id = bordered_chunk[above_index];
+        u32 east_id = bordered_chunk[above_index];
+        u32 west_id = bordered_chunk[above_index];
+
+        // TODO: Check actual block model for occlusion, just use air for now
+        if (above_id == 0) {
+          // Render the top face because this block is visible from above
+          // TODO: Get block model elements and render those instead of full block
+
+          PushVertex(&trans_arena, vertices, &vertex_count, Vector3f((float)x, (float)y + 1, (float)z));
+          PushVertex(&trans_arena, vertices, &vertex_count, Vector3f((float)x + 1, (float)y + 1, (float)z + 1));
+          PushVertex(&trans_arena, vertices, &vertex_count, Vector3f((float)x + 1, (float)y + 1, (float)z));
+        }
+      }
+    }
+  }
+
+  RenderMesh mesh = vk_render.AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
+
+#endif
+
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -162,20 +248,12 @@ int run() {
     if (result == Connection::TickResult::ConnectionClosed) {
       fprintf(stderr, "Connection closed by server.\n");
     }
-#else
-
-    Chunk chunk;
-
-    memset(chunk.blocks, 0, sizeof(chunk.blocks));
-    for (size_t z = 0; z < 16; ++z) {
-      for (size_t x = 0; x < 16; ++x) {
-        chunk.blocks[0][z][x] = 1;
-      }
-    }
-
 #endif
+    if (vk_render.BeginFrame()) {
+      // Render chunk
 
-    vk_render.Render();
+      vk_render.Render();
+    }
 
     while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
       TranslateMessage(&msg);
@@ -200,6 +278,10 @@ int run() {
       last_display_time = total_time;
     }
   }
+
+#if RENDER_ONLY
+  vk_render.FreeMesh(&mesh);
+#endif
 
   vk_render.Cleanup();
 

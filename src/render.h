@@ -79,7 +79,7 @@ struct VulkanRenderer {
   VmaAllocation uniform_allocations[6];
 
   VkCommandPool command_pool;
-  VkCommandBuffer command_buffers[6];
+  VkCommandBuffer command_buffers[kMaxFramesInFlight];
   VkCommandBuffer oneshot_command_buffer;
   VkSemaphore image_available_semaphores[kMaxFramesInFlight];
   VkSemaphore render_finished_semaphores[kMaxFramesInFlight];
@@ -87,10 +87,13 @@ struct VulkanRenderer {
   VkFence image_fences[6];
 
   size_t current_frame = 0;
+  u32 current_image = 0;
   bool render_paused;
   bool invalid_swapchain;
 
   bool Initialize(HWND hwnd);
+  bool BeginFrame();
+
   void Render();
   void Cleanup();
 
