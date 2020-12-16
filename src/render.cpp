@@ -20,7 +20,7 @@ constexpr bool kEnableValidationLayers = true;
 #endif
 
 struct Vertex {
-  Vector2f pos;
+  Vector3f pos;
   Vector3f color;
 };
 
@@ -29,7 +29,7 @@ struct UniformBufferObject {
 };
 
 const Vertex vertices[] = {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}, {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}};
+    {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}}, {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
 
 static VkBool32 VKAPI_PTR DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                         VkDebugUtilsMessageTypeFlagsEXT messageTypes,
@@ -179,18 +179,20 @@ bool VulkanRenderer::BeginFrame() {
   render_pass_info.renderArea.offset = { 0, 0 };
   render_pass_info.renderArea.extent = swap_extent;
 
-  VkClearValue clear_color = { 0.0f, 0.0f, 0.0f, 1.0f };
+  VkClearValue clear_color = { 0.0f, 0.2f, 0.4f, 1.0f };
   render_pass_info.clearValueCount = 1;
   render_pass_info.pClearValues = &clear_color;
+
+  UpdateUniforms();
 
   vkCmdBeginRenderPass(command_buffers[current_frame], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
   {
     vkCmdBindPipeline(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
     VkBuffer vertex_buffers[] = { vertex_buffer };
     VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(command_buffers[current_frame], 0, 1, vertex_buffers, offsets);
+    //vkCmdBindVertexBuffers(command_buffers[current_frame], 0, 1, vertex_buffers, offsets);
     vkCmdBindDescriptorSets(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, descriptor_sets + current_frame, 0, nullptr);
-    vkCmdDraw(command_buffers[current_frame], polymer_array_count(vertices), 1, 0, 0);
+    //vkCmdDraw(command_buffers[current_frame], polymer_array_count(vertices), 1, 0, 0);
   }
 
   return true;
@@ -210,8 +212,6 @@ void VulkanRenderer::Render() {
   if (vkEndCommandBuffer(command_buffers[current_frame]) != VK_SUCCESS) {
     fprintf(stderr, "Failed to record command buffer.\n");
   }
-
-  UpdateUniforms(image_index);
 
   VkSubmitInfo submit_info = {};
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -260,7 +260,7 @@ void VulkanRenderer::Render() {
   current_frame = (current_frame + 1) % kMaxFramesInFlight;
 }
 
-void VulkanRenderer::UpdateUniforms(u32 index) {
+void VulkanRenderer::UpdateUniforms() {
   static auto start_time = std::chrono::high_resolution_clock::now();
 
   auto current_time = std::chrono::high_resolution_clock::now();
@@ -269,9 +269,9 @@ void VulkanRenderer::UpdateUniforms(u32 index) {
 
   UniformBufferObject ubo;
 
-  mat4 model = Rotate(mat4::Identity(), time * Radians(90.0f), Vector3f(0, 0, 1.0f));
-  mat4 view = LookAt(Vector3f(2, 2, 2), Vector3f(0, 0, 0), Vector3f(0, 0, 1));
-  mat4 proj = Perspective(Radians(45.0f), (float)swap_extent.width / swap_extent.height, 0.1f, 100.0f);
+  mat4 model = Rotate(mat4::Identity(), time * Radians(90.0f), Vector3f(0, 1, 0));
+  mat4 view = LookAt(Vector3f(0, 0, 9), Vector3f(0, 0, 0), Vector3f(0, 1, 0));
+  mat4 proj = Perspective(Radians(80.0f), (float)swap_extent.width / swap_extent.height, 0.1f, 256.0f);
 
   ubo.mvp = proj * view * model;
 
@@ -787,6 +787,7 @@ void VulkanRenderer::CreateGraphicsPipeline() {
   rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
   rasterizer.lineWidth = 1.0f;
   rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+  //rasterizer.cullMode = VK_CULL_MODE_NONE;
   rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterizer.depthBiasEnable = VK_FALSE;
   rasterizer.depthBiasConstantFactor = 0.0f;

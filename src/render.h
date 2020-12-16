@@ -103,7 +103,7 @@ struct VulkanRenderer {
 
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
-  void UpdateUniforms(u32 index);
+  void UpdateUniforms();
 
   void BeginOneShotCommandBuffer();
   void EndOneShotCommandBuffer();
