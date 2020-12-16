@@ -189,7 +189,7 @@ bool VulkanRenderer::BeginFrame() {
     VkBuffer vertex_buffers[] = { vertex_buffer };
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(command_buffers[current_frame], 0, 1, vertex_buffers, offsets);
-    vkCmdBindDescriptorSets(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, descriptor_sets + current_image, 0, nullptr);
+    vkCmdBindDescriptorSets(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, descriptor_sets + current_frame, 0, nullptr);
     vkCmdDraw(command_buffers[current_frame], polymer_array_count(vertices), 1, 0, 0);
   }
 
@@ -277,9 +277,9 @@ void VulkanRenderer::UpdateUniforms(u32 index) {
 
   void* data = nullptr;
 
-  vmaMapMemory(allocator, uniform_allocations[index], &data);
+  vmaMapMemory(allocator, uniform_allocations[current_frame], &data);
   memcpy(data, ubo.mvp.data, sizeof(UniformBufferObject));
-  vmaUnmapMemory(allocator, uniform_allocations[index]);
+  vmaUnmapMemory(allocator, uniform_allocations[current_frame]);
 }
 
 u32 VulkanRenderer::FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties) {
@@ -398,7 +398,7 @@ void VulkanRenderer::CreateUniformBuffers() {
   alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
   alloc_create_info.flags = 0;
 
-  for (size_t i = 0; i < swap_image_count; ++i) {
+  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
     if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, uniform_buffers + i, uniform_allocations + i,
                         nullptr) != VK_SUCCESS) {
       printf("Failed to create uniform buffer.\n");
@@ -475,9 +475,9 @@ void VulkanRenderer::CreateDescriptorPool() {
 }
 
 void VulkanRenderer::CreateDescriptorSets() {
-  VkDescriptorSetLayout layouts[6];
+  VkDescriptorSetLayout layouts[kMaxFramesInFlight];
 
-  for (u32 i = 0; i < swap_image_count; ++i) {
+  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
     layouts[i] = descriptor_layout;
   }
 
@@ -485,14 +485,14 @@ void VulkanRenderer::CreateDescriptorSets() {
 
   alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   alloc_info.descriptorPool = descriptor_pool;
-  alloc_info.descriptorSetCount = swap_image_count;
+  alloc_info.descriptorSetCount = kMaxFramesInFlight;
   alloc_info.pSetLayouts = layouts;
  
   if (vkAllocateDescriptorSets(device, &alloc_info, descriptor_sets) != VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate descriptor sets.");
   }
 
-  for (u32 i = 0; i < swap_image_count; ++i) {
+  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
     VkDescriptorBufferInfo buffer_info = {};
 
     buffer_info.buffer = uniform_buffers[i];
@@ -520,7 +520,9 @@ void VulkanRenderer::CleanupSwapchain() {
 
   for (u32 i = 0; i < swap_image_count; i++) {
     vkDestroyFramebuffer(device, swap_framebuffers[i], nullptr);
+  }
 
+  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
     vmaDestroyBuffer(allocator, uniform_buffers[i], uniform_allocations[i]);
   }
 

@@ -74,9 +74,9 @@ struct VulkanRenderer {
 
   VkDescriptorPool descriptor_pool;
   VkDescriptorSetLayout descriptor_layout;
-  VkDescriptorSet descriptor_sets[6];
-  VkBuffer uniform_buffers[6];
-  VmaAllocation uniform_allocations[6];
+  VkDescriptorSet descriptor_sets[kMaxFramesInFlight];
+  VkBuffer uniform_buffers[kMaxFramesInFlight];
+  VmaAllocation uniform_allocations[kMaxFramesInFlight];
 
   VkCommandPool command_pool;
   VkCommandBuffer command_buffers[kMaxFramesInFlight];
