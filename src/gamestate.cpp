@@ -39,19 +39,35 @@ GameState::GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryAr
 void GameState::RenderGame() {
   VkDeviceSize offsets[] = {0};
 
+  // TODO: get frustum from camera
+  Vector3f position(-20, 69, -35);
+  Vector3f world_up(0, 1, 0);
+  Vector3f forward = Normalize(Vector3f(-17, 69, -36) - position);
+  Vector3f side = Normalize(forward.Cross(world_up));
+  Vector3f up = Normalize(side.Cross(forward));
+
+  Frustum frustum(position, forward, 0.1f, 256.0f, Radians(80.0f),
+                  (float)renderer->swap_extent.width / renderer->swap_extent.height, up, side);
+
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
-      if (!chunks[chunk_z][chunk_x].loaded) {
+      ChunkSection* section = &chunks[chunk_z][chunk_x];
+
+      if (!section->loaded) {
         continue;
       }
 
       for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
-        RenderMesh* mesh = &chunks[chunk_z][chunk_x].chunks[chunk_y].mesh;
+        RenderMesh* mesh = &section->chunks[chunk_y].mesh;
 
         if (mesh->vertex_count > 0) {
-          vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1, &mesh->vertex_buffer,
-                                 offsets);
-          vkCmdDraw(renderer->command_buffers[renderer->current_frame], (u32)mesh->vertex_count, 1, 0, 0);
+          Vector3f base(section->x * 16.0f, chunk_y * 16.0f, section->z * 16.0f);
+
+          if (frustum.Intersects(base, base + Vector3f(16, 16, 16))) {
+            vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1, &mesh->vertex_buffer,
+                                   offsets);
+            vkCmdDraw(renderer->command_buffers[renderer->current_frame], (u32)mesh->vertex_count, 1, 0, 0);
+          }
         }
       }
     }
@@ -100,7 +116,7 @@ void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
   for (s64 y = 0; y < 16; ++y) {
     for (s64 z = 0; z < 16; ++z) {
       for (s64 x = 0; x < 16; ++x) {
-        size_t index = (y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1);
+        size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1));
         bordered_chunk[index] = section->chunks[chunk_y].blocks[y][z][x];
       }
     }

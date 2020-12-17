@@ -494,23 +494,15 @@ inline mat4 LookAt(const Vector3f& eye, const Vector3f& to, Vector3f world_up = 
   Vector3f up = Normalize(side.Cross(forward));
 
   // Insert camera axes in column major order and transform eye into the camera space for translation
-  float values[] = {
-    side.x, up.x, -forward.x, 0,
-    side.y, up.y, -forward.y, 0,
-    side.z, up.z, -forward.z, 0,
-    -Dot(side, eye), -Dot(up, eye), Dot(forward, eye), 1
-  };
+  float values[] = {side.x, up.x, -forward.x, 0, side.y,          up.y,          -forward.y,        0,
+                    side.z, up.z, -forward.z, 0, -Dot(side, eye), -Dot(up, eye), Dot(forward, eye), 1};
 
   return mat4(values);
 }
 
-
 inline mat4 Translate(const mat4& M, const Vector3f& translation) {
   float values[] = {
-    1, 0, 0, 0,
-    0, 1, 0, 0,
-    0, 0, 1, 0,
-    translation.x, translation.y, translation.z, 1,
+      1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, translation.x, translation.y, translation.z, 1,
   };
 
   return mat4((float*)values);
@@ -524,10 +516,22 @@ inline mat4 Perspective(float fov, float aspect_ratio, float near, float far) {
   float half_tan = std::tan(fov / 2.0f);
 
   float values[] = {
-      1.0f / (aspect_ratio * half_tan), 0, 0, 0, 
-      0, -1.0f / half_tan, 0, 0, 
-      0, 0, -(far + near) / (far - near), -1.0f, 
-      0, 0, -(2.0f * far * near) / (far - near), 0,
+      1.0f / (aspect_ratio * half_tan),
+      0,
+      0,
+      0,
+      0,
+      -1.0f / half_tan,
+      0,
+      0,
+      0,
+      0,
+      -(far + near) / (far - near),
+      -1.0f,
+      0,
+      0,
+      -(2.0f * far * near) / (far - near),
+      0,
   };
 
   return mat4(values);
@@ -562,12 +566,8 @@ inline mat4 Rotate(const mat4& M, float angle, const Vector3f& rotate_axis) {
   Vector4f R1 = M0 * rotator[1][0] + M1 * rotator[1][1] + M2 * rotator[1][2];
   Vector4f R2 = M0 * rotator[2][0] + M1 * rotator[2][1] + M2 * rotator[2][2];
 
-  float values[] = { 
-    R0[0], R0[1], R0[2], R0[3],
-    R1[0], R1[1], R1[2], R2[3],
-    R2[0], R2[1], R2[2], R1[3],
-    M[3][0], M[3][1], M[3][2], M[3][3]
-  };
+  float values[] = {R0[0], R0[1], R0[2], R0[3], R1[0],   R1[1],   R1[2],   R2[3],
+                    R2[0], R2[1], R2[2], R1[3], M[3][0], M[3][1], M[3][2], M[3][3]};
 
   return mat4((float*)values);
 }
@@ -595,6 +595,103 @@ inline mat4 operator*(const mat4& M1, const mat4& M2) {
 
   return result;
 }
+
+struct Plane {
+  Vector3f normal;
+  float distance;
+
+  Plane() {}
+  Plane(const Vector3f normal, float distance) : normal(normal), distance(distance) {}
+  Plane(const Vector3f& p1, const Vector3f& p2, const Vector3f& p3) {
+    normal = Normalize(Cross(p2 - p1, p3 - p1));
+    distance = normal.Dot(p1);
+  }
+
+  float PointDistance(const Vector3f& v) {
+    return (normal.Dot(v) - distance) / normal.Dot(normal);
+  }
+};
+
+struct Frustum {
+  Vector3f position;
+  Vector3f forward;
+
+  float near;
+  float near_width;
+  float near_height;
+
+  float far;
+  float far_width;
+  float far_height;
+
+  Plane planes[6];
+
+  Frustum(const Vector3f& position, const Vector3f& forward, float near, float far, float fov, float ratio,
+          const Vector3f& up, const Vector3f& right)
+      : position(position), forward(forward), near(near), far(far) {
+    near_height = 2 * std::tan(fov / 2.0f) * near;
+    near_width = near_height * ratio;
+
+    far_height = 2 * std::tan(fov / 2.0f) * far;
+    far_width = far_height * ratio;
+
+    Vector3f nc = position + forward * near;
+    Vector3f fc = position + forward * far;
+
+    float hnh = near_height / 2.0f;
+    float hnw = near_width / 2.0f;
+    float hfh = far_height / 2.0f;
+    float hfw = far_width / 2.0f;
+
+    Vector3f ntl = nc + up * hnh - right * hnw;
+    Vector3f ntr = nc + up * hnh + right * hnw;
+    Vector3f nbl = nc - up * hnh - right * hnw;
+    Vector3f nbr = nc - up * hnh + right * hnw;
+
+    Vector3f ftl = fc + up * hfh - right * hfw;
+    Vector3f ftr = fc + up * hfh + right * hfw;
+    Vector3f fbl = fc - up * hfh - right * hfw;
+    Vector3f fbr = fc - up * hfh + right * hfw;
+
+    planes[0] = Plane(ntr, ntl, ftl);
+    planes[1] = Plane(nbl, nbr, fbr);
+    planes[2] = Plane(ntl, nbl, fbl);
+    planes[3] = Plane(nbr, ntr, fbr);
+    planes[4] = Plane(ntl, ntr, nbr);
+    planes[5] = Plane(ftr, ftl, fbl);
+  }
+
+  bool Intersects(const Vector3f& min, const Vector3f& max) {
+    Vector3f diff = max - min;
+    Vector3f vertices[8] = {min,
+                            min + Vector3f(diff.x, 0, 0),
+                            min + Vector3f(diff.x, diff.y, 0),
+                            min + Vector3f(0, diff.y, 0),
+                            min + Vector3f(0, diff.y, diff.z),
+                            min + Vector3f(0, 0, diff.z),
+                            min + Vector3f(diff.x, 0, diff.z),
+                            max};
+
+    for (u32 i = 0; i < 6; ++i) {
+      int out = 0;
+      int in = 0;
+
+      for (int k = 0; k < 8 && (in == 0 || out == 0); ++k) {
+        if (planes[i].PointDistance(vertices[k]) < 0) {
+          ++out;
+        } else {
+          ++in;
+        }
+      }
+
+      if (in == 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+};
 
 } // namespace polymer
 
