@@ -181,6 +181,9 @@ int run() {
     }
   }
 
+  chunk.blocks[4][4][4] = 1;
+  chunk.blocks[3][5][6] = 1;
+
   // Chunk generation requires a border around the chunk for accessing neighbors
   // Assume air for now but populate from chunk neighbors later
   u32 bordered_chunk[18 * 18 * 18];
@@ -239,6 +242,21 @@ int run() {
           Vector3f bottom_right(x, y + 1, z + 1);
           Vector3f top_left(x + 1, y + 1, z);
           Vector3f top_right(x + 1, y + 1, z + 1);
+
+          PushVertex(&trans_arena, vertices, &vertex_count, bottom_left);
+          PushVertex(&trans_arena, vertices, &vertex_count, bottom_right);
+          PushVertex(&trans_arena, vertices, &vertex_count, top_right);
+
+          PushVertex(&trans_arena, vertices, &vertex_count, top_right);
+          PushVertex(&trans_arena, vertices, &vertex_count, top_left);
+          PushVertex(&trans_arena, vertices, &vertex_count, bottom_left);
+        }
+
+        if (below_id == 0) {
+          Vector3f bottom_left(x + 1, y, z);
+          Vector3f bottom_right(x + 1, y, z + 1);
+          Vector3f top_left(x, y, z);
+          Vector3f top_right(x, y, z + 1);
 
           PushVertex(&trans_arena, vertices, &vertex_count, bottom_left);
           PushVertex(&trans_arena, vertices, &vertex_count, bottom_right);

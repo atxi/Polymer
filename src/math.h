@@ -504,6 +504,18 @@ inline mat4 LookAt(const Vector3f& eye, const Vector3f& to, Vector3f world_up = 
   return mat4(values);
 }
 
+
+inline mat4 Translate(const mat4& M, const Vector3f& translation) {
+  float values[] = {
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    translation.x, translation.y, translation.z, 1,
+  };
+
+  return mat4((float*)values);
+}
+
 // fov: field of view for y-axis
 // aspect_ratio: width / height
 // near: near plane in camera space

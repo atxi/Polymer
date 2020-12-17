@@ -269,8 +269,11 @@ void VulkanRenderer::UpdateUniforms() {
 
   UniformBufferObject ubo;
 
-  mat4 model = Rotate(mat4::Identity(), time * Radians(90.0f), Vector3f(0, 1, 0));
-  mat4 view = LookAt(Vector3f(0, 0, 9), Vector3f(0, 0, 0), Vector3f(0, 1, 0));
+  mat4 rotation = Rotate(mat4::Identity(), time * Radians(90.0f), Vector3f(0, 1, 0));
+  mat4 translation = Translate(mat4::Identity(), Vector3f(-8, 0, -8));
+  mat4 model = rotation * translation;
+
+  mat4 view = LookAt(Vector3f(0, 5, 20), Vector3f(0, 0, 0), Vector3f(0, 1, 0));
   mat4 proj = Perspective(Radians(80.0f), (float)swap_extent.width / swap_extent.height, 0.1f, 256.0f);
 
   ubo.mvp = proj * view * model;
@@ -741,7 +744,7 @@ void VulkanRenderer::CreateGraphicsPipeline() {
   VkVertexInputAttributeDescription attribute_descriptions[2];
   attribute_descriptions[0].binding = 0;
   attribute_descriptions[0].location = 0;
-  attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+  attribute_descriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
   attribute_descriptions[0].offset = offsetof(Vertex, pos);
 
   attribute_descriptions[1].binding = 0;
