@@ -86,6 +86,10 @@ struct VulkanRenderer {
   VkFence frame_fences[kMaxFramesInFlight];
   VkFence image_fences[6];
 
+  VkImage depth_image;
+  VmaAllocation depth_allocation;
+  VkImageView depth_image_view;
+
   size_t current_frame = 0;
   u32 current_image = 0;
   bool render_paused;
@@ -105,6 +109,7 @@ private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
   void UpdateUniforms();
 
+  void CreateDepthBuffer();
   void BeginOneShotCommandBuffer();
   void EndOneShotCommandBuffer();
   void CreateUniformBuffers();

@@ -24,17 +24,20 @@ struct BlockState {
   bool uvlock;
 };
 
-constexpr size_t kChunkCacheSize = 48;
+constexpr size_t kChunkCacheSize = 24;
 
 struct Chunk {
   u32 blocks[16][16][16];
+  RenderMesh mesh;
 };
 
 struct ChunkSection {
   s32 x;
   s32 z;
-
+  bool loaded;
   Chunk chunks[16];
+
+  ChunkSection() : loaded(false) {}
 };
 
 inline u32 GetChunkCacheIndex(s32 v) {
@@ -57,13 +60,17 @@ struct GameState {
   // Chunk cache
   ChunkSection chunks[kChunkCacheSize][kChunkCacheSize];
 
-  GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
-      : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer) {}
+  GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena);
 
   bool LoadBlocks();
 
   void OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid);
   void OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z);
+  void OnChunkUnload(s32 chunk_x, s32 chunk_z);
+
+  void RenderGame();
+
+  void FreeMeshes();
 };
 
 } // namespace polymer

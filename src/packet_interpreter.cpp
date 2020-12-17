@@ -57,6 +57,12 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       game->OnBlockChange((s32)x + x_offset, (s32)y + y_offset, (s32)z + z_offset, 0);
     }
   } break;
+  case PlayProtocol::UnloadChunk: {
+    s32 chunk_x = rb->ReadU32();
+    s32 chunk_z = rb->ReadU32();
+
+    game->OnChunkUnload(chunk_x, chunk_z);
+  } break;
   case PlayProtocol::KeepAlive: {
     u64 id = rb->ReadU64();
 

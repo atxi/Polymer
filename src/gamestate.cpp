@@ -13,14 +13,64 @@ namespace polymer {
 
 struct ChunkVertex {
   Vector3f position;
+  Vector3f color;
 };
 
-void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, Vector3f position) {
+void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, const Vector3f& position) {
   arena->Allocate(sizeof(ChunkVertex), 1);
 
   vertices[*count].position = position;
+  vertices[*count].color = Vector3f((rand() % 255) / 255.0f, (rand() % 255) / 255.0f, (rand() % 255) / 255.0f);
 
   ++*count;
+}
+
+GameState::GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
+    : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer) {
+  for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
+    for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
+      for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+        chunks[chunk_z][chunk_x].chunks[chunk_y].mesh.vertex_count = 0;
+      }
+    }
+  }
+}
+
+void GameState::RenderGame() {
+  VkDeviceSize offsets[] = {0};
+
+  for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
+    for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
+      if (!chunks[chunk_z][chunk_x].loaded) {
+        continue;
+      }
+
+      for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+        RenderMesh* mesh = &chunks[chunk_z][chunk_x].chunks[chunk_y].mesh;
+
+        if (mesh->vertex_count > 0) {
+          vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1, &mesh->vertex_buffer,
+                                 offsets);
+          vkCmdDraw(renderer->command_buffers[renderer->current_frame], (u32)mesh->vertex_count, 1, 0, 0);
+        }
+      }
+    }
+  }
+}
+
+void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
+  ChunkSection* section = &chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+
+  section->loaded = false;
+
+  if (section->x != chunk_x || section->z != chunk_z) {
+    return;
+  }
+
+  for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
+    renderer->FreeMesh(&section->chunks[chunk_y].mesh);
+    section->chunks[chunk_y].mesh.vertex_count = 0;
+  }
 }
 
 void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
@@ -35,31 +85,166 @@ void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
 
   ChunkSection* section = &chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
 
+  section->loaded = true;
+
   u8* arena_snapshot = trans_arena->current;
   // Create an initial pointer to transient memory with zero vertices allocated.
   // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
   ChunkVertex* vertices = (ChunkVertex*)trans_arena->Allocate(0);
   u32 vertex_count = 0;
 
-  for (u32 y = 0; y < 16; ++y) {
-    for (u32 z = 0; z < 16; ++z) {
-      for (u32 x = 0; x < 16; ++x) {
-        u32 state_id = section->chunks[chunk_y].blocks[y][z][x];
+  u32 bordered_chunk[18 * 18 * 18];
+  memset(bordered_chunk, 0, sizeof(bordered_chunk));
 
-        // TODO: Load the models/elements from the jar.
-        if (state_id != 0) {
-          // Render a single triangle on the top of the block
-          PushVertex(trans_arena, vertices, &vertex_count, Vector3f((float)x, (float)y + 1, (float)z));
-          PushVertex(trans_arena, vertices, &vertex_count, Vector3f((float)x + 1, (float)y + 1, (float)z + 1));
-          PushVertex(trans_arena, vertices, &vertex_count, Vector3f((float)x + 1, (float)y + 1, (float)z));
+  // TODO: Generate bordered chunk properly once surrounding chunks are loaded.
+  for (s64 y = 0; y < 16; ++y) {
+    for (s64 z = 0; z < 16; ++z) {
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1);
+        bordered_chunk[index] = section->chunks[chunk_y].blocks[y][z][x];
+      }
+    }
+  }
+
+  Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f);
+
+  for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
+    for (size_t chunk_z = 0; chunk_z < 16; ++chunk_z) {
+      for (size_t chunk_x = 0; chunk_x < 16; ++chunk_x) {
+        size_t index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+
+        u32 bid = bordered_chunk[index];
+
+        // Skip air and barriers
+        if (bid == 0 || bid == 7540) {
+          continue;
+        }
+
+        size_t above_index = (chunk_y + 2) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+        size_t below_index = (chunk_y)*18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+        size_t north_index = (chunk_y + 1) * 18 * 18 + (chunk_z)*18 + (chunk_x + 1);
+        size_t south_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 2) * 18 + (chunk_x + 1);
+        size_t east_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 2);
+        size_t west_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x);
+
+        u32 above_id = bordered_chunk[above_index];
+        u32 below_id = bordered_chunk[below_index];
+        u32 north_id = bordered_chunk[north_index];
+        u32 south_id = bordered_chunk[south_index];
+        u32 east_id = bordered_chunk[east_index];
+        u32 west_id = bordered_chunk[west_index];
+
+        float x = (float)chunk_x;
+        float y = (float)chunk_y;
+        float z = (float)chunk_z;
+
+        Vector3f bottom_left(x, y, z);
+        Vector3f bottom_right(x, y, z);
+        Vector3f top_left(x, y, z);
+        Vector3f top_right(x, y, z);
+
+        // TODO: Check actual block model for occlusion, just use air for now
+        if (above_id == 0) {
+          // Render the top face because this block is visible from above
+          // TODO: Get block model elements and render those instead of full block
+          Vector3f bottom_left(x, y + 1, z);
+          Vector3f bottom_right(x, y + 1, z + 1);
+          Vector3f top_left(x + 1, y + 1, z);
+          Vector3f top_right(x + 1, y + 1, z + 1);
+
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+        }
+
+        if (below_id == 0) {
+          Vector3f bottom_left(x + 1, y, z);
+          Vector3f bottom_right(x + 1, y, z + 1);
+          Vector3f top_left(x, y, z);
+          Vector3f top_right(x, y, z + 1);
+
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+        }
+
+        if (north_id == 0) {
+          Vector3f bottom_left(x + 1, y, z);
+          Vector3f bottom_right(x, y, z);
+          Vector3f top_left(x + 1, y + 1, z);
+          Vector3f top_right(x, y + 1, z);
+
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+        }
+
+        if (south_id == 0) {
+          Vector3f bottom_left(x, y, z + 1);
+          Vector3f bottom_right(x + 1, y, z + 1);
+          Vector3f top_left(x, y + 1, z + 1);
+          Vector3f top_right(x + 1, y + 1, z + 1);
+
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+        }
+
+        if (east_id == 0) {
+          Vector3f bottom_left(x + 1, y, z + 1);
+          Vector3f bottom_right(x + 1, y, z);
+          Vector3f top_left(x + 1, y + 1, z + 1);
+          Vector3f top_right(x + 1, y + 1, z);
+
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+        }
+
+        if (west_id == 0) {
+          Vector3f bottom_left(x, y, z);
+          Vector3f bottom_right(x, y, z + 1);
+          Vector3f top_left(x, y + 1, z);
+          Vector3f top_right(x, y + 1, z + 1);
+
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
         }
       }
     }
   }
 
-  // RenderMesh mesh = renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
-  // TODO: Free the mesh when chunk is unloaded, dimension is changed, or game is unloaded.
-  // renderer->FreeMesh(&mesh);
+  if (vertex_count > 0) {
+    section->chunks[chunk_y].mesh =
+        renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
+  } else {
+    section->chunks[chunk_y].mesh.vertex_count = 0;
+  }
 
   // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
   // useful.
@@ -95,6 +280,20 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   printf("Block changed at (%d, %d, %d) from %s to %s\n", x, y, z, block_states[old_bid].name,
          block_states[new_bid].name);
 #endif
+}
+
+void GameState::FreeMeshes() {
+  for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
+    for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
+      for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+        RenderMesh* mesh = &this->chunks[chunk_z][chunk_x].chunks[chunk_y].mesh;
+        if (mesh->vertex_count > 0) {
+          renderer->FreeMesh(mesh);
+          mesh->vertex_count = 0;
+        }
+      }
+    }
+  }
 }
 
 bool GameState::LoadBlocks() {
