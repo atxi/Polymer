@@ -229,9 +229,16 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           }
         }
 
-        ChunkSection* section = &game->chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
-        section->x = chunk_x;
-        section->z = chunk_z;
+        u32 x_index = game->world.GetChunkCacheIndex(chunk_x);
+        u32 z_index = game->world.GetChunkCacheIndex(chunk_z);
+
+        ChunkSection* section = &game->world.chunks[z_index][x_index];
+        ChunkSectionInfo* section_info = &game->world.chunk_infos[z_index][x_index];
+
+        section_info->x = chunk_x;
+        section_info->z = chunk_z;
+        section_info->bitmask = (u32)bitmask;
+
         u32* chunk = (u32*)section->chunks[chunk_y].blocks;
 
         u64 data_array_length;
@@ -267,13 +274,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       }
 
       // Delay the chunk load call until the entire section is loaded.
-      for (u64 chunk_y = 0; chunk_y < 16; ++chunk_y) {
-        if (!(bitmask & (1LL << chunk_y))) {
-          continue;
-        }
-
-        game->OnChunkLoad(chunk_x, (s32)chunk_y, chunk_z);
-      }
+      game->OnChunkLoad(chunk_x, chunk_z);
     }
 
     // Jump to after the data because the data_size can be larger than actual chunk data sent according to

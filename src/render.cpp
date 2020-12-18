@@ -28,10 +28,6 @@ struct UniformBufferObject {
   mat4 mvp;
 };
 
-const Vertex vertices[] = {{{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-                           {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-                           {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
-
 static VkBool32 VKAPI_PTR DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                         VkDebugUtilsMessageTypeFlagsEXT messageTypes,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
@@ -131,7 +127,6 @@ bool VulkanRenderer::Initialize(HWND hwnd) {
 
   CreateDescriptorSetLayout();
 
-  CreateVertexBuffer();
   RecreateSwapchain();
   CreateSyncObjects();
 
@@ -241,12 +236,8 @@ bool VulkanRenderer::BeginFrame() {
   vkCmdBeginRenderPass(command_buffers[current_frame], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
   {
     vkCmdBindPipeline(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-    VkBuffer vertex_buffers[] = {vertex_buffer};
-    VkDeviceSize offsets[] = {0};
-    // vkCmdBindVertexBuffers(command_buffers[current_frame], 0, 1, vertex_buffers, offsets);
     vkCmdBindDescriptorSets(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1,
                             descriptor_sets + current_frame, 0, nullptr);
-    // vkCmdDraw(command_buffers[current_frame], polymer_array_count(vertices), 1, 0, 0);
   }
 
   return true;
@@ -328,7 +319,7 @@ void VulkanRenderer::UpdateUniforms() {
   mat4 model = mat4::Identity();
 
   mat4 view = LookAt(Vector3f(-20, 69, -35), Vector3f(-17, 69, -36), Vector3f(0, 1, 0));
-  //mat4 view = LookAt(Vector3f(0, 66, 20), Vector3f(0, 64, 0), Vector3f(0, 1, 0));
+  // mat4 view = LookAt(Vector3f(0, 66, 20), Vector3f(0, 64, 0), Vector3f(0, 1, 0));
   mat4 proj = Perspective(Radians(80.0f), (float)swap_extent.width / swap_extent.height, 0.1f, 256.0f);
 
   ubo.mvp = proj * view * model;
@@ -434,14 +425,13 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
 
   vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
 
-  mesh.vertex_buffer_size = size;
   mesh.vertex_count = count;
 
   return mesh;
 }
 
 void VulkanRenderer::FreeMesh(RenderMesh* mesh) {
-  if (mesh->vertex_buffer_size > 0) {
+  if (mesh->vertex_count > 0) {
     vmaDestroyBuffer(allocator, mesh->vertex_buffer, mesh->vertex_allocation);
   }
 }
@@ -464,56 +454,6 @@ void VulkanRenderer::CreateUniformBuffers() {
       printf("Failed to create uniform buffer.\n");
     }
   }
-}
-
-void VulkanRenderer::CreateVertexBuffer() {
-  VkBufferCreateInfo buffer_info = {};
-
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = sizeof(vertices[0]) * polymer_array_count(vertices);
-  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  VmaAllocationCreateInfo alloc_create_info = {};
-  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-  alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-  VkBuffer staging_buffer = VK_NULL_HANDLE;
-  VmaAllocation staging_alloc = VK_NULL_HANDLE;
-  VmaAllocationInfo staging_alloc_info = {};
-
-  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &staging_buffer, &staging_alloc,
-                      &staging_alloc_info) != VK_SUCCESS) {
-    printf("Failed to create staging buffer.\n");
-    return;
-  }
-
-  if (staging_alloc_info.pMappedData) {
-    memcpy(staging_alloc_info.pMappedData, vertices, (size_t)buffer_info.size);
-  }
-
-  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-  alloc_create_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-  alloc_create_info.flags = 0;
-
-  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &vertex_buffer, &vertex_allocation, nullptr) !=
-      VK_SUCCESS) {
-    printf("Failed to create vertex buffer.\n");
-    return;
-  }
-
-  VkBufferCopy copy = {};
-  copy.srcOffset = 0;
-  copy.dstOffset = 0;
-  copy.size = buffer_info.size;
-
-  BeginOneShotCommandBuffer();
-
-  vkCmdCopyBuffer(oneshot_command_buffer, staging_buffer, vertex_buffer, 1, &copy);
-
-  EndOneShotCommandBuffer();
-
-  vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
 }
 
 void VulkanRenderer::CreateDescriptorPool() {
@@ -1399,7 +1339,6 @@ void VulkanRenderer::Cleanup() {
 
   vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
 
-  vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
   vmaDestroyAllocator(allocator);
 
   for (size_t i = 0; i < kMaxFramesInFlight; ++i) {

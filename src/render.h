@@ -41,7 +41,6 @@ struct SwapChainSupportDetails {
 struct RenderMesh {
   VkBuffer vertex_buffer;
   VmaAllocation vertex_allocation;
-  size_t vertex_buffer_size;
   size_t vertex_count;
 };
 
@@ -69,8 +68,6 @@ struct VulkanRenderer {
   VkPipeline graphics_pipeline;
 
   VmaAllocator allocator;
-  VkBuffer vertex_buffer;
-  VmaAllocation vertex_allocation;
 
   VkDescriptorPool descriptor_pool;
   VkDescriptorSetLayout descriptor_layout;
@@ -113,7 +110,6 @@ private:
   void BeginOneShotCommandBuffer();
   void EndOneShotCommandBuffer();
   void CreateUniformBuffers();
-  void CreateVertexBuffer();
   void CleanupSwapchain();
   void RecreateSwapchain();
   void CreateSyncObjects();

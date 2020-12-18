@@ -607,7 +607,7 @@ struct Plane {
     distance = normal.Dot(p1);
   }
 
-  float PointDistance(const Vector3f& v) {
+  inline float PointDistance(const Vector3f& v) {
     return (normal.Dot(v) - distance) / normal.Dot(normal);
   }
 };
@@ -661,7 +661,7 @@ struct Frustum {
     planes[5] = Plane(ftr, ftl, fbl);
   }
 
-  bool Intersects(const Vector3f& min, const Vector3f& max) {
+  inline bool Intersects(const Vector3f& min, const Vector3f& max) {
     Vector3f diff = max - min;
     Vector3f vertices[8] = {min,
                             min + Vector3f(diff.x, 0, 0),
@@ -673,20 +673,44 @@ struct Frustum {
                             max};
 
     for (u32 i = 0; i < 6; ++i) {
-      int out = 0;
+#if 0
+      Vector3f aabb_axis;
+
+      if (planes[i].normal.x < 0) {
+        aabb_axis.x = min.x;
+      } else {
+        aabb_axis.x = max.x;
+      }
+
+      if (planes[i].normal.y < 0) {
+        aabb_axis.y = min.y;
+      } else {
+        aabb_axis.y = max.y;
+      }
+
+      if (planes[i].normal.z < 0) {
+        aabb_axis.z = min.z;
+      } else {
+        aabb_axis.z = max.z;
+      }
+
+      if (planes[i].normal.Dot(aabb_axis) - planes[i].distance < 0.0f) {
+        return false;
+      }
+#else
       int in = 0;
 
-      for (int k = 0; k < 8 && (in == 0 || out == 0); ++k) {
-        if (planes[i].PointDistance(vertices[k]) < 0) {
-          ++out;
-        } else {
+      for (int k = 0; k < 8; ++k) {
+        if (planes[i].PointDistance(vertices[k]) >= 0) {
           ++in;
+          break;
         }
       }
 
       if (in == 0) {
         return false;
       }
+#endif
     }
 
     return true;

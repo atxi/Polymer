@@ -159,7 +159,7 @@ int run() {
       fprintf(stderr, "Connection closed by server.\n");
     }
     if (vk_render.BeginFrame()) {
-      game->RenderGame();
+      game->Update();
       vk_render.Render();
     }
 

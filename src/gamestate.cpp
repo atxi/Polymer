@@ -16,7 +16,7 @@ struct ChunkVertex {
   Vector3f color;
 };
 
-void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, const Vector3f& position) {
+inline void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, const Vector3f& position) {
   arena->Allocate(sizeof(ChunkVertex), 1);
 
   vertices[*count].position = position;
@@ -29,16 +29,40 @@ GameState::GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryAr
     : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer) {
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
+      RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+
       for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
-        chunks[chunk_z][chunk_x].chunks[chunk_y].mesh.vertex_count = 0;
+        meshes[chunk_y].vertex_count = 0;
       }
     }
   }
 }
 
-void GameState::RenderGame() {
-  VkDeviceSize offsets[] = {0};
+void GameState::Update() {
+  // Process build queue
+  for (size_t i = 0; i < world.build_queue_count;) {
+    s32 chunk_x = world.build_queue[i].x;
+    s32 chunk_z = world.build_queue[i].z;
 
+    // Check if all the nearby chunks are loaded before generating
+    u32 x_index = world.GetChunkCacheIndex(chunk_x);
+    u32 z_index = world.GetChunkCacheIndex(chunk_z);
+
+    u32 xeast_index = world.GetChunkCacheIndex(chunk_x + 1);
+    u32 xwest_index = world.GetChunkCacheIndex(chunk_x - 1);
+    u32 znorth_index = world.GetChunkCacheIndex(chunk_z - 1);
+    u32 zsouth_index = world.GetChunkCacheIndex(chunk_z + 1);
+
+    if (world.chunk_infos[z_index][xeast_index].loaded && world.chunk_infos[z_index][xwest_index].loaded &&
+        world.chunk_infos[znorth_index][x_index].loaded && world.chunk_infos[zsouth_index][x_index].loaded) {
+      BuildChunkMesh(chunk_x, chunk_z);
+      world.build_queue[i] = world.build_queue[--world.build_queue_count];
+    } else {
+      ++i;
+    }
+  }
+
+  // Render game world
   // TODO: get frustum from camera
   Vector3f position(-20, 69, -35);
   Vector3f world_up(0, 1, 0);
@@ -49,21 +73,26 @@ void GameState::RenderGame() {
   Frustum frustum(position, forward, 0.1f, 256.0f, Radians(80.0f),
                   (float)renderer->swap_extent.width / renderer->swap_extent.height, up, side);
 
+  VkDeviceSize offsets[] = {0};
+
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
-      ChunkSection* section = &chunks[chunk_z][chunk_x];
+      ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
 
-      if (!section->loaded) {
+      if (!section_info->loaded) {
         continue;
       }
 
+      RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+
       for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
-        RenderMesh* mesh = &section->chunks[chunk_y].mesh;
+        RenderMesh* mesh = meshes + chunk_y;
 
         if (mesh->vertex_count > 0) {
-          Vector3f base(section->x * 16.0f, chunk_y * 16.0f, section->z * 16.0f);
+          Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f, section_info->z * 16.0f);
+          Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f + 16.0f, section_info->z * 16.0f + 16.0f);
 
-          if (frustum.Intersects(base, base + Vector3f(16, 16, 16))) {
+          if (frustum.Intersects(chunk_min, chunk_max)) {
             vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1, &mesh->vertex_buffer,
                                    offsets);
             vkCmdDraw(renderer->command_buffers[renderer->current_frame], (u32)mesh->vertex_count, 1, 0, 0);
@@ -75,207 +104,271 @@ void GameState::RenderGame() {
 }
 
 void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
-  ChunkSection* section = &chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+  u32 x_index = world.GetChunkCacheIndex(chunk_x);
+  u32 z_index = world.GetChunkCacheIndex(chunk_z);
+  ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
 
-  section->loaded = false;
+  section_info->loaded = false;
 
-  if (section->x != chunk_x || section->z != chunk_z) {
+  if (section_info->x != chunk_x || section_info->z != chunk_z) {
     return;
   }
 
+  RenderMesh* meshes = world.meshes[z_index][x_index];
+
   for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
-    renderer->FreeMesh(&section->chunks[chunk_y].mesh);
-    section->chunks[chunk_y].mesh.vertex_count = 0;
+    if (meshes[chunk_y].vertex_count > 0) {
+      renderer->FreeMesh(meshes + chunk_y);
+      meshes[chunk_y].vertex_count = 0;
+    }
   }
 }
 
-void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
+void GameState::BuildChunkMesh(s32 chunk_x, s32 chunk_z) {
   // TODO:
-  // Generate the chunk based on viewable blocks.
-  // Skip air chunks.
-  // The vertices will then be sent to the GPU and a handle will be stored to the allocation here.
-  // When a chunk is unloaded, it will be freed from the GPU memory.
   // This should probably be done on a separate thread or in a compute shader ideally.
-
   // Either an index buffer or face merging should be done to reduce buffer size.
 
-  ChunkSection* section = &chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
+  u32 x_index = world.GetChunkCacheIndex(chunk_x);
+  u32 z_index = world.GetChunkCacheIndex(chunk_z);
 
-  section->loaded = true;
+  ChunkSection* section = &world.chunks[z_index][x_index];
+  ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
+  RenderMesh* meshes = world.meshes[z_index][x_index];
 
-  u8* arena_snapshot = trans_arena->current;
-  // Create an initial pointer to transient memory with zero vertices allocated.
-  // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
-  ChunkVertex* vertices = (ChunkVertex*)trans_arena->Allocate(0);
-  u32 vertex_count = 0;
+  u32 xeast_index = world.GetChunkCacheIndex(chunk_x + 1);
+  u32 xwest_index = world.GetChunkCacheIndex(chunk_x - 1);
+  u32 znorth_index = world.GetChunkCacheIndex(chunk_z - 1);
+  u32 zsouth_index = world.GetChunkCacheIndex(chunk_z + 1);
 
-  u32 bordered_chunk[18 * 18 * 18];
-  memset(bordered_chunk, 0, sizeof(bordered_chunk));
+  ChunkSection* east_section = &world.chunks[z_index][xeast_index];
+  ChunkSectionInfo* east_section_info = &world.chunk_infos[z_index][xeast_index];
+  ChunkSection* west_section = &world.chunks[z_index][xwest_index];
+  ChunkSectionInfo* west_section_info = &world.chunk_infos[z_index][xwest_index];
+  ChunkSection* north_section = &world.chunks[znorth_index][x_index];
+  ChunkSectionInfo* north_section_info = &world.chunk_infos[znorth_index][x_index];
+  ChunkSection* south_section = &world.chunks[zsouth_index][x_index];
+  ChunkSectionInfo* south_section_info = &world.chunk_infos[zsouth_index][x_index];
 
-  // TODO: Generate bordered chunk properly once surrounding chunks are loaded.
-  for (s64 y = 0; y < 16; ++y) {
-    for (s64 z = 0; z < 16; ++z) {
+  section_info->loaded = true;
+
+  for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+    if (!(section_info->bitmask & (1 << chunk_y))) {
+      continue;
+    }
+
+    u8* arena_snapshot = trans_arena->current;
+
+    u32* bordered_chunk = (u32*)trans_arena->Allocate(sizeof(u32) * 18 * 18 * 18);
+    memset(bordered_chunk, 0, sizeof(u32) * 18 * 18 * 18);
+
+    // Create an initial pointer to transient memory with zero vertices allocated.
+    // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
+    ChunkVertex* vertices = (ChunkVertex*)trans_arena->Allocate(0);
+    u32 vertex_count = 0;
+
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 z = 0; z < 16; ++z) {
+        for (s64 x = 0; x < 16; ++x) {
+          size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1));
+          bordered_chunk[index] = section->chunks[chunk_y].blocks[y][z][x];
+        }
+      }
+    }
+
+    // Load west blocks
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)(y * 18 * 18 + z * 18 + 0);
+        bordered_chunk[index] = west_section->chunks[chunk_y].blocks[y][z][15];
+      }
+    }
+
+    // Load east blocks
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)(y * 18 * 18 + z * 18 + 17);
+        bordered_chunk[index] = east_section->chunks[chunk_y].blocks[y][z][0];
+      }
+    }
+
+    // Load north blocks
+    for (s64 y = 0; y < 16; ++y) {
       for (s64 x = 0; x < 16; ++x) {
-        size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1));
-        bordered_chunk[index] = section->chunks[chunk_y].blocks[y][z][x];
+        size_t index = (size_t)(y * 18 * 18 + 17 * 18 + x);
+        bordered_chunk[index] = north_section->chunks[chunk_y].blocks[y][0][x];
       }
     }
-  }
 
-  Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f);
+    // Load south blocks
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (size_t)(y * 18 * 18 + x);
+        bordered_chunk[index] = south_section->chunks[chunk_y].blocks[y][15][x];
+      }
+    }
 
-  for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
-    for (size_t chunk_z = 0; chunk_z < 16; ++chunk_z) {
-      for (size_t chunk_x = 0; chunk_x < 16; ++chunk_x) {
-        size_t index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+    Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f);
 
-        u32 bid = bordered_chunk[index];
+    for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
+      for (size_t chunk_z = 0; chunk_z < 16; ++chunk_z) {
+        for (size_t chunk_x = 0; chunk_x < 16; ++chunk_x) {
+          size_t index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
 
-        // Skip air and barriers
-        if (bid == 0 || bid == 7540) {
-          continue;
-        }
+          u32 bid = bordered_chunk[index];
 
-        size_t above_index = (chunk_y + 2) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
-        size_t below_index = (chunk_y)*18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
-        size_t north_index = (chunk_y + 1) * 18 * 18 + (chunk_z)*18 + (chunk_x + 1);
-        size_t south_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 2) * 18 + (chunk_x + 1);
-        size_t east_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 2);
-        size_t west_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x);
+          // Skip air and barriers
+          if (bid == 0 || bid == 7540) {
+            continue;
+          }
 
-        u32 above_id = bordered_chunk[above_index];
-        u32 below_id = bordered_chunk[below_index];
-        u32 north_id = bordered_chunk[north_index];
-        u32 south_id = bordered_chunk[south_index];
-        u32 east_id = bordered_chunk[east_index];
-        u32 west_id = bordered_chunk[west_index];
+          size_t above_index = (chunk_y + 2) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+          size_t below_index = (chunk_y)*18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+          size_t north_index = (chunk_y + 1) * 18 * 18 + (chunk_z)*18 + (chunk_x + 1);
+          size_t south_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 2) * 18 + (chunk_x + 1);
+          size_t east_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 2);
+          size_t west_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x);
 
-        float x = (float)chunk_x;
-        float y = (float)chunk_y;
-        float z = (float)chunk_z;
+          u32 above_id = bordered_chunk[above_index];
+          u32 below_id = bordered_chunk[below_index];
+          u32 north_id = bordered_chunk[north_index];
+          u32 south_id = bordered_chunk[south_index];
+          u32 east_id = bordered_chunk[east_index];
+          u32 west_id = bordered_chunk[west_index];
 
-        Vector3f bottom_left(x, y, z);
-        Vector3f bottom_right(x, y, z);
-        Vector3f top_left(x, y, z);
-        Vector3f top_right(x, y, z);
+          float x = (float)chunk_x;
+          float y = (float)chunk_y;
+          float z = (float)chunk_z;
 
-        // TODO: Check actual block model for occlusion, just use air for now
-        if (above_id == 0) {
-          // Render the top face because this block is visible from above
-          // TODO: Get block model elements and render those instead of full block
-          Vector3f bottom_left(x, y + 1, z);
-          Vector3f bottom_right(x, y + 1, z + 1);
-          Vector3f top_left(x + 1, y + 1, z);
-          Vector3f top_right(x + 1, y + 1, z + 1);
-
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-        }
-
-        if (below_id == 0) {
-          Vector3f bottom_left(x + 1, y, z);
-          Vector3f bottom_right(x + 1, y, z + 1);
-          Vector3f top_left(x, y, z);
-          Vector3f top_right(x, y, z + 1);
-
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-        }
-
-        if (north_id == 0) {
-          Vector3f bottom_left(x + 1, y, z);
-          Vector3f bottom_right(x, y, z);
-          Vector3f top_left(x + 1, y + 1, z);
-          Vector3f top_right(x, y + 1, z);
-
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-        }
-
-        if (south_id == 0) {
-          Vector3f bottom_left(x, y, z + 1);
-          Vector3f bottom_right(x + 1, y, z + 1);
-          Vector3f top_left(x, y + 1, z + 1);
-          Vector3f top_right(x + 1, y + 1, z + 1);
-
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-        }
-
-        if (east_id == 0) {
-          Vector3f bottom_left(x + 1, y, z + 1);
-          Vector3f bottom_right(x + 1, y, z);
-          Vector3f top_left(x + 1, y + 1, z + 1);
-          Vector3f top_right(x + 1, y + 1, z);
-
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-        }
-
-        if (west_id == 0) {
           Vector3f bottom_left(x, y, z);
-          Vector3f bottom_right(x, y, z + 1);
-          Vector3f top_left(x, y + 1, z);
-          Vector3f top_right(x, y + 1, z + 1);
+          Vector3f bottom_right(x, y, z);
+          Vector3f top_left(x, y, z);
+          Vector3f top_right(x, y, z);
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          // TODO: Check actual block model for occlusion, just use air for now
+          if (above_id == 0) {
+            // Render the top face because this block is visible from above
+            // TODO: Get block model elements and render those instead of full block
+            Vector3f bottom_left(x, y + 1, z);
+            Vector3f bottom_right(x, y + 1, z + 1);
+            Vector3f top_left(x + 1, y + 1, z);
+            Vector3f top_right(x + 1, y + 1, z + 1);
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          }
+
+          if (below_id == 0) {
+            Vector3f bottom_left(x + 1, y, z);
+            Vector3f bottom_right(x + 1, y, z + 1);
+            Vector3f top_left(x, y, z);
+            Vector3f top_right(x, y, z + 1);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          }
+
+          if (north_id == 0) {
+            Vector3f bottom_left(x + 1, y, z);
+            Vector3f bottom_right(x, y, z);
+            Vector3f top_left(x + 1, y + 1, z);
+            Vector3f top_right(x, y + 1, z);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          }
+
+          if (south_id == 0) {
+            Vector3f bottom_left(x, y, z + 1);
+            Vector3f bottom_right(x + 1, y, z + 1);
+            Vector3f top_left(x, y + 1, z + 1);
+            Vector3f top_right(x + 1, y + 1, z + 1);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          }
+
+          if (east_id == 0) {
+            Vector3f bottom_left(x + 1, y, z + 1);
+            Vector3f bottom_right(x + 1, y, z);
+            Vector3f top_left(x + 1, y + 1, z + 1);
+            Vector3f top_right(x + 1, y + 1, z);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          }
+
+          if (west_id == 0) {
+            Vector3f bottom_left(x, y, z);
+            Vector3f bottom_right(x, y, z + 1);
+            Vector3f top_left(x, y + 1, z);
+            Vector3f top_right(x, y + 1, z + 1);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          }
         }
       }
     }
-  }
 
-  if (vertex_count > 0) {
-    section->chunks[chunk_y].mesh =
-        renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
-  } else {
-    section->chunks[chunk_y].mesh.vertex_count = 0;
-  }
+    if (vertex_count > 0) {
+      meshes[chunk_y] = renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
+    } else {
+      meshes[chunk_y].vertex_count = 0;
+    }
 
-  // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
-  // useful.
-  trans_arena->current = arena_snapshot;
+    // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
+    // useful.
+    trans_arena->current = arena_snapshot;
+  }
+}
+
+void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
+  u32 x_index = world.GetChunkCacheIndex(chunk_x);
+  u32 z_index = world.GetChunkCacheIndex(chunk_z);
+
+  ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
+
+  section_info->loaded = true;
+
+  world.build_queue[world.build_queue_count++] = {chunk_x, chunk_z};
 }
 
 void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   s32 chunk_x = (s32)std::floor(x / 16.0f);
   s32 chunk_z = (s32)std::floor(z / 16.0f);
 
-  ChunkSection* section = &chunks[GetChunkCacheIndex(chunk_x)][GetChunkCacheIndex(chunk_z)];
-
-  // It should be in the loaded cache otherwise the server is sending about an unloaded chunk.
-  assert(section->x == chunk_x);
-  assert(section->z == chunk_z);
+  ChunkSection* section = &world.chunks[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
 
   s32 relative_x = x % 16;
   s32 relative_z = z % 16;
@@ -301,11 +394,13 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
 void GameState::FreeMeshes() {
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
+      RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+
       for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
-        RenderMesh* mesh = &this->chunks[chunk_z][chunk_x].chunks[chunk_y].mesh;
+        RenderMesh* mesh = meshes + chunk_y;
+
         if (mesh->vertex_count > 0) {
           renderer->FreeMesh(mesh);
-          mesh->vertex_count = 0;
         }
       }
     }
@@ -511,6 +606,7 @@ bool GameState::LoadBlocks() {
 
     // Restore the .json to filename
     files[i].name[strlen(files[i].name) - 5] = '.';
+    free(root);
 
     // Pop the current file off the stack allocator
     trans_arena->current = arena_snapshot;
