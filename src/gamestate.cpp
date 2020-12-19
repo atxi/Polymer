@@ -9,6 +9,14 @@
 #include <cstdio>
 #include <cstring>
 
+#ifdef near
+#undef near
+#endif
+
+#ifdef far
+#undef far
+#endif
+
 namespace polymer {
 
 struct ChunkVertex {
@@ -36,6 +44,10 @@ GameState::GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryAr
       }
     }
   }
+
+  camera.near = 0.1f;
+  camera.far = 256.0f;
+  camera.fov = Radians(80.0f);
 }
 
 void GameState::Update() {
@@ -63,15 +75,18 @@ void GameState::Update() {
   }
 
   // Render game world
-  // TODO: get frustum from camera
-  Vector3f position(-20, 69, -35);
-  Vector3f world_up(0, 1, 0);
-  Vector3f forward = Normalize(Vector3f(-17, 69, -36) - position);
-  Vector3f side = Normalize(forward.Cross(world_up));
-  Vector3f up = Normalize(side.Cross(forward));
+  camera.aspect_ratio = (float)renderer->swap_extent.width / renderer->swap_extent.height;
 
-  Frustum frustum(position, forward, 0.1f, 256.0f, Radians(80.0f),
-                  (float)renderer->swap_extent.width / renderer->swap_extent.height, up, side);
+  UniformBufferObject ubo;
+  void* data = nullptr;
+
+  ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+
+  vmaMapMemory(renderer->allocator, renderer->uniform_allocations[renderer->current_frame], &data);
+  memcpy(data, ubo.mvp.data, sizeof(UniformBufferObject));
+  vmaUnmapMemory(renderer->allocator, renderer->uniform_allocations[renderer->current_frame]);
+
+  Frustum frustum = camera.GetViewFrustum();
 
   VkDeviceSize offsets[] = {0};
 
@@ -101,6 +116,12 @@ void GameState::Update() {
       }
     }
   }
+}
+
+void GameState::OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch) {
+  camera.position = position + Vector3f(0, 1.8f, 0);
+  camera.yaw = Radians(yaw + 90.0f);
+  camera.pitch = -Radians(pitch);
 }
 
 void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {

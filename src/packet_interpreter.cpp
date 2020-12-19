@@ -84,6 +84,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     connection->SendTeleportConfirm(teleport_id);
     // TODO: Relative/Absolute
     printf("Position: (%f, %f, %f)\n", x, y, z);
+    game->OnPlayerPositionAndLook(Vector3f((float)x, (float)y, (float)z), yaw, pitch);
   } break;
   case PlayProtocol::UpdateHealth: {
     float health = rb->ReadFloat();

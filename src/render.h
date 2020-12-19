@@ -9,12 +9,16 @@
 #include "vk_mem_alloc.h"
 
 #include "buffer.h"
+#include "math.h"
 #include "memory.h"
-#include "types.h"
 
 namespace polymer {
 
 constexpr size_t kMaxFramesInFlight = 2;
+
+struct UniformBufferObject {
+  mat4 mvp;
+};
 
 struct QueueFamilyIndices {
   u32 graphics;
@@ -104,7 +108,6 @@ struct VulkanRenderer {
 
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
-  void UpdateUniforms();
 
   void CreateDepthBuffer();
   void BeginOneShotCommandBuffer();

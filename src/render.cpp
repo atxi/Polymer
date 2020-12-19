@@ -3,7 +3,6 @@
 #include "math.h"
 
 #include <cassert>
-#include <chrono>
 #include <cstdio>
 
 #pragma warning(disable : 26812) // disable unscoped enum warning
@@ -22,10 +21,6 @@ constexpr bool kEnableValidationLayers = true;
 struct Vertex {
   Vector3f pos;
   Vector3f color;
-};
-
-struct UniformBufferObject {
-  mat4 mvp;
 };
 
 static VkBool32 VKAPI_PTR DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -231,8 +226,6 @@ bool VulkanRenderer::BeginFrame() {
   render_pass_info.clearValueCount = polymer_array_count(clears);
   render_pass_info.pClearValues = clears;
 
-  UpdateUniforms();
-
   vkCmdBeginRenderPass(command_buffers[current_frame], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
   {
     vkCmdBindPipeline(command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
@@ -303,32 +296,6 @@ void VulkanRenderer::Render() {
   }
 
   current_frame = (current_frame + 1) % kMaxFramesInFlight;
-}
-
-void VulkanRenderer::UpdateUniforms() {
-  static auto start_time = std::chrono::high_resolution_clock::now();
-
-  auto current_time = std::chrono::high_resolution_clock::now();
-
-  float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-
-  UniformBufferObject ubo;
-
-  // mat4 rotation = Rotate(mat4::Identity(), time * Radians(90.0f), Vector3f(0, 1, 0));
-  // mat4 translation = Translate(mat4::Identity(), Vector3f(-8, 0, -8));
-  mat4 model = mat4::Identity();
-
-  mat4 view = LookAt(Vector3f(-20, 69, -35), Vector3f(-17, 69, -36), Vector3f(0, 1, 0));
-  // mat4 view = LookAt(Vector3f(0, 66, 20), Vector3f(0, 64, 0), Vector3f(0, 1, 0));
-  mat4 proj = Perspective(Radians(80.0f), (float)swap_extent.width / swap_extent.height, 0.1f, 256.0f);
-
-  ubo.mvp = proj * view * model;
-
-  void* data = nullptr;
-
-  vmaMapMemory(allocator, uniform_allocations[current_frame], &data);
-  memcpy(data, ubo.mvp.data, sizeof(UniformBufferObject));
-  vmaUnmapMemory(allocator, uniform_allocations[current_frame]);
 }
 
 u32 VulkanRenderer::FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties) {

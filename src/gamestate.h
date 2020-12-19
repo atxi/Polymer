@@ -1,6 +1,7 @@
 #ifndef POLYMER_GAMESTATE_H_
 #define POLYMER_GAMESTATE_H_
 
+#include "camera.h"
 #include "connection.h"
 #include "render.h"
 #include "types.h"
@@ -65,14 +66,14 @@ struct GameState {
   VulkanRenderer* renderer;
 
   Connection connection;
+  Camera camera;
+  World world;
 
   size_t block_name_count = 0;
   char block_names[32768][32];
 
   size_t block_state_count = 0;
   BlockState block_states[32768];
-
-  World world;
 
   GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena);
 
@@ -81,6 +82,7 @@ struct GameState {
   void OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid);
   void OnChunkLoad(s32 chunk_x, s32 chunk_z);
   void OnChunkUnload(s32 chunk_x, s32 chunk_z);
+  void OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch);
 
   void BuildChunkMesh(s32 chunk_x, s32 chunk_z);
 
