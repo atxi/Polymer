@@ -229,6 +229,26 @@ void GameState::BuildChunkMesh(s32 chunk_x, s32 chunk_z) {
       }
     }
 
+    if (chunk_y < 16) {
+      // Load above blocks
+      for (s64 z = 0; z < 16; ++z) {
+        for (s64 x = 0; x < 16; ++x) {
+          size_t index = (size_t)(17 * 18 * 18 + z * 18 + x);
+          bordered_chunk[index] = section->chunks[chunk_y + 1].blocks[0][z][x];
+        }
+      }
+    }
+
+    if (chunk_y > 0) {
+      // Load below blocks
+      for (s64 z = 0; z < 16; ++z) {
+        for (s64 x = 0; x < 16; ++x) {
+          size_t index = (size_t)(z * 18 + x);
+          bordered_chunk[index] = section->chunks[chunk_y - 1].blocks[15][z][x];
+        }
+      }
+    }
+
     Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f);
 
     for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
