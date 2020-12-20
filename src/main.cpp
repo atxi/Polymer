@@ -27,6 +27,11 @@ constexpr u32 kHeight = 720;
 
 VulkanRenderer vk_render;
 
+static GameState* g_game = nullptr;
+static MemoryArena* g_trans_arena = nullptr;
+
+static bool g_display_cursor = false;
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch (msg) {
   case WM_SIZE: {
@@ -37,6 +42,41 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   } break;
   case WM_DESTROY: {
     PostQuitMessage(0);
+  } break;
+  case WM_KEYDOWN: {
+    if (wParam == 'T' || wParam == VK_ESCAPE) {
+      g_display_cursor = !g_display_cursor;
+
+      ShowCursor(g_display_cursor);
+    }
+  } break;
+  case WM_INPUT: {
+    u32 size = 0;
+
+    GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &size, sizeof(RAWINPUTHEADER));
+
+    RAWINPUT* raw = (RAWINPUT*)g_trans_arena->Allocate(size);
+
+    if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, raw, &size, sizeof(RAWINPUTHEADER)) != size) {
+      fprintf(stderr, "Failed to read raw input data.\n");
+      break;
+    }
+
+    if (raw->header.dwType == RIM_TYPEMOUSE) {
+      s32 x = raw->data.mouse.lLastX;
+      s32 y = raw->data.mouse.lLastY;
+
+      if (!g_display_cursor) {
+        g_game->OnWindowMouseMove(x, y);
+
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+        POINT point = {(rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2};
+
+        ClientToScreen(hwnd, &point);
+        SetCursorPos(point.x, point.y);
+      }
+    }
   } break;
   default:
     return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -56,6 +96,8 @@ int run() {
   MemoryArena perm_arena(perm_memory, kPermanentSize);
   MemoryArena trans_arena(trans_memory, kTransientSize);
 
+  g_trans_arena = &trans_arena;
+
   vk_render.trans_arena = &trans_arena;
 
   printf("Polymer\n");
@@ -64,6 +106,7 @@ int run() {
   PacketInterpreter interpreter(game);
   Connection* connection = &game->connection;
 
+  g_game = game;
   connection->interpreter = &interpreter;
 
 #if 1
@@ -148,6 +191,17 @@ int run() {
 
   using ms_float = std::chrono::duration<float, std::milli>;
 
+  ShowCursor(FALSE);
+
+  RAWINPUTDEVICE mouse_device = {};
+
+  mouse_device.usUsagePage = 0x01; // Generic
+  mouse_device.usUsage = 0x02; // Mouse
+
+  if (RegisterRawInputDevices(&mouse_device, 1, sizeof(RAWINPUTDEVICE)) == FALSE) {
+    fprintf(stderr, "Failed to register raw mouse input.\n");
+  }
+
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -158,6 +212,7 @@ int run() {
     if (result == Connection::TickResult::ConnectionClosed) {
       fprintf(stderr, "Connection closed by server.\n");
     }
+
     if (vk_render.BeginFrame()) {
       game->Update();
       vk_render.Render();

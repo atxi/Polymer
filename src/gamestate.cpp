@@ -118,6 +118,20 @@ void GameState::Update() {
   }
 }
 
+void GameState::OnWindowMouseMove(s32 dx, s32 dy) {
+  const float kSensitivity = 0.005f;
+  const float kMaxPitch = Radians(89.0f);
+
+  camera.yaw += dx * kSensitivity;
+  camera.pitch -= dy * kSensitivity;
+
+  if (camera.pitch > kMaxPitch) {
+    camera.pitch = kMaxPitch;
+  } else if (camera.pitch < -kMaxPitch) {
+    camera.pitch = -kMaxPitch;
+  }
+}
+
 void GameState::OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch) {
   camera.position = position + Vector3f(0, 1.8f, 0);
   camera.yaw = Radians(yaw + 90.0f);

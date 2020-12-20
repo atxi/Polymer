@@ -84,6 +84,8 @@ struct GameState {
   void OnChunkUnload(s32 chunk_x, s32 chunk_z);
   void OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch);
 
+  void OnWindowMouseMove(s32 dx, s32 dy);
+
   void BuildChunkMesh(s32 chunk_x, s32 chunk_z);
 
   void Update();
