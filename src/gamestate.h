@@ -42,6 +42,7 @@ struct ChunkSectionInfo {
 };
 
 struct ChunkSection {
+  ChunkSectionInfo* info;
   Chunk chunks[16];
 };
 
@@ -57,6 +58,45 @@ struct World {
 
   inline u32 GetChunkCacheIndex(s32 v) {
     return ((v % (s32)kChunkCacheSize) + (s32)kChunkCacheSize) % (s32)kChunkCacheSize;
+  }
+};
+
+struct ChunkBuildContext {
+  s32 chunk_x;
+  s32 chunk_z;
+
+  u32 x_index = 0;
+  u32 z_index = 0;
+
+  ChunkSection* section = nullptr;
+  ChunkSection* east_section = nullptr;
+  ChunkSection* west_section = nullptr;
+  ChunkSection* north_section = nullptr;
+  ChunkSection* south_section = nullptr;
+
+  ChunkBuildContext(s32 chunk_x, s32 chunk_z) : chunk_x(chunk_x), chunk_z(chunk_z) {}
+
+  bool IsBuildable() {
+    return east_section->info->loaded && west_section->info->loaded && north_section->info->loaded &&
+           south_section->info->loaded;
+  }
+
+  bool GetNeighbors(World* world) {
+    x_index = world->GetChunkCacheIndex(chunk_x);
+    z_index = world->GetChunkCacheIndex(chunk_z);
+
+    u32 xeast_index = world->GetChunkCacheIndex(chunk_x + 1);
+    u32 xwest_index = world->GetChunkCacheIndex(chunk_x - 1);
+    u32 znorth_index = world->GetChunkCacheIndex(chunk_z - 1);
+    u32 zsouth_index = world->GetChunkCacheIndex(chunk_z + 1);
+
+    section = &world->chunks[z_index][x_index];
+    east_section = &world->chunks[z_index][xeast_index];
+    west_section = &world->chunks[z_index][xwest_index];
+    north_section = &world->chunks[znorth_index][x_index];
+    south_section = &world->chunks[zsouth_index][x_index];
+
+    return IsBuildable();
   }
 };
 
@@ -86,7 +126,8 @@ struct GameState {
 
   void OnWindowMouseMove(s32 dx, s32 dy);
 
-  void BuildChunkMesh(s32 chunk_x, s32 chunk_z);
+  void BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z);
+  void BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z);
 
   void Update();
 
