@@ -46,7 +46,7 @@ struct ChunkSection {
   Chunk chunks[16];
 };
 
-constexpr size_t kChunkCacheSize = 24;
+constexpr size_t kChunkCacheSize = 32;
 struct World {
   // Store the chunk data separately to make render iteration faster
   ChunkSection chunks[kChunkCacheSize][kChunkCacheSize];
@@ -134,6 +134,7 @@ struct GameState {
   void OnChunkLoad(s32 chunk_x, s32 chunk_z);
   void OnChunkUnload(s32 chunk_x, s32 chunk_z);
   void OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch);
+  void OnDimensionChange();
 
   void OnWindowMouseMove(s32 dx, s32 dy);
 

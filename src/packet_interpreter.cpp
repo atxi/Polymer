@@ -117,6 +117,9 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     game->OnBlockChange(x, y, z, (u32)new_bid);
   } break;
+  case PlayProtocol::Respawn: {
+    game->OnDimensionChange();
+  } break;
   case PlayProtocol::MultiBlockChange: {
     u64 xzy = rb->ReadU64();
     bool inverse = rb->ReadU8();
@@ -260,18 +263,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
             }
           }
         }
-
-        if (chunk_x == 11 && chunk_y == 4 && chunk_z == 21) {
-          u64 x = chunk_x * 16LL + 7;  // 183
-          u64 y = chunk_y * 16 + 3;    // 67
-          u64 z = chunk_z * 16LL + 10; // 346
-
-          size_t index = 3 * 16 * 16 + 10 * 16 + 7;
-          u32 block_state_id = chunk[index];
-          BlockState* state = game->block_states + block_state_id;
-
-          printf("Block at %llu, %llu, %llu - %s\n", x, y, z, state->name);
-        }
       }
 
       // Delay the chunk load call until the entire section is loaded.
@@ -283,12 +274,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     rb->read_offset = new_offset;
     u64 block_entity_count;
     rb->ReadVarInt(&block_entity_count);
-
-#if 0
-    if (block_entity_count > 0) {
-      printf("Block entity count: %llu in chunk (%d, %d)\n", block_entity_count, chunk_x, chunk_z);
-    }
-#endif
   } break;
   default:
     break;

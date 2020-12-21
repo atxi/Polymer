@@ -434,6 +434,29 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z)
   }
 }
 
+void GameState::OnDimensionChange() {
+  for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
+    for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
+      ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
+      RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+
+      section_info->loaded = false;
+
+      for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+        RenderMesh* mesh = meshes + chunk_y;
+
+        if (mesh->vertex_count > 0) {
+          renderer->FreeMesh(mesh);
+        }
+
+        mesh->vertex_count = 0;
+      }
+    }
+  }
+
+  world.build_queue_count = 0;
+}
+
 void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   u32 x_index = world.GetChunkCacheIndex(chunk_x);
   u32 z_index = world.GetChunkCacheIndex(chunk_z);
@@ -509,6 +532,8 @@ void GameState::FreeMeshes() {
         if (mesh->vertex_count > 0) {
           renderer->FreeMesh(mesh);
         }
+
+        mesh->vertex_count = 0;
       }
     }
   }
