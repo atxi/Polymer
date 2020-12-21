@@ -8,6 +8,14 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #include "vk_mem_alloc.h"
 
+#ifdef near
+#undef near
+#endif
+
+#ifdef far
+#undef far
+#endif
+
 #include "buffer.h"
 #include "math.h"
 #include "memory.h"

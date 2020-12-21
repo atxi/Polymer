@@ -6,13 +6,6 @@
 #include <cmath>
 #include <cstring>
 
-#ifdef near
-#undef near
-#endif
-#ifdef far
-#undef far
-#endif
-
 constexpr float kPi = 3.14159265f;
 
 namespace polymer {

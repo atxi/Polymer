@@ -33,7 +33,7 @@ char* ZipArchive::ReadFile(MemoryArena* arena, const char* filename, size_t* siz
       }
     }
   }
-  
+
   return nullptr;
 }
 
@@ -50,8 +50,10 @@ ZipArchiveElement* ZipArchive::ListFiles(MemoryArena* arena, const char* search,
   size_t match_count = 0;
 
   for (unsigned int i = 0; i < archive_count; ++i) {
-    if (!mz_zip_reader_file_stat(&archive, i, &stat)) continue;
-    if (mz_zip_reader_is_file_a_directory(&archive, i)) continue;
+    if (!mz_zip_reader_file_stat(&archive, i, &stat))
+      continue;
+    if (mz_zip_reader_is_file_a_directory(&archive, i))
+      continue;
 
     const char* current = stat.m_filename;
 

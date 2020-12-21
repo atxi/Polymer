@@ -13,7 +13,6 @@ struct ZipArchiveElement {
 
 struct ZipArchive {
   mz_zip_archive archive;
-  bool open;
 
   bool Open(const char* path);
   void Close();
@@ -22,6 +21,6 @@ struct ZipArchive {
   ZipArchiveElement* ListFiles(MemoryArena* arena, const char* search, size_t* count);
 };
 
-}
+} // namespace polymer
 
 #endif

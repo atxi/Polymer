@@ -13,7 +13,6 @@
 #include "miniz.h"
 
 #define WIN32_LEAN_AND_MEAN
-#include <WS2tcpip.h>
 #include <Windows.h>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -196,7 +195,7 @@ int run() {
   RAWINPUTDEVICE mouse_device = {};
 
   mouse_device.usUsagePage = 0x01; // Generic
-  mouse_device.usUsage = 0x02; // Mouse
+  mouse_device.usUsage = 0x02;     // Mouse
 
   if (RegisterRawInputDevices(&mouse_device, 1, sizeof(RAWINPUTDEVICE)) == FALSE) {
     fprintf(stderr, "Failed to register raw mouse input.\n");

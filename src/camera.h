@@ -15,7 +15,7 @@ struct Camera {
   float near;
   float far;
 
-  mat4 GetViewMatrix() {
+  inline mat4 GetViewMatrix() {
     static const Vector3f kWorldUp(0, 1, 0);
 
     Vector3f front(std::cos(yaw) * std::cos(pitch), std::sin(pitch), std::sin(yaw) * std::cos(pitch));
@@ -23,11 +23,11 @@ struct Camera {
     return LookAt(position, position + front, kWorldUp);
   }
 
-  mat4 GetProjectionMatrix() {
+  inline mat4 GetProjectionMatrix() {
     return Perspective(fov, aspect_ratio, near, far);
   }
 
-  Frustum GetViewFrustum() {
+  inline Frustum GetViewFrustum() {
     static const Vector3f kWorldUp(0, 1, 0);
 
     Vector3f front(std::cos(yaw) * std::cos(pitch), std::sin(pitch), std::sin(yaw) * std::cos(pitch));

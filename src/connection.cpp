@@ -9,8 +9,9 @@
 #include <thread>
 
 #define WIN32_LEAN_AND_MEAN
-#include <WS2tcpip.h>
 #include <Windows.h>
+
+#include <WS2tcpip.h>
 
 namespace polymer {
 

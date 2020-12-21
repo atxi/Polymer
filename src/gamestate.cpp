@@ -9,14 +9,6 @@
 #include <cstdio>
 #include <cstring>
 
-#ifdef near
-#undef near
-#endif
-
-#ifdef far
-#undef far
-#endif
-
 namespace polymer {
 
 struct ChunkVertex {
@@ -251,8 +243,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
         }
 
         size_t above_index = (chunk_y + 2) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
-        size_t below_index = (chunk_y) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
-        size_t north_index = (chunk_y + 1) * 18 * 18 + (chunk_z) * 18 + (chunk_x + 1);
+        size_t below_index = (chunk_y)*18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+        size_t north_index = (chunk_y + 1) * 18 * 18 + (chunk_z)*18 + (chunk_x + 1);
         size_t south_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 2) * 18 + (chunk_x + 1);
         size_t east_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 2);
         size_t west_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x);
@@ -439,7 +431,8 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   section->chunks[chunk_y].blocks[relative_y][relative_z][relative_x] = (u32)new_bid;
 
   if (new_bid != 0) {
-    ChunkSectionInfo* section_info = &world.chunk_infos[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
+    ChunkSectionInfo* section_info =
+        &world.chunk_infos[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
     section_info->bitmask |= (1 << (y / 16));
   }
 
