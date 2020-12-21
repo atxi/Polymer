@@ -15,6 +15,10 @@ struct Camera {
   float near;
   float far;
 
+  inline Vector3f GetForward() {
+    return Vector3f(std::cos(yaw) * std::cos(pitch), std::sin(pitch), std::sin(yaw) * std::cos(pitch));
+  }
+
   inline mat4 GetViewMatrix() {
     static const Vector3f kWorldUp(0, 1, 0);
 

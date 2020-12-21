@@ -28,6 +28,7 @@ VulkanRenderer vk_render;
 
 static GameState* g_game = nullptr;
 static MemoryArena* g_trans_arena = nullptr;
+static InputState g_input = {};
 
 static bool g_display_cursor = false;
 
@@ -47,6 +48,39 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       g_display_cursor = !g_display_cursor;
 
       ShowCursor(g_display_cursor);
+    }
+
+    if (wParam == 'W') {
+      g_input.forward = true;
+    } else if (wParam == 'S') {
+      g_input.backward = true;
+    } else if (wParam == 'A') {
+      g_input.left = true;
+    } else if (wParam == 'D') {
+      g_input.right = true;
+    } else if (wParam == VK_SPACE) {
+      g_input.climb = true;
+    } else if (wParam == VK_SHIFT) {
+      g_input.fall = true;
+    } else if (wParam == VK_CONTROL) {
+      g_input.sprint = true;
+    }
+  } break;
+  case WM_KEYUP: {
+    if (wParam == 'W') {
+      g_input.forward = false;
+    } else if (wParam == 'S') {
+      g_input.backward = false;
+    } else if (wParam == 'A') {
+      g_input.left = false;
+    } else if (wParam == 'D') {
+      g_input.right = false;
+    } else if (wParam == VK_SPACE) {
+      g_input.climb = false;
+    } else if (wParam == VK_SHIFT) {
+      g_input.fall = false;
+    } else if (wParam == VK_CONTROL) {
+      g_input.sprint = false;
     }
   } break;
   case WM_INPUT: {
@@ -201,6 +235,8 @@ int run() {
     fprintf(stderr, "Failed to register raw mouse input.\n");
   }
 
+  float frame_time = 0.0f;
+
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -213,7 +249,7 @@ int run() {
     }
 
     if (vk_render.BeginFrame()) {
-      game->Update();
+      game->Update(frame_time / 1000.0f, &g_input);
       vk_render.Render();
     }
 
@@ -229,7 +265,7 @@ int run() {
 
     auto end = std::chrono::high_resolution_clock::now();
 
-    float frame_time = std::chrono::duration_cast<ms_float>(end - start).count();
+    frame_time = std::chrono::duration_cast<ms_float>(end - start).count();
 
     total_time += frame_time;
     average_frame_time = average_frame_time * 0.9f + frame_time * 0.1f;

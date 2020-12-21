@@ -100,6 +100,17 @@ struct ChunkBuildContext {
   }
 };
 
+// TODO: Make this more advanced
+struct InputState {
+  bool forward;
+  bool backward;
+  bool left;
+  bool right;
+  bool climb;
+  bool fall;
+  bool sprint;
+};
+
 struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
@@ -129,7 +140,7 @@ struct GameState {
   void BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z);
   void BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z);
 
-  void Update();
+  void Update(float dt, InputState* input);
 
   void FreeMeshes();
 };

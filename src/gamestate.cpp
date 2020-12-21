@@ -47,7 +47,50 @@ GameState::GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryAr
   camera.fov = Radians(80.0f);
 }
 
-void GameState::Update() {
+void GameState::Update(float dt, InputState* input) {
+  const float kMoveSpeed = 20.0f;
+  const float kSprintModifier = 1.3f;
+
+  Vector3f movement;
+
+  if (input->forward) {
+    movement += camera.GetForward();
+  }
+
+  if (input->backward) {
+    movement -= camera.GetForward();
+  }
+
+  if (input->left) {
+    Vector3f forward = camera.GetForward();
+    Vector3f right = Normalize(forward.Cross(Vector3f(0, 1, 0)));
+    movement -= right;
+  }
+
+  if (input->right) {
+    Vector3f forward = camera.GetForward();
+    Vector3f right = Normalize(forward.Cross(Vector3f(0, 1, 0)));
+    movement += right;
+  }
+
+  if (input->climb) {
+    movement += Vector3f(0, 1, 0);
+  }
+
+  if (input->fall) {
+    movement -= Vector3f(0, 1, 0);
+  }
+
+  if (movement.LengthSq() > 0) {
+    float modifier = kMoveSpeed;
+
+    if (input->sprint) {
+      modifier *= kSprintModifier;
+    }
+
+    camera.position += Normalize(movement) * (dt * modifier);
+  }
+
   // Process build queue
   for (size_t i = 0; i < world.build_queue_count;) {
     s32 chunk_x = world.build_queue[i].x;
@@ -154,7 +197,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   RenderMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
 
   u32* bordered_chunk = (u32*)trans_arena->Allocate(sizeof(u32) * 18 * 18 * 18);
-  memset(bordered_chunk, 0, sizeof(u32) * 18 * 18 * 18);
+  memset(bordered_chunk, 1, sizeof(u32) * 18 * 18 * 18);
 
   ChunkSection* section = ctx->section;
   ChunkSection* east_section = ctx->east_section;
@@ -179,7 +222,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   // Load west blocks
   for (s64 y = 0; y < 16; ++y) {
     for (s64 z = 0; z < 16; ++z) {
-      size_t index = (size_t)(y * 18 * 18 + z * 18 + 0);
+      size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 0);
       bordered_chunk[index] = west_section->chunks[chunk_y].blocks[y][z][15];
     }
   }
@@ -187,7 +230,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   // Load east blocks
   for (s64 y = 0; y < 16; ++y) {
     for (s64 z = 0; z < 16; ++z) {
-      size_t index = (size_t)(y * 18 * 18 + z * 18 + 17);
+      size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 17);
       bordered_chunk[index] = east_section->chunks[chunk_y].blocks[y][z][0];
     }
   }
@@ -195,7 +238,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   // Load north blocks
   for (s64 y = 0; y < 16; ++y) {
     for (s64 x = 0; x < 16; ++x) {
-      size_t index = (size_t)(y * 18 * 18 + 17 * 18 + x);
+      size_t index = (size_t)((y + 1) * 18 * 18 + (x + 1));
       bordered_chunk[index] = north_section->chunks[chunk_y].blocks[y][15][x];
     }
   }
@@ -203,7 +246,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   // Load south blocks
   for (s64 y = 0; y < 16; ++y) {
     for (s64 x = 0; x < 16; ++x) {
-      size_t index = (size_t)(y * 18 * 18 + x);
+      size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + (x + 1));
       bordered_chunk[index] = south_section->chunks[chunk_y].blocks[y][0][x];
     }
   }
@@ -212,7 +255,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
     // Load above blocks
     for (s64 z = 0; z < 16; ++z) {
       for (s64 x = 0; x < 16; ++x) {
-        size_t index = (size_t)(17 * 18 * 18 + z * 18 + x);
+        size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + (x + 1));
         bordered_chunk[index] = section->chunks[chunk_y + 1].blocks[0][z][x];
       }
     }
@@ -222,7 +265,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
     // Load below blocks
     for (s64 z = 0; z < 16; ++z) {
       for (s64 x = 0; x < 16; ++x) {
-        size_t index = (size_t)(z * 18 + x);
+        size_t index = (size_t)((z + 1) * 18 + (x + 1));
         bordered_chunk[index] = section->chunks[chunk_y - 1].blocks[15][z][x];
       }
     }
@@ -230,10 +273,10 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
 
   Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f);
 
-  for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
-    for (size_t chunk_z = 0; chunk_z < 16; ++chunk_z) {
-      for (size_t chunk_x = 0; chunk_x < 16; ++chunk_x) {
-        size_t index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
+  for (size_t relative_y = 0; relative_y < 16; ++relative_y) {
+    for (size_t relative_z = 0; relative_z < 16; ++relative_z) {
+      for (size_t relative_x = 0; relative_x < 16; ++relative_x) {
+        size_t index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
 
         u32 bid = bordered_chunk[index];
 
@@ -242,12 +285,12 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           continue;
         }
 
-        size_t above_index = (chunk_y + 2) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
-        size_t below_index = (chunk_y)*18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 1);
-        size_t north_index = (chunk_y + 1) * 18 * 18 + (chunk_z)*18 + (chunk_x + 1);
-        size_t south_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 2) * 18 + (chunk_x + 1);
-        size_t east_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x + 2);
-        size_t west_index = (chunk_y + 1) * 18 * 18 + (chunk_z + 1) * 18 + (chunk_x);
+        size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
+        size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
+        size_t north_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
+        size_t south_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
+        size_t east_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
+        size_t west_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
 
         u32 above_id = bordered_chunk[above_index];
         u32 below_id = bordered_chunk[below_index];
@@ -256,14 +299,9 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
         u32 east_id = bordered_chunk[east_index];
         u32 west_id = bordered_chunk[west_index];
 
-        float x = (float)chunk_x;
-        float y = (float)chunk_y;
-        float z = (float)chunk_z;
-
-        Vector3f bottom_left(x, y, z);
-        Vector3f bottom_right(x, y, z);
-        Vector3f top_left(x, y, z);
-        Vector3f top_right(x, y, z);
+        float x = (float)relative_x;
+        float y = (float)relative_y;
+        float z = (float)relative_z;
 
         // TODO: Check actual block model for occlusion, just use air for now
         if (above_id == 0) {
