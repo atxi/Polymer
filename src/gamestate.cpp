@@ -2,6 +2,7 @@
 
 #include "json.h"
 #include "math.h"
+#include "stb_image.h"
 #include "zip_archive.h"
 
 #include <cassert>
@@ -11,16 +12,13 @@
 
 namespace polymer {
 
-struct ChunkVertex {
-  Vector3f position;
-  Vector3f color;
-};
-
-inline void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, const Vector3f& position) {
+inline void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, const Vector3f& position,
+                       const Vector2f& uv) {
   arena->Allocate(sizeof(ChunkVertex), 1);
 
   vertices[*count].position = position;
-  vertices[*count].color = Vector3f((rand() % 255) / 255.0f, (rand() % 255) / 255.0f, (rand() % 255) / 255.0f);
+  vertices[*count].texcoord = uv;
+  vertices[*count].texture_id = 86; // Dirt
 
   ++*count;
 }
@@ -312,13 +310,18 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           Vector3f top_left(x + 1, y + 1, z);
           Vector3f top_right(x + 1, y + 1, z + 1);
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          Vector2f bl_uv(0, 0);
+          Vector2f br_uv(0, 1);
+          Vector2f tr_uv(1, 1);
+          Vector2f tl_uv(1, 0);
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
         }
 
         if (below_id == 0) {
@@ -327,13 +330,18 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           Vector3f top_left(x, y, z);
           Vector3f top_right(x, y, z + 1);
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          Vector2f bl_uv(1, 1);
+          Vector2f br_uv(1, 0);
+          Vector2f tr_uv(0, 0);
+          Vector2f tl_uv(0, 1);
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
         }
 
         if (north_id == 0) {
@@ -342,13 +350,18 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           Vector3f top_left(x + 1, y + 1, z);
           Vector3f top_right(x, y + 1, z);
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          Vector2f bl_uv(0, 1);
+          Vector2f br_uv(1, 1);
+          Vector2f tr_uv(1, 0);
+          Vector2f tl_uv(0, 0);
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
         }
 
         if (south_id == 0) {
@@ -357,13 +370,18 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           Vector3f top_left(x, y + 1, z + 1);
           Vector3f top_right(x + 1, y + 1, z + 1);
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          Vector2f bl_uv(0, 1);
+          Vector2f br_uv(1, 1);
+          Vector2f tr_uv(1, 0);
+          Vector2f tl_uv(0, 0);
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
         }
 
         if (east_id == 0) {
@@ -372,13 +390,18 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           Vector3f top_left(x + 1, y + 1, z + 1);
           Vector3f top_right(x + 1, y + 1, z);
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          Vector2f bl_uv(0, 1);
+          Vector2f br_uv(1, 1);
+          Vector2f tr_uv(1, 0);
+          Vector2f tl_uv(0, 0);
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
         }
 
         if (west_id == 0) {
@@ -387,13 +410,18 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           Vector3f top_left(x, y + 1, z);
           Vector3f top_right(x, y + 1, z + 1);
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
+          Vector2f bl_uv(0, 1);
+          Vector2f br_uv(1, 1);
+          Vector2f tr_uv(1, 0);
+          Vector2f tl_uv(0, 0);
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+
+          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
+          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
         }
       }
     }
@@ -742,6 +770,26 @@ bool GameState::LoadBlocks() {
 
     // Pop the current file off the stack allocator
     trans_arena->current = arena_snapshot;
+  }
+
+  size_t texture_count = 0;
+  ZipArchiveElement* texture_files = zip.ListFiles(trans_arena, "assets/minecraft/textures/block/", &texture_count);
+  renderer->CreateTexture(16, 16, texture_count);
+  renderer->CreateDescriptorSetLayout();
+
+  for (size_t i = 0; i < texture_count; ++i) {
+    size_t size = 0;
+    u8* raw_image = (u8*)zip.ReadFile(trans_arena, texture_files[i].name, &size);
+    int width, height, channels;
+
+    // Could remove this allocation and free with global arena, but not really necessary since it's only done at
+    // startup.
+    stbi_uc* image = stbi_load_from_memory(raw_image, (int)size, &width, &height, &channels, STBI_rgb_alpha);
+
+    size_t texture_size = 16 * 16 * 4;
+    renderer->PushTexture(image, texture_size, i);
+
+    stbi_image_free(image);
   }
 
   zip.Close();

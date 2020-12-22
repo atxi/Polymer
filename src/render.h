@@ -28,6 +28,12 @@ struct UniformBufferObject {
   mat4 mvp;
 };
 
+struct ChunkVertex {
+  Vector3f position;
+  Vector2f texcoord;
+  u32 texture_id;
+};
+
 struct QueueFamilyIndices {
   u32 graphics;
   bool has_graphics;
@@ -99,12 +105,18 @@ struct VulkanRenderer {
   VmaAllocation depth_allocation;
   VkImageView depth_image_view;
 
+  VmaAllocation texture_allocation;
+  VkImage texture_image;
+  VkImageView texture_image_view;
+  VkSampler texture_sampler;
+
   size_t current_frame = 0;
   u32 current_image = 0;
   bool render_paused;
   bool invalid_swapchain;
 
   bool Initialize(HWND hwnd);
+  void RecreateSwapchain();
   bool BeginFrame();
 
   void Render();
@@ -114,15 +126,19 @@ struct VulkanRenderer {
   RenderMesh AllocateMesh(u8* data, size_t size, size_t count);
   void FreeMesh(RenderMesh* mesh);
 
+  void CreateDescriptorSetLayout();
+  void CreateTexture(size_t width, size_t height, size_t layers);
+  void PushTexture(u8* texture, size_t size, size_t index);
+
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
 
+  void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, u32 layer);
   void CreateDepthBuffer();
   void BeginOneShotCommandBuffer();
   void EndOneShotCommandBuffer();
   void CreateUniformBuffers();
   void CleanupSwapchain();
-  void RecreateSwapchain();
   void CreateSyncObjects();
   void CreateCommandBuffers();
   void CreateCommandPool();
@@ -130,7 +146,6 @@ private:
   void CreateRenderPass();
   void CreateDescriptorPool();
   void CreateDescriptorSets();
-  void CreateDescriptorSetLayout();
   void CreateGraphicsPipeline();
   VkShaderModule CreateShaderModule(SizedString code);
   void CreateImageViews();

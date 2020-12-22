@@ -142,13 +142,6 @@ int run() {
   g_game = game;
   connection->interpreter = &interpreter;
 
-#if 1
-  if (!game->LoadBlocks()) {
-    fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
-    return 1;
-  }
-#endif
-
   // Allocate mirrored ring buffers so they can always be inflated
   connection->read_buffer.size = kMirrorBufferSize;
   connection->read_buffer.data = AllocateMirroredBuffer(connection->read_buffer.size);
@@ -217,6 +210,13 @@ int run() {
 
   vk_render.Initialize(hwnd);
 
+#if 1
+  if (!game->LoadBlocks()) {
+    fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
+    return 1;
+  }
+#endif
+
   MSG msg = {};
   float total_time = 0.0f;
   float average_frame_time = 0.0f;
@@ -237,6 +237,7 @@ int run() {
 
   float frame_time = 0.0f;
 
+  vk_render.RecreateSwapchain();
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
 
