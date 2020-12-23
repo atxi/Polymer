@@ -10,16 +10,28 @@ namespace polymer {
 
 struct MemoryArena;
 
+struct RenderableFace {
+  u32 texture_id;
+  Vector2f uv_from;
+  Vector2f uv_to;
+};
+
+struct BlockElement {
+  RenderableFace faces[6];
+  Vector3f from;
+  Vector3f to;
+};
+
 struct BlockModel {
-  u32 m;
+  size_t element_count;
+  BlockElement elements[20];
 };
 
 struct BlockState {
   u32 id;
   char* name;
 
-  // Probably shouldn't be a pointer since BlockState should never be iterated over in the game
-  BlockModel* model;
+  BlockModel model;
   float x;
   float y;
   bool uvlock;

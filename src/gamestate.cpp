@@ -10,16 +10,19 @@
 #include <cstdio>
 #include <cstring>
 
+#include <unordered_map>
+
 namespace polymer {
 
 inline void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, const Vector3f& position,
-                       const Vector2f& uv) {
+                       const Vector2f& uv, u32 texture_id) {
   arena->Allocate(sizeof(ChunkVertex), 1);
 
   vertices[*count].position = position;
   vertices[*count].texcoord = uv;
-  //vertices[*count].texture_id = 86; // Dirt
-  vertices[*count].texture_id = 40; // Stone bricks
+  // vertices[*count].texture_id = 86; // Dirt
+  // vertices[*count].texture_id = 40; // Stone bricks
+  vertices[*count].texture_id = texture_id;
 
   ++*count;
 }
@@ -302,127 +305,187 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
         float y = (float)relative_y;
         float z = (float)relative_z;
 
+        BlockModel* model = &block_states[bid].model;
+
         // TODO: Check actual block model for occlusion, just use air for now
         if (above_id == 0) {
-          // Render the top face because this block is visible from above
-          // TODO: Get block model elements and render those instead of full block
-          Vector3f bottom_left(x, y + 1, z);
-          Vector3f bottom_right(x, y + 1, z + 1);
-          Vector3f top_left(x + 1, y + 1, z);
-          Vector3f top_right(x + 1, y + 1, z + 1);
+          for (size_t i = 0; i < model->element_count; ++i) {
+            BlockElement* element = model->elements + i;
+            RenderableFace* face = element->faces + 1;
 
-          Vector2f bl_uv(0, 0);
-          Vector2f br_uv(0, 1);
-          Vector2f tr_uv(1, 1);
-          Vector2f tl_uv(1, 0);
+            u32 texture_id = face->texture_id;
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+            Vector3f& from = element->from;
+            Vector3f& to = element->to;
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+            Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
+            Vector3f bottom_right(x + from.x, y + to.y, z + to.z);
+            Vector3f top_left(x + to.x, y + to.y, z + from.z);
+            Vector3f top_right(x + to.x, y + to.y, z + to.z);
+
+            Vector2f bl_uv(face->uv_from.x, face->uv_from.y);
+            Vector2f br_uv(face->uv_from.x, face->uv_to.y);
+            Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
+            Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+          }
         }
 
         if (below_id == 0) {
-          Vector3f bottom_left(x + 1, y, z);
-          Vector3f bottom_right(x + 1, y, z + 1);
-          Vector3f top_left(x, y, z);
-          Vector3f top_right(x, y, z + 1);
+          for (size_t i = 0; i < model->element_count; ++i) {
+            BlockElement* element = model->elements + i;
+            RenderableFace* face = element->faces + 0;
 
-          Vector2f bl_uv(1, 1);
-          Vector2f br_uv(1, 0);
-          Vector2f tr_uv(0, 0);
-          Vector2f tl_uv(0, 1);
+            u32 texture_id = face->texture_id;
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+            Vector3f& from = element->from;
+            Vector3f& to = element->to;
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+            Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
+            Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
+            Vector3f top_left(x + from.x, y + from.y, z + from.z);
+            Vector3f top_right(x + from.x, y + from.y, z + to.z);
+
+            Vector2f bl_uv(face->uv_to.x, face->uv_to.y);
+            Vector2f br_uv(face->uv_to.x, face->uv_from.y);
+            Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
+            Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+          }
         }
 
         if (north_id == 0) {
-          Vector3f bottom_left(x + 1, y, z);
-          Vector3f bottom_right(x, y, z);
-          Vector3f top_left(x + 1, y + 1, z);
-          Vector3f top_right(x, y + 1, z);
+          for (size_t i = 0; i < model->element_count; ++i) {
+            BlockElement* element = model->elements + i;
+            RenderableFace* face = element->faces + 2;
 
-          Vector2f bl_uv(0, 1);
-          Vector2f br_uv(1, 1);
-          Vector2f tr_uv(1, 0);
-          Vector2f tl_uv(0, 0);
+            u32 texture_id = face->texture_id;
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+            Vector3f& from = element->from;
+            Vector3f& to = element->to;
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+            Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
+            Vector3f bottom_right(x + from.x, y + from.y, z + from.z);
+            Vector3f top_left(x + to.x, y + to.y, z + from.z);
+            Vector3f top_right(x + from.x, y + to.y, z + from.z);
+
+            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+          }
         }
 
         if (south_id == 0) {
-          Vector3f bottom_left(x, y, z + 1);
-          Vector3f bottom_right(x + 1, y, z + 1);
-          Vector3f top_left(x, y + 1, z + 1);
-          Vector3f top_right(x + 1, y + 1, z + 1);
+          for (size_t i = 0; i < model->element_count; ++i) {
+            BlockElement* element = model->elements + i;
+            RenderableFace* face = element->faces + 3;
 
-          Vector2f bl_uv(0, 1);
-          Vector2f br_uv(1, 1);
-          Vector2f tr_uv(1, 0);
-          Vector2f tl_uv(0, 0);
+            u32 texture_id = face->texture_id;
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+            Vector3f& from = element->from;
+            Vector3f& to = element->to;
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+            Vector3f bottom_left(x + from.x, y + from.y, z + to.z);
+            Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
+            Vector3f top_left(x + from.x, y + to.y, z + to.z);
+            Vector3f top_right(x + to.x, y + to.y, z + to.z);
+
+            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+          }
         }
 
         if (east_id == 0) {
-          Vector3f bottom_left(x + 1, y, z + 1);
-          Vector3f bottom_right(x + 1, y, z);
-          Vector3f top_left(x + 1, y + 1, z + 1);
-          Vector3f top_right(x + 1, y + 1, z);
+          for (size_t i = 0; i < model->element_count; ++i) {
+            BlockElement* element = model->elements + i;
+            RenderableFace* face = element->faces + 5;
 
-          Vector2f bl_uv(0, 1);
-          Vector2f br_uv(1, 1);
-          Vector2f tr_uv(1, 0);
-          Vector2f tl_uv(0, 0);
+            u32 texture_id = face->texture_id;
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+            Vector3f& from = element->from;
+            Vector3f& to = element->to;
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+            Vector3f bottom_left(x + to.x, y + from.y, z + to.z);
+            Vector3f bottom_right(x + to.x, y + from.y, z + from.z);
+            Vector3f top_left(x + to.x, y + to.y, z + to.z);
+            Vector3f top_right(x + to.x, y + to.y, z + from.z);
+
+            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+          }
         }
 
         if (west_id == 0) {
-          Vector3f bottom_left(x, y, z);
-          Vector3f bottom_right(x, y, z + 1);
-          Vector3f top_left(x, y + 1, z);
-          Vector3f top_right(x, y + 1, z + 1);
+          for (size_t i = 0; i < model->element_count; ++i) {
+            BlockElement* element = model->elements + i;
+            RenderableFace* face = element->faces + 4;
 
-          Vector2f bl_uv(0, 1);
-          Vector2f br_uv(1, 1);
-          Vector2f tr_uv(1, 0);
-          Vector2f tl_uv(0, 0);
+            u32 texture_id = face->texture_id;
 
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
+            Vector3f& from = element->from;
+            Vector3f& to = element->to;
 
-          PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv);
-          PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv);
+            Vector3f bottom_left(x + from.x, y + from.y, z + from.z);
+            Vector3f bottom_right(x + from.x, y + from.y, z + to.z);
+            Vector3f top_left(x + from.x, y + to.y, z + from.z);
+            Vector3f top_right(x + from.x, y + to.y, z + to.z);
+
+            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id);
+          }
         }
       }
     }
@@ -568,6 +631,201 @@ void GameState::FreeMeshes() {
   }
 }
 
+BlockModel LoadModel(MemoryArena* arena, ZipArchive& zip, const char* path, size_t path_size,
+                     std::unordered_map<std::string, std::string>& texture_map,
+                     std::unordered_map<std::string, u32>& texture_ids) {
+  BlockModel result = {};
+  char full_path[256];
+
+  sprintf(full_path, "assets/minecraft/models/block/%.*s.json", (u32)path_size, path);
+  size_t size;
+  char* data = zip.ReadFile(arena, full_path, &size);
+
+  assert(data);
+
+  json_value_s* root = json_parse(data, size);
+  assert(root->type == json_type_object);
+
+  json_object_s* root_obj = json_value_as_object(root);
+  assert(root_obj);
+
+  json_object_element_s* root_element = root_obj->start;
+  // Do multiple loops over the elements in a specific order to simplify texture ids.
+
+  while (root_element) {
+    if (strcmp(root_element->name->string, "textures") == 0) {
+      json_object_s* texture_obj = json_value_as_object(root_element->value);
+      json_object_element_s* texture_element = texture_obj->start;
+
+      while (texture_element) {
+        json_string_s* value_obj = json_value_as_string(texture_element->value);
+
+        std::string name(texture_element->name->string, texture_element->name->string_size);
+        std::string value(value_obj->string, value_obj->string_size);
+
+        texture_map[name] = value;
+
+        texture_element = texture_element->next;
+      }
+    }
+    root_element = root_element->next;
+  }
+
+  root_element = root_obj->start;
+  while (root_element) {
+    if (strcmp(root_element->name->string, "elements") == 0) {
+      json_array_s* element_array = json_value_as_array(root_element->value);
+
+      json_array_element_s* element_array_element = element_array->start;
+      while (element_array_element) {
+        json_object_s* element_obj = json_value_as_object(element_array_element->value);
+
+        json_object_element_s* element_property = element_obj->start;
+        while (element_property) {
+          const char* property_name = element_property->name->string;
+
+          if (strcmp(property_name, "from") == 0) {
+            json_array_element_s* vector_element = json_value_as_array(element_property->value)->start;
+
+            for (int i = 0; i < 3; ++i) {
+              result.elements[result.element_count].from[i] =
+                  strtol(json_value_as_number(vector_element->value)->number, nullptr, 10) / 16.0f;
+            }
+          } else if (strcmp(property_name, "to") == 0) {
+            json_array_element_s* vector_element = json_value_as_array(element_property->value)->start;
+
+            for (int i = 0; i < 3; ++i) {
+              result.elements[result.element_count].to[i] =
+                  strtol(json_value_as_number(vector_element->value)->number, nullptr, 10) / 16.0f;
+            }
+          } else if (strcmp(property_name, "faces") == 0) {
+            json_object_element_s* face_obj_element = json_value_as_object(element_property->value)->start;
+            while (face_obj_element) {
+              const char* facename = face_obj_element->name->string;
+
+              size_t face_index = 0;
+
+              if (strcmp(facename, "down") == 0) {
+                face_index = 0;
+              } else if (strcmp(facename, "up") == 0) {
+                face_index = 1;
+              } else if (strcmp(facename, "north") == 0) {
+                face_index = 2;
+              } else if (strcmp(facename, "south") == 0) {
+                face_index = 3;
+              } else if (strcmp(facename, "west") == 0) {
+                face_index = 4;
+              } else if (strcmp(facename, "east") == 0) {
+                face_index = 5;
+              }
+
+              json_object_element_s* face_element = json_value_as_object(face_obj_element->value)->start;
+
+              result.elements[result.element_count].faces[face_index].uv_from = Vector2f(0, 0);
+              result.elements[result.element_count].faces[face_index].uv_to = Vector2f(1, 1);
+
+              while (face_element) {
+                const char* face_property = face_element->name->string;
+
+                if (strcmp(face_property, "texture") == 0) {
+                  json_string_s* texture_str = json_value_as_string(face_element->value);
+                  std::string texture_name(texture_str->string, texture_str->string_size);
+
+                  while (texture_name[0] == '#') {
+                    auto iter = texture_map.find(texture_name.c_str() + 1);
+                    if (iter != texture_map.end()) {
+                      texture_name = iter->second;
+                    } else {
+                      fprintf(stderr, "Failed to read texture %.*s\n", (u32)texture_str->string_size,
+                              texture_str->string);
+                      return result;
+                    }
+                  }
+
+                  size_t prefix_size = 6;
+
+                  if (texture_name.find(":") != std::string::npos) {
+                    prefix_size = 16;
+                  }
+
+                  auto iter = texture_ids.find(texture_name.substr(prefix_size) + ".png");
+
+                  if (iter != texture_ids.end()) {
+                    result.elements[result.element_count].faces[face_index].texture_id = iter->second;
+                  } else {
+                    result.elements[result.element_count].faces[face_index].texture_id = 0;
+                  }
+                } else if (strcmp(face_property, "uv") == 0) {
+                  Vector2f uv_from;
+                  Vector2f uv_to;
+
+                  json_array_element_s* value = json_value_as_array(face_element->value)->start;
+
+                  uv_from[0] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
+                  value = value->next;
+                  uv_from[1] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
+                  value = value->next;
+                  uv_to[0] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
+                  value = value->next;
+                  uv_to[1] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
+
+                  result.elements[result.element_count].faces[face_index].uv_from = uv_from;
+                  result.elements[result.element_count].faces[face_index].uv_to = uv_to;
+                }
+
+                face_element = face_element->next;
+              }
+
+              face_obj_element = face_obj_element->next;
+            }
+          }
+
+          element_property = element_property->next;
+        }
+
+        ++result.element_count;
+        assert(result.element_count < polymer_array_count(result.elements));
+
+        element_array_element = element_array_element->next;
+      }
+    }
+
+    root_element = root_element->next;
+  }
+
+  // Not sure how elements work yet. glazed terracotta has a parent that uses #all but it already has elements using
+  // #pattern without setting #all.
+  if (result.element_count == 0) {
+    root_element = root_obj->start;
+    while (root_element) {
+      if (strcmp(root_element->name->string, "parent") == 0) {
+        size_t prefix_size = 6;
+
+        json_string_s* parent_name = json_value_as_string(root_element->value);
+
+        for (size_t i = 0; i < parent_name->string_size; ++i) {
+          if (parent_name->string[i] == ':') {
+            prefix_size = 16;
+            break;
+          }
+        }
+
+        BlockModel parent = LoadModel(arena, zip, parent_name->string + prefix_size, parent_name->string_size,
+                                      texture_map, texture_ids);
+        for (size_t i = 0; i < parent.element_count; ++i) {
+          result.elements[result.element_count++] = parent.elements[i];
+
+          assert(result.element_count < polymer_array_count(result.elements));
+        }
+      }
+
+      root_element = root_element->next;
+    }
+  }
+
+  return result;
+}
+
 bool GameState::LoadBlocks() {
   // TODO:
   // Read in all of the models in the jar
@@ -689,13 +947,36 @@ bool GameState::LoadBlocks() {
     return false;
   }
 
-  size_t count;
-  ZipArchiveElement* files = zip.ListFiles(trans_arena, "assets/minecraft/blockstates/", &count);
+  std::unordered_map<std::string, u32> texture_ids;
+
+  size_t texture_count = 0;
+  ZipArchiveElement* texture_files = zip.ListFiles(trans_arena, "assets/minecraft/textures/block/", &texture_count);
+  renderer->CreateTexture(16, 16, texture_count);
+  renderer->CreateDescriptorSetLayout();
+
+  for (size_t i = 0; i < texture_count; ++i) {
+    size_t size = 0;
+    u8* raw_image = (u8*)zip.ReadFile(trans_arena, texture_files[i].name, &size);
+    int width, height, channels;
+
+    std::string texture_name(texture_files[i].name + 32);
+    texture_ids[texture_name] = (u32)i;
+
+    stbi_uc* image = stbi_load_from_memory(raw_image, (int)size, &width, &height, &channels, STBI_rgb_alpha);
+
+    size_t texture_size = 16 * 16 * 4;
+    renderer->PushTexture(image, texture_size, i);
+
+    stbi_image_free(image);
+  }
+
+  size_t state_count;
+  ZipArchiveElement* files = zip.ListFiles(trans_arena, "assets/minecraft/blockstates/", &state_count);
 
   // Loop through each blockstate asset and match the variant properties to the blocks.json list
   // TODO: Some of this could be sped up with hash maps, but not really necessary for now.
   // Alternatively, this data could all be loaded once, associated, and written off to a new asset file for faster loads
-  for (size_t i = 0; i < count; ++i) {
+  for (size_t i = 0; i < state_count; ++i) {
     u8* arena_snapshot = trans_arena->current;
     size_t size;
     char* data = zip.ReadFile(trans_arena, files[i].name, &size);
@@ -724,12 +1005,14 @@ bool GameState::LoadBlocks() {
 
         while (variant_element) {
           size_t block_id = -1;
+          const char* variant_name = variant_element->name->string;
 
           for (size_t bid = 0; bid < block_state_count; ++bid) {
             char* file_name = files[i].name;
             char* bid_name = block_states[bid].name + 10;
 
-            if (strcmp(bid_name, file_blockstate_name) == 0) {
+            if (strcmp(bid_name, file_blockstate_name) == 0 &&
+                (variant_element->name->string_size == 0 || strcmp(variant_name, properties[bid]) == 0)) {
               block_id = bid;
               break;
             }
@@ -754,6 +1037,14 @@ bool GameState::LoadBlocks() {
                 // Do a lookup on the model name then store the model in the BlockState.
                 // Model lookup is going to need to be recursive with the root parent data being filled out first then
                 // cascaded down.
+                const size_t kPrefixSize = 16;
+
+                std::unordered_map<std::string, std::string> texture_map;
+
+                BlockModel model = LoadModel(trans_arena, zip, model_name_str->string + kPrefixSize,
+                                             model_name_str->string_size - kPrefixSize, texture_map, texture_ids);
+
+                block_states[block_id].model = model;
               }
               state_element = state_element->next;
             }
@@ -771,26 +1062,6 @@ bool GameState::LoadBlocks() {
 
     // Pop the current file off the stack allocator
     trans_arena->current = arena_snapshot;
-  }
-
-  size_t texture_count = 0;
-  ZipArchiveElement* texture_files = zip.ListFiles(trans_arena, "assets/minecraft/textures/block/", &texture_count);
-  renderer->CreateTexture(16, 16, texture_count);
-  renderer->CreateDescriptorSetLayout();
-
-  for (size_t i = 0; i < texture_count; ++i) {
-    size_t size = 0;
-    u8* raw_image = (u8*)zip.ReadFile(trans_arena, texture_files[i].name, &size);
-    int width, height, channels;
-
-    // Could remove this allocation and free with global arena, but not really necessary since it's only done at
-    // startup.
-    stbi_uc* image = stbi_load_from_memory(raw_image, (int)size, &width, &height, &channels, STBI_rgb_alpha);
-
-    size_t texture_size = 16 * 16 * 4;
-    renderer->PushTexture(image, texture_size, i);
-
-    stbi_image_free(image);
   }
 
   zip.Close();
