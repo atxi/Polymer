@@ -109,6 +109,7 @@ struct VulkanRenderer {
   VkImage texture_image;
   VkImageView texture_image_view;
   VkSampler texture_sampler;
+  u32 texture_mips;
 
   size_t current_frame = 0;
   u32 current_image = 0;
@@ -122,17 +123,19 @@ struct VulkanRenderer {
   void Render();
   void Cleanup();
 
+  void CreateDescriptorSetLayout();
+
   // Uses staging buffer to push data to the gpu and returns the allocation buffers.
   RenderMesh AllocateMesh(u8* data, size_t size, size_t count);
   void FreeMesh(RenderMesh* mesh);
 
-  void CreateDescriptorSetLayout();
   void CreateTexture(size_t width, size_t height, size_t layers);
   void PushTexture(u8* texture, size_t size, size_t index);
 
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
 
+  void GenerateMipmaps(u32 index);
   void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, u32 layer);
   void CreateDepthBuffer();
   void BeginOneShotCommandBuffer();

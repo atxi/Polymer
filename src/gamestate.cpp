@@ -18,7 +18,8 @@ inline void PushVertex(MemoryArena* arena, ChunkVertex* vertices, u32* count, co
 
   vertices[*count].position = position;
   vertices[*count].texcoord = uv;
-  vertices[*count].texture_id = 86; // Dirt
+  //vertices[*count].texture_id = 86; // Dirt
+  vertices[*count].texture_id = 40; // Stone bricks
 
   ++*count;
 }
