@@ -10,6 +10,15 @@ namespace polymer {
 
 struct MemoryArena;
 
+enum class BlockFace {
+  Down,
+  Up,
+  North,
+  South,
+  West,
+  East
+};
+
 struct RenderableFace {
   u32 texture_id;
   Vector2f uv_from;
@@ -20,11 +29,22 @@ struct BlockElement {
   RenderableFace faces[6];
   Vector3f from;
   Vector3f to;
+  bool occluding;
 };
 
 struct BlockModel {
   size_t element_count;
   BlockElement elements[20];
+
+  bool IsOccluding() {
+    for (size_t i = 0; i < element_count; ++i) {
+      if (elements[i].occluding) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 };
 
 struct BlockState {
@@ -133,7 +153,7 @@ struct GameState {
   World world;
 
   size_t block_name_count = 0;
-  char block_names[32768][32];
+  char block_names[32768][48];
 
   size_t block_state_count = 0;
   BlockState block_states[32768];

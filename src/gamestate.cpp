@@ -199,7 +199,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   RenderMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
 
   u32* bordered_chunk = (u32*)trans_arena->Allocate(sizeof(u32) * 18 * 18 * 18);
-  memset(bordered_chunk, 1, sizeof(u32) * 18 * 18 * 18);
+  memset(bordered_chunk, 0, sizeof(u32) * 18 * 18 * 18);
 
   ChunkSection* section = ctx->section;
   ChunkSection* east_section = ctx->east_section;
@@ -306,9 +306,14 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
         float z = (float)relative_z;
 
         BlockModel* model = &block_states[bid].model;
+        BlockModel* above_model = &block_states[above_id].model;
+        BlockModel* below_model = &block_states[below_id].model;
+        BlockModel* north_model = &block_states[north_id].model;
+        BlockModel* south_model = &block_states[south_id].model;
+        BlockModel* east_model = &block_states[east_id].model;
+        BlockModel* west_model = &block_states[west_id].model;
 
-        // TODO: Check actual block model for occlusion, just use air for now
-        if (above_id == 0) {
+        if (!above_model->IsOccluding()) {
           for (size_t i = 0; i < model->element_count; ++i) {
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 1;
@@ -338,7 +343,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (below_id == 0) {
+        if (!below_model->IsOccluding()) {
           for (size_t i = 0; i < model->element_count; ++i) {
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 0;
@@ -368,7 +373,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (north_id == 0) {
+        if (!north_model->IsOccluding()) {
           for (size_t i = 0; i < model->element_count; ++i) {
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 2;
@@ -398,7 +403,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (south_id == 0) {
+        if (!south_model->IsOccluding()) {
           for (size_t i = 0; i < model->element_count; ++i) {
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 3;
@@ -428,7 +433,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (east_id == 0) {
+        if (!east_model->IsOccluding()) {
           for (size_t i = 0; i < model->element_count; ++i) {
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 5;
@@ -458,7 +463,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (west_id == 0) {
+        if (!west_model->IsOccluding()) {
           for (size_t i = 0; i < model->element_count; ++i) {
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 4;
@@ -690,6 +695,7 @@ BlockModel LoadModel(MemoryArena* arena, ZipArchive& zip, const char* path, size
             for (int i = 0; i < 3; ++i) {
               result.elements[result.element_count].from[i] =
                   strtol(json_value_as_number(vector_element->value)->number, nullptr, 10) / 16.0f;
+              vector_element = vector_element->next;
             }
           } else if (strcmp(property_name, "to") == 0) {
             json_array_element_s* vector_element = json_value_as_array(element_property->value)->start;
@@ -697,6 +703,7 @@ BlockModel LoadModel(MemoryArena* arena, ZipArchive& zip, const char* path, size
             for (int i = 0; i < 3; ++i) {
               result.elements[result.element_count].to[i] =
                   strtol(json_value_as_number(vector_element->value)->number, nullptr, 10) / 16.0f;
+              vector_element = vector_element->next;
             }
           } else if (strcmp(property_name, "faces") == 0) {
             json_object_element_s* face_obj_element = json_value_as_object(element_property->value)->start;
@@ -795,32 +802,36 @@ BlockModel LoadModel(MemoryArena* arena, ZipArchive& zip, const char* path, size
 
   // Not sure how elements work yet. glazed terracotta has a parent that uses #all but it already has elements using
   // #pattern without setting #all.
-  if (result.element_count == 0) {
-    root_element = root_obj->start;
-    while (root_element) {
-      if (strcmp(root_element->name->string, "parent") == 0) {
-        size_t prefix_size = 6;
+  root_element = root_obj->start;
+  while (root_element) {
+    if (strcmp(root_element->name->string, "parent") == 0) {
+      size_t prefix_size = 6;
 
-        json_string_s* parent_name = json_value_as_string(root_element->value);
+      json_string_s* parent_name = json_value_as_string(root_element->value);
 
-        for (size_t i = 0; i < parent_name->string_size; ++i) {
-          if (parent_name->string[i] == ':') {
-            prefix_size = 16;
-            break;
-          }
-        }
-
-        BlockModel parent = LoadModel(arena, zip, parent_name->string + prefix_size, parent_name->string_size,
-                                      texture_map, texture_ids);
-        for (size_t i = 0; i < parent.element_count; ++i) {
-          result.elements[result.element_count++] = parent.elements[i];
-
-          assert(result.element_count < polymer_array_count(result.elements));
+      for (size_t i = 0; i < parent_name->string_size; ++i) {
+        if (parent_name->string[i] == ':') {
+          prefix_size = 16;
+          break;
         }
       }
 
-      root_element = root_element->next;
+      BlockModel parent =
+          LoadModel(arena, zip, parent_name->string + prefix_size, parent_name->string_size, texture_map, texture_ids);
+      for (size_t i = 0; i < parent.element_count; ++i) {
+        result.elements[result.element_count++] = parent.elements[i];
+
+        assert(result.element_count < polymer_array_count(result.elements));
+      }
     }
+
+    root_element = root_element->next;
+  }
+
+  for (size_t i = 0; i < result.element_count; ++i) {
+    BlockElement* element = result.elements + i;
+
+    element->occluding = element->from == Vector3f(0, 0, 0) && element->to == Vector3f(1, 1, 1);
   }
 
   return result;
@@ -831,9 +842,10 @@ bool GameState::LoadBlocks() {
   // Read in all of the models in the jar
   // Read in blocks.json
   //  Serialize the properties into the same format as the jar's blockstates
-  // Read in each blockstate from the jar
-  //  Match the blockstate variant name to the blocks.json property value and store the id ?
-  //  Read the model name for the block variant and match it to the model
+
+  // For each state id in blocks.json, match it to a blockstate from the jar
+  //  Read in each blockstate from the jar
+  //    Read the model name for the block variant and match it to the model
 
   block_state_count = 0;
 
@@ -858,6 +870,8 @@ bool GameState::LoadBlocks() {
 
   // Transient arena is used as a push buffer of property strings through parsing
 
+  std::unordered_map<std::string, u32> default_ids;
+
   json_object_element_s* element = root_obj->start;
   while (element) {
     json_object_s* block_obj = json_value_as_object(element->value);
@@ -878,6 +892,10 @@ bool GameState::LoadBlocks() {
           properties[block_state_count] = nullptr;
 
           json_object_element_s* state_element = state_obj->start;
+
+          u32 id = 0;
+          size_t index = 0;
+
           while (state_element) {
             if (strncmp(state_element->name->string, "id", state_element->name->string_size) == 0) {
               block_states[block_state_count].name = block_name;
@@ -886,7 +904,19 @@ bool GameState::LoadBlocks() {
 
               block_states[block_state_count].id = block_id;
 
+              id = (u32)block_id;
+              index = block_state_count;
+
               ++block_state_count;
+            }
+            state_element = state_element->next;
+          }
+
+          state_element = state_obj->start;
+          while (state_element) {
+            if (strncmp(state_element->name->string, "default", state_element->name->string_size) == 0) {
+              std::string str(block_name);
+              default_ids[str] = id;
             } else if (strncmp(state_element->name->string, "properties", state_element->name->string_size) == 0) {
               // Loop over each property and create a single string that matches the format of blockstates in the jar
               json_object_s* property_object = json_value_as_object(state_element->value);
@@ -894,11 +924,17 @@ bool GameState::LoadBlocks() {
 
               // Realign the arena for the property pointer to be 32-bit aligned.
               char* property = (char*)trans_arena->Allocate(0, 4);
-              properties[block_state_count] = property;
+              properties[index] = property;
               size_t property_length = 0;
 
               while (property_element) {
                 json_string_s* property_value = json_value_as_string(property_element->value);
+
+                if (strcmp(property_element->name->string, "waterlogged") == 0) {
+                  property_element = property_element->next;
+                  continue;
+                }
+
                 // Allocate enough for property_name=property_value
                 size_t alloc_size = property_element->name->string_size + 1 + property_value->string_size;
 
@@ -924,7 +960,7 @@ bool GameState::LoadBlocks() {
               }
 
               trans_arena->Allocate(1, 1);
-              properties[block_state_count][property_length] = 0;
+              properties[index][property_length] = 0;
             }
             state_element = state_element->next;
           }
@@ -1000,8 +1036,68 @@ bool GameState::LoadBlocks() {
     while (root_element) {
       if (strncmp("variants", root_element->name->string, root_element->name->string_size) == 0) {
         json_object_s* variant_obj = json_value_as_object(root_element->value);
-
         json_object_element_s* variant_element = variant_obj->start;
+
+        // Go through each block.json state and find any blockstates that match this filename
+        for (size_t bid = 0; bid < block_state_count; ++bid) {
+          char* file_name = files[i].name;
+          char* bid_name = block_states[bid].name + 10;
+
+          if (block_states[bid].model.element_count != 0) {
+            continue;
+          }
+
+          if (strcmp(bid_name, file_blockstate_name) != 0) {
+            continue;
+          }
+
+          json_object_element_s* variant_element = variant_obj->start;
+
+          while (variant_element) {
+            const char* variant_name = variant_element->name->string;
+
+            if ((variant_element->name->string_size == 0 && properties[bid] == nullptr) ||
+                (properties[bid] != nullptr && strcmp(variant_name, properties[bid]) == 0) || variant_element->next == nullptr) {
+              json_object_s* state_details = nullptr;
+
+              if (variant_element->value->type == json_type_array) {
+                // TODO: Find out why multiple models are listed under one variant type. Just default to first for now.
+                state_details = json_value_as_object(json_value_as_array(variant_element->value)->start->value);
+              } else {
+                state_details = json_value_as_object(variant_element->value);
+              }
+
+              json_object_element_s* state_element = state_details->start;
+
+              while (state_element) {
+                if (strcmp(state_element->name->string, "model") == 0) {
+                  json_string_s* model_name_str = json_value_as_string(state_element->value);
+
+                  // Do a lookup on the model name then store the model in the BlockState.
+                  // Model lookup is going to need to be recursive with the root parent data being filled out first then
+                  // cascaded down.
+                  const size_t kPrefixSize = 16;
+
+                  std::unordered_map<std::string, std::string> texture_map;
+
+                  BlockModel model = LoadModel(trans_arena, zip, model_name_str->string + kPrefixSize,
+                                               model_name_str->string_size - kPrefixSize, texture_map, texture_ids);
+
+                  block_states[bid].model = model;
+                  variant_element = nullptr;
+                  break;
+                }
+                state_element = state_element->next;
+              }
+            }
+
+            if (variant_element) {
+              variant_element = variant_element->next;
+            }
+          }
+        }
+
+#if 0
 
         while (variant_element) {
           size_t block_id = -1;
@@ -1011,10 +1107,22 @@ bool GameState::LoadBlocks() {
             char* file_name = files[i].name;
             char* bid_name = block_states[bid].name + 10;
 
+            if (strcmp(bid_name, file_blockstate_name) != 0) {
+              continue;
+            }
+
             if (strcmp(bid_name, file_blockstate_name) == 0 &&
-                (variant_element->name->string_size == 0 || strcmp(variant_name, properties[bid]) == 0)) {
+                ((variant_element->name->string_size == 0 && properties[bid] == nullptr) ||
+                 (properties[bid] != nullptr && strcmp(variant_name, properties[bid]) == 0))) {
               block_id = bid;
               break;
+            }
+          }
+
+          if (block_id == -1) {
+            auto iter = default_ids.find("minecraft:" + std::string(file_blockstate_name));
+            if (iter != default_ids.end()) {
+              block_id = iter->second;
             }
           }
 
@@ -1052,6 +1160,8 @@ bool GameState::LoadBlocks() {
 
           variant_element = variant_element->next;
         }
+
+#endif
       }
       root_element = root_element->next;
     }
