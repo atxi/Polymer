@@ -20,9 +20,15 @@ enum class BlockFace {
 };
 
 struct RenderableFace {
-  u32 texture_id;
   Vector2f uv_from;
   Vector2f uv_to;
+
+  u32 texture_id;
+
+  struct {
+    u32 render : 1;
+    u32 tintindex : 16;
+  };
 };
 
 struct BlockElement {

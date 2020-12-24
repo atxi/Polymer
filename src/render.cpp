@@ -1008,7 +1008,7 @@ void VulkanRenderer::CreateGraphicsPipeline() {
   binding_description.stride = sizeof(ChunkVertex);
   binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-  VkVertexInputAttributeDescription attribute_descriptions[3];
+  VkVertexInputAttributeDescription attribute_descriptions[4];
   attribute_descriptions[0].binding = 0;
   attribute_descriptions[0].location = 0;
   attribute_descriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -1023,6 +1023,11 @@ void VulkanRenderer::CreateGraphicsPipeline() {
   attribute_descriptions[2].location = 2;
   attribute_descriptions[2].format = VK_FORMAT_R32_UINT;
   attribute_descriptions[2].offset = offsetof(ChunkVertex, texture_id);
+
+  attribute_descriptions[3].binding = 0;
+  attribute_descriptions[3].location = 3;
+  attribute_descriptions[3].format = VK_FORMAT_R32_UINT;
+  attribute_descriptions[3].offset = offsetof(ChunkVertex, tint_index);
 
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
   vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -1104,7 +1109,7 @@ void VulkanRenderer::CreateGraphicsPipeline() {
   depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
   depth_stencil.depthTestEnable = VK_TRUE;
   depth_stencil.depthWriteEnable = VK_TRUE;
-  depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
+  depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
   depth_stencil.depthBoundsTestEnable = VK_FALSE;
   depth_stencil.minDepthBounds = 0.0f;
   depth_stencil.maxDepthBounds = 1.0f;

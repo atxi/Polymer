@@ -32,6 +32,7 @@ struct ChunkVertex {
   Vector3f position;
   Vector2f texcoord;
   u32 texture_id;
+  u32 tint_index;
 };
 
 struct QueueFamilyIndices {
