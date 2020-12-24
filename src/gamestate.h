@@ -36,6 +36,7 @@ struct BlockElement {
   Vector3f from;
   Vector3f to;
   bool occluding;
+  bool shade;
 };
 
 struct BlockModel {
@@ -49,6 +50,15 @@ struct BlockModel {
       }
     }
 
+    return false;
+  }
+
+  bool HasShadedElement() {
+    for (size_t i = 0; i < element_count; ++i) {
+      if (elements[i].shade) {
+        return true;
+      }
+    }
     return false;
   }
 };

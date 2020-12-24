@@ -22,9 +22,13 @@ void main() {
 
   // TODO: Remove this and sample biome in fragment shader
   // Jungle tints
-  if (inTintIndex == 0) {
+  uint tintindex = inTintIndex & 0xFFFF;
+  uint ao = inTintIndex >> 16;
+  if (tintindex == 0) {
     fragColorMod = vec3(0.34, 0.78, 0.235);
-  } else if (inTintIndex == 1) {
+  } else if (tintindex == 1) {
     fragColorMod = vec3(0.188, 0.733, 0.043);
   }
+
+  fragColorMod *= (0.55 + float(ao) * 0.15);
 }
