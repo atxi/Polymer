@@ -665,45 +665,19 @@ struct Frustum {
                             min + Vector3f(diff.x, 0, diff.z),
                             max};
 
-    for (u32 i = 0; i < 6; ++i) {
-#if 0
-      Vector3f aabb_axis;
+    for (size_t i = 0; i < 6; ++i) {
+      bool in = false;
 
-      if (planes[i].normal.x < 0) {
-        aabb_axis.x = min.x;
-      } else {
-        aabb_axis.x = max.x;
-      }
-
-      if (planes[i].normal.y < 0) {
-        aabb_axis.y = min.y;
-      } else {
-        aabb_axis.y = max.y;
-      }
-
-      if (planes[i].normal.z < 0) {
-        aabb_axis.z = min.z;
-      } else {
-        aabb_axis.z = max.z;
-      }
-
-      if (planes[i].normal.Dot(aabb_axis) - planes[i].distance < 0.0f) {
-        return false;
-      }
-#else
-      int in = 0;
-
-      for (int k = 0; k < 8; ++k) {
-        if (planes[i].PointDistance(vertices[k]) >= 0) {
-          ++in;
+      for (size_t k = 0; k < 8; ++k) {
+        if (planes[i].normal.Dot(vertices[k]) - planes[i].distance >= 0) {
+          in = true;
           break;
         }
       }
 
-      if (in == 0) {
+      if (!in) {
         return false;
       }
-#endif
     }
 
     return true;

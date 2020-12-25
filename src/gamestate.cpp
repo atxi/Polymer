@@ -97,6 +97,7 @@ void GameState::Update(float dt, InputState* input) {
     s32 chunk_x = world.build_queue[i].x;
     s32 chunk_z = world.build_queue[i].z;
 
+    // TODO: Put a cap on the distance away so it's not constantly grabbing the neighbors of the outer unmeshed chunks.
     ChunkBuildContext ctx(chunk_x, chunk_z);
 
     if (ctx.GetNeighbors(&world)) {
@@ -131,6 +132,13 @@ void GameState::Update(float dt, InputState* input) {
         continue;
       }
 
+      Vector3f column_min(section_info->x * 16.0f, 0, section_info->z * 16.0f);
+      Vector3f column_max(section_info->x * 16.0f + 16.0f, 16 * 16.0f, section_info->z * 16.0f + 16.0f);
+
+      if (!frustum.Intersects(column_min, column_max)) {
+        continue;
+      }
+
       RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
 
       for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
@@ -153,7 +161,7 @@ void GameState::Update(float dt, InputState* input) {
 
 void GameState::OnWindowMouseMove(s32 dx, s32 dy) {
   const float kSensitivity = 0.005f;
-  const float kMaxPitch = Radians(89.0f);
+  constexpr float kMaxPitch = Radians(89.0f);
 
   camera.yaw += dx * kSensitivity;
   camera.pitch -= dy * kSensitivity;
@@ -292,9 +300,9 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
         size_t index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
 
         u32 bid = bordered_chunk[index];
+        BlockModel* model = &block_states[bid].model;
 
-        // Skip air and barriers
-        if (bid == 0 || bid == 7540) {
+        if (model->element_count == 0) {
           continue;
         }
 
@@ -342,8 +350,6 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
         float y = (float)relative_y;
         float z = (float)relative_z;
 
-        BlockModel* model = &block_states[bid].model;
-
         BlockModel* above_model = &block_states[above_id].model;
         BlockModel* below_model = &block_states[below_id].model;
 
@@ -379,7 +385,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 1;
 
-            if (!face->render) continue;
+            if (!face->render)
+              continue;
 
             u32 texture_id = face->texture_id;
             u32 tintindex = face->tintindex;
@@ -409,13 +416,19 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
               ele_ao_tr = ao_tr;
             }
 
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
+                       ele_ao_br);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
 
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex,
+                       ele_ao_tl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
           }
         }
 
@@ -446,7 +459,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 0;
 
-            if (!face->render) continue;
+            if (!face->render)
+              continue;
 
             u32 texture_id = face->texture_id;
             u32 tintindex = face->tintindex;
@@ -476,13 +490,19 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
               ele_ao_tr = ao_tr;
             }
 
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
+                       ele_ao_br);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
 
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex,
+                       ele_ao_tl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
           }
         }
 
@@ -513,7 +533,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 2;
 
-            if (!face->render) continue;
+            if (!face->render)
+              continue;
 
             u32 texture_id = face->texture_id;
             u32 tintindex = face->tintindex;
@@ -543,13 +564,19 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
               ele_ao_tr = ao_tr;
             }
 
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
+                       ele_ao_br);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
 
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex,
+                       ele_ao_tl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
           }
         }
 
@@ -582,7 +609,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 3;
 
-            if (!face->render) continue;
+            if (!face->render)
+              continue;
 
             u32 texture_id = face->texture_id;
             u32 tintindex = face->tintindex;
@@ -612,13 +640,19 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
               ele_ao_tr = ao_tr;
             }
 
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
+                       ele_ao_br);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
 
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex,
+                       ele_ao_tl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
           }
         }
 
@@ -649,7 +683,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 5;
 
-            if (!face->render) continue;
+            if (!face->render)
+              continue;
 
             u32 texture_id = face->texture_id;
             u32 tintindex = face->tintindex;
@@ -679,13 +714,19 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
               ele_ao_tr = ao_tr;
             }
 
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
+                       ele_ao_br);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
 
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex,
+                       ele_ao_tl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
           }
         }
 
@@ -716,7 +757,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
             BlockElement* element = model->elements + i;
             RenderableFace* face = element->faces + 4;
 
-            if (!face->render) continue;
+            if (!face->render)
+              continue;
 
             u32 texture_id = face->texture_id;
             u32 tintindex = face->tintindex;
@@ -746,13 +788,19 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
               ele_ao_tr = ao_tr;
             }
 
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
+                       ele_ao_br);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
 
-            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+            PushVertex(trans_arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex,
+                       ele_ao_tr);
+            PushVertex(trans_arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex,
+                       ele_ao_tl);
+            PushVertex(trans_arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
+                       ele_ao_bl);
           }
         }
       }
@@ -1276,6 +1324,7 @@ bool GameState::LoadBlocks() {
     stbi_uc* image = stbi_load_from_memory(raw_image, (int)size, &width, &height, &channels, STBI_rgb_alpha);
 
     size_t texture_size = 16 * 16 * 4;
+
     renderer->PushTexture(image, texture_size, i);
 
     stbi_image_free(image);
@@ -1332,7 +1381,8 @@ bool GameState::LoadBlocks() {
             const char* variant_name = variant_element->name->string;
 
             if ((variant_element->name->string_size == 0 && properties[bid] == nullptr) ||
-                (properties[bid] != nullptr && strcmp(variant_name, properties[bid]) == 0) || variant_element->next == nullptr) {
+                (properties[bid] != nullptr && strcmp(variant_name, properties[bid]) == 0) ||
+                variant_element->next == nullptr) {
               json_object_s* state_details = nullptr;
 
               if (variant_element->value->type == json_type_array) {

@@ -12,7 +12,7 @@ layout(location = 0) out vec4 outColor;
 void main() {
   vec4 diffuse = texture(texSampler, vec3(fragTexCoord, fragTexId));
   
-  if (diffuse.a < 0.6) {
+  if (diffuse.a <= 0.6) {
     discard;
   }
 

@@ -30,5 +30,5 @@ void main() {
     fragColorMod = vec3(0.188, 0.733, 0.043);
   }
 
-  fragColorMod *= (0.55 + float(ao) * 0.15);
+  fragColorMod *= (0.25 + float(ao) * 0.25) * 0.75;
 }

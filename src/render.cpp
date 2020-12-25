@@ -297,8 +297,8 @@ void VulkanRenderer::PushTexture(u8* texture, size_t size, size_t index) {
 
   GenerateMipmaps((u32)index);
 
-  //TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        //VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, (u32)index);
+  // TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+  // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, (u32)index);
 
   vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
 }
