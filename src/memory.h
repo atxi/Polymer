@@ -18,6 +18,8 @@ constexpr size_t gigabytes(size_t n) {
   return n * megabytes(1024);
 }
 
+using ArenaSnapshot = u8*;
+
 struct MemoryArena {
   u8* base;
   u8* current;
@@ -27,6 +29,14 @@ struct MemoryArena {
 
   u8* Allocate(size_t size, size_t alignment = 4);
   void Reset();
+
+  ArenaSnapshot GetSnapshot() {
+    return current;
+  }
+
+  void Revert(ArenaSnapshot snapshot) {
+    current = snapshot;
+  }
 };
 
 #define memory_arena_push_type(arena, type) (type*)(arena)->Allocate(sizeof(type))
