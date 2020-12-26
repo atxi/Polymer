@@ -46,10 +46,18 @@ struct FaceTextureMap {
 
   FaceTextureMap(MemoryArena* arena);
 
-  void Insert(const char* name, const char* value);
+  void Insert(const char* name, size_t namelen, const char* value, size_t valuelen);
   const char* Find(const char* name);
 
   FaceTextureElement* Allocate();
+};
+
+struct ParsedBlockModel {
+  json_value_s* root_value;
+  json_object_s* root;
+
+  // Grabs the textures from this model and inserts them into the face texture map
+  void InsertTextureMap(FaceTextureMap* map);
 };
 
 constexpr size_t kMaxTextureImages = 2048;
@@ -60,8 +68,9 @@ struct AssetLoader {
   FaceTextureMap face_texture_map;
   TextureIdMap texture_id_map;
 
-  // Stores the parsed BlockModel json objects. Allocated from an arena based on the number of files found in the zip.
-  json_object_s** json_models = nullptr;
+  size_t model_count = 0;
+  ParsedBlockModel* models;
+
   u8* texture_images[kMaxTextureImages];
 
   AssetLoader(MemoryArena* arena) : arena(arena), face_texture_map(arena), texture_id_map(arena) {}
@@ -70,6 +79,8 @@ struct AssetLoader {
   void CloseArchive();
 
   size_t ParseBlockModels();
+
+  void Cleanup();
 };
 
 } // namespace polymer

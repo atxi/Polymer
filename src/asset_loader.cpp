@@ -15,6 +15,16 @@ u32 Hash(const char* str) {
   return hash;
 }
 
+u32 Hash(const char* str, size_t len) {
+  u32 hash = 5381;
+  
+  for (size_t i = 0; i < len; ++i) {
+    hash = hash * 33 ^ str[i];
+  }
+
+  return hash;
+}
+
 TextureIdMap::TextureIdMap(MemoryArena* arena) : arena(arena), free(nullptr) {
   for (size_t i = 0; i < kTextureIdBuckets; ++i) {
     elements[i] = nullptr;
@@ -105,8 +115,8 @@ FaceTextureElement* FaceTextureMap::Allocate() {
   return result;
 }
 
-void FaceTextureMap::Insert(const char* name, const char* value) {
-  u32 bucket = Hash(name) & (kTextureMapBuckets - 1);
+void FaceTextureMap::Insert(const char* name, size_t namelen, const char* value, size_t valuelen) {
+  u32 bucket = Hash(name, namelen) & (kTextureMapBuckets - 1);
 
   FaceTextureElement* element = elements[bucket];
   while (element) {
@@ -119,11 +129,11 @@ void FaceTextureMap::Insert(const char* name, const char* value) {
   if (element == nullptr) {
     element = Allocate();
 
-    assert(strlen(name) < polymer_array_count(element->name));
-    assert(strlen(value) < polymer_array_count(element->value));
+    assert(namelen < polymer_array_count(element->name));
+    assert(valuelen < polymer_array_count(element->value));
 
-    strcpy(element->name, name);
-    strcpy(element->value, value);
+    strncpy(element->name, name, namelen);
+    strncpy(element->value, value, valuelen);
 
     element->next = elements[bucket];
     elements[bucket] = element;
@@ -144,6 +154,28 @@ const char* FaceTextureMap::Find(const char* name) {
   return nullptr;
 }
 
+void ParsedBlockModel::InsertTextureMap(FaceTextureMap* map) {
+  json_object_element_s* root_element = root->start;
+
+  while (root_element) {
+    if (strcmp(root_element->name->string, "textures") == 0) {
+      json_object_element_s* texture_element = json_value_as_object(root_element->value)->start;
+
+      while (texture_element) {
+        json_string_s* value_string = json_value_as_string(texture_element->value);
+
+        map->Insert(texture_element->name->string, texture_element->name->string_size, value_string->string,
+                    value_string->string_size);
+
+        texture_element = texture_element->next;
+      }
+      break;
+    }
+
+    root_element = root_element->next;
+  }
+}
+
 bool AssetLoader::OpenArchive(const char* filename) {
   snapshot = arena->GetSnapshot();
 
@@ -156,9 +188,34 @@ void AssetLoader::CloseArchive() {
 }
 
 size_t AssetLoader::ParseBlockModels() {
-  
+  size_t count;
+  ZipArchiveElement* files = archive.ListFiles(arena, "assets/minecraft/models/block", &count);
 
-  return 0;
+  models = memory_arena_push_type_count(arena, ParsedBlockModel, count);
+
+  for (size_t i = 0; i < count; ++i) {
+    size_t size = 0;
+    char* data = archive.ReadFile(arena, files[i].name, &size);
+
+    assert(data);
+
+    models[i].root_value = json_parse(data, size);
+    assert(models[i].root_value->type == json_type_object);
+
+    models[i].root = json_value_as_object(models[i].root_value);
+  }
+
+  model_count = count;
+  return count;
+}
+
+void AssetLoader::Cleanup() {
+  for (size_t i = 0; i < model_count; ++i) {
+    free(models[i].root_value);
+  }
+  model_count = 0;
+
+  CloseArchive();
 }
 
 } // namespace polymer

@@ -3197,7 +3197,7 @@ extern "C" {
 
 #define MZ_ZIP_ARRAY_SET_ELEMENT_SIZE(array_ptr, element_size) (array_ptr)->m_element_size = element_size
 
-#if defined(DEBUG) || defined(_DEBUG) || defined(NDEBUG)
+#if (defined(DEBUG) || defined(_DEBUG) || defined(NDEBUG)) && !defined(MZ_SKIP_ARRAY_CHECK)
   static MZ_FORCEINLINE mz_uint mz_zip_array_range_check(const mz_zip_array* pArray, mz_uint index)
   {
     MZ_ASSERT(index < pArray->m_size);

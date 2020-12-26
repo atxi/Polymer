@@ -27,7 +27,7 @@ char* ZipArchive::ReadFile(MemoryArena* arena, const char* filename, size_t* siz
       size_t buffer_size = (size_t)stat.m_uncomp_size;
       void* buffer = arena->Allocate(buffer_size);
 
-      if (mz_zip_reader_extract_file_to_mem(&archive, filename, buffer, buffer_size, 0)) {
+      if (mz_zip_reader_extract_to_mem(&archive, index, buffer, buffer_size, 0)) {
         *size = buffer_size;
         return (char*)buffer;
       }
