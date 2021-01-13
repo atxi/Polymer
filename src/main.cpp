@@ -1,3 +1,4 @@
+#include "asset_loader.h"
 #include "connection.h"
 #include "gamestate.h"
 #include "memory.h"
@@ -210,12 +211,24 @@ int run() {
 
   vk_render.Initialize(hwnd);
 
-#if 1
-  if (!game->LoadBlocks()) {
-    fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
-    return 1;
+  {
+    AssetLoader loader(&trans_arena, &perm_arena);
+    if (!loader.Load("1.16.4.jar", "blocks.json")) {
+      fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
+      return 1;
+    }
+
+    game->block_registry.states = loader.final_states;
+    game->block_registry.state_count = loader.final_state_count;
+    game->block_registry.infos = loader.block_infos;
+    game->block_registry.info_count = loader.block_info_count;
+
+    vk_render.CreateTexture(16, 16, loader.texture_count);
+
+    for (size_t i = 0; i < loader.texture_count; ++i) {
+      vk_render.PushTexture(loader.GetTexture(i), 16 * 16 * 4, i);
+    }
   }
-#endif
 
   MSG msg = {};
   float total_time = 0.0f;
@@ -237,7 +250,9 @@ int run() {
 
   float frame_time = 0.0f;
 
+  vk_render.CreateDescriptorSetLayout();
   vk_render.RecreateSwapchain();
+
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
 

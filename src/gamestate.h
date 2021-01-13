@@ -1,6 +1,7 @@
 #ifndef POLYMER_GAMESTATE_H_
 #define POLYMER_GAMESTATE_H_
 
+#include "block.h"
 #include "camera.h"
 #include "connection.h"
 #include "render.h"
@@ -9,69 +10,6 @@
 namespace polymer {
 
 struct MemoryArena;
-
-enum class BlockFace {
-  Down,
-  Up,
-  North,
-  South,
-  West,
-  East
-};
-
-struct RenderableFace {
-  Vector2f uv_from;
-  Vector2f uv_to;
-
-  u32 texture_id;
-
-  struct {
-    u32 render : 1;
-    u32 tintindex : 16;
-  };
-};
-
-struct BlockElement {
-  RenderableFace faces[6];
-  Vector3f from;
-  Vector3f to;
-  bool occluding;
-  bool shade;
-};
-
-struct BlockModel {
-  size_t element_count;
-  BlockElement elements[20];
-
-  bool IsOccluding() {
-    for (size_t i = 0; i < element_count; ++i) {
-      if (elements[i].occluding) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  bool HasShadedElement() {
-    for (size_t i = 0; i < element_count; ++i) {
-      if (elements[i].shade) {
-        return true;
-      }
-    }
-    return false;
-  }
-};
-
-struct BlockState {
-  u32 id;
-  char* name;
-
-  BlockModel model;
-  float x;
-  float y;
-  bool uvlock;
-};
 
 struct ChunkCoord {
   s32 x;
@@ -159,6 +97,14 @@ struct InputState {
   bool sprint;
 };
 
+struct BlockRegistry {
+  size_t state_count;
+  BlockState* states;
+
+  size_t info_count;
+  BlockStateInfo* infos;
+};
+
 struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
@@ -168,15 +114,9 @@ struct GameState {
   Camera camera;
   World world;
 
-  size_t block_name_count = 0;
-  char block_names[32768][48];
-
-  size_t block_state_count = 0;
-  BlockState block_states[32768];
+  BlockRegistry block_registry;
 
   GameState(VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena);
-
-  bool LoadBlocks();
 
   void OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid);
   void OnChunkLoad(s32 chunk_x, s32 chunk_z);
