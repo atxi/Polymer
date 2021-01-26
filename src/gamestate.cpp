@@ -182,9 +182,18 @@ void GameState::OnPlayerPositionAndLook(const Vector3f& position, float yaw, flo
 void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
   u32 x_index = world.GetChunkCacheIndex(chunk_x);
   u32 z_index = world.GetChunkCacheIndex(chunk_z);
+  ChunkSection* section = &world.chunks[z_index][x_index];
   ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
 
   section_info->loaded = false;
+
+  for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
+    if (section_info->bitmask & (1 << chunk_y)) {
+      memset(section->chunks[chunk_y].blocks, 0, sizeof(section->chunks[chunk_y].blocks));
+    }
+  }
+
+  section_info->bitmask = 0;
 
   if (section_info->x != chunk_x || section_info->z != chunk_z) {
     return;
@@ -241,38 +250,46 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   }
 
   // Load west blocks
-  for (s64 y = 0; y < 16; ++y) {
-    for (s64 z = 0; z < 16; ++z) {
-      size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 0);
-      bordered_chunk[index] = west_section->chunks[chunk_y].blocks[y][z][15];
+  if (west_section->info->bitmask & (1 << chunk_y)) {
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 0);
+        bordered_chunk[index] = west_section->chunks[chunk_y].blocks[y][z][15];
+      }
     }
   }
 
   // Load east blocks
-  for (s64 y = 0; y < 16; ++y) {
-    for (s64 z = 0; z < 16; ++z) {
-      size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 17);
-      bordered_chunk[index] = east_section->chunks[chunk_y].blocks[y][z][0];
+  if (east_section->info->bitmask & (1 << chunk_y)) {
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 17);
+        bordered_chunk[index] = east_section->chunks[chunk_y].blocks[y][z][0];
+      }
     }
   }
 
   // Load north blocks
-  for (s64 y = 0; y < 16; ++y) {
-    for (s64 x = 0; x < 16; ++x) {
-      size_t index = (size_t)((y + 1) * 18 * 18 + (x + 1));
-      bordered_chunk[index] = north_section->chunks[chunk_y].blocks[y][15][x];
+  if (north_section->info->bitmask & (1 << chunk_y)) {
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (size_t)((y + 1) * 18 * 18 + (x + 1));
+        bordered_chunk[index] = north_section->chunks[chunk_y].blocks[y][15][x];
+      }
     }
   }
 
   // Load south blocks
-  for (s64 y = 0; y < 16; ++y) {
-    for (s64 x = 0; x < 16; ++x) {
-      size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + (x + 1));
-      bordered_chunk[index] = south_section->chunks[chunk_y].blocks[y][0][x];
+  if (south_section->info->bitmask & (1 << chunk_y)) {
+    for (s64 y = 0; y < 16; ++y) {
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + (x + 1));
+        bordered_chunk[index] = south_section->chunks[chunk_y].blocks[y][0][x];
+      }
     }
   }
 
-  if (chunk_y < 16) {
+  if (chunk_y < 16 && section->info->bitmask & (1 << (chunk_y + 1))) {
     // Load above blocks
     for (s64 z = 0; z < 16; ++z) {
       for (s64 x = 0; x < 16; ++x) {
@@ -282,7 +299,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
     }
   }
 
-  if (chunk_y > 0) {
+  if (chunk_y > 0 && section->info->bitmask & (1 << (chunk_y - 1))) {
     // Load below blocks
     for (s64 z = 0; z < 16; ++z) {
       for (s64 x = 0; x < 16; ++x) {
@@ -828,10 +845,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z)
 
   ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
 
-  ChunkSection* east_section = ctx->east_section;
-  ChunkSection* west_section = ctx->west_section;
-  ChunkSection* north_section = ctx->north_section;
-  ChunkSection* south_section = ctx->south_section;
+  renderer->BeginMeshAllocation();
 
   for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
     if (!(section_info->bitmask & (1 << chunk_y))) {
@@ -840,6 +854,8 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z)
 
     BuildChunkMesh(ctx, chunk_x, chunk_y, chunk_z);
   }
+
+  renderer->EndMeshAllocation();
 }
 
 void GameState::OnDimensionChange() {
@@ -872,6 +888,8 @@ void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
 
   section_info->loaded = true;
+  section_info->x = chunk_x;
+  section_info->z = chunk_z;
 
   world.build_queue[world.build_queue_count++] = {chunk_x, chunk_z};
 }
@@ -920,7 +938,10 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
     // If the chunk isn't currently queued then it must already be generated
     assert(has_neighbors);
 
+    // TODO: Block changes should be batched to update a chunk once in the frame when it changes
+    renderer->BeginMeshAllocation();
     BuildChunkMesh(&ctx, chunk_x, chunk_y, chunk_z);
+    renderer->EndMeshAllocation();
   }
 }
 

@@ -117,6 +117,11 @@ struct VulkanRenderer {
   bool render_paused;
   bool invalid_swapchain;
 
+  // A list of staging buffers that need to be freed after pushing the oneshot allocation command buffer.
+  VkBuffer staging_buffers[2048];
+  VmaAllocation staging_allocs[2048];
+  size_t staging_buffer_count = 0;
+
   bool Initialize(HWND hwnd);
   void RecreateSwapchain();
   bool BeginFrame();
@@ -133,15 +138,18 @@ struct VulkanRenderer {
   void CreateTexture(size_t width, size_t height, size_t layers);
   void PushTexture(u8* texture, size_t size, size_t index);
 
+  void BeginMeshAllocation();
+  void EndMeshAllocation();
+
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
 
   void GenerateMipmaps(u32 index);
   void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, u32 layer);
   void CreateDepthBuffer();
+  void CreateUniformBuffers();
   void BeginOneShotCommandBuffer();
   void EndOneShotCommandBuffer();
-  void CreateUniformBuffers();
   void CleanupSwapchain();
   void CreateSyncObjects();
   void CreateCommandBuffers();

@@ -454,21 +454,13 @@ BlockModel AssetLoader::LoadModel(const char* path, size_t path_size, FaceTextur
 
   const size_t kPrefixSkip = 30;
 
-  for (size_t i = 0; i < model_count && parsed_model == nullptr; ++i) {
+  for (size_t i = 0; i < model_count; ++i) {
     char* check = models[i].filename + kPrefixSkip;
-    char* separator = strstr(check, ".");
-
-    if (separator == nullptr) {
-      continue;
-    }
-
-    *separator = 0;
-
+    
     if (strcmp(check, path) == 0) {
       parsed_model = models + i;
+      break;
     }
-
-    *separator = '.';
   }
 
   if (parsed_model == nullptr) {
@@ -759,6 +751,11 @@ size_t AssetLoader::ParseBlockModels() {
     assert(data);
 
     strcpy(models[i].filename, files[i].name);
+
+    char* separator = strstr(models[i].filename, ".");
+    if (separator) {
+      *separator = 0;
+    }
 
     models[i].root_value = json_parse(data, size);
     assert(models[i].root_value->type == json_type_object);

@@ -613,6 +613,13 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
     return mesh;
   }
 
+  assert(staging_buffer_count < polymer_array_count(staging_buffers));
+
+  staging_buffers[staging_buffer_count] = staging_buffer;
+  staging_allocs[staging_buffer_count] = staging_alloc;
+
+  staging_buffer_count++;
+
   if (staging_alloc_info.pMappedData) {
     memcpy(staging_alloc_info.pMappedData, data, (size_t)buffer_info.size);
   }
@@ -632,17 +639,25 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
   copy.dstOffset = 0;
   copy.size = buffer_info.size;
 
-  BeginOneShotCommandBuffer();
-
   vkCmdCopyBuffer(oneshot_command_buffer, staging_buffer, mesh.vertex_buffer, 1, &copy);
-
-  EndOneShotCommandBuffer();
-
-  vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
 
   mesh.vertex_count = count;
 
   return mesh;
+}
+
+void VulkanRenderer::BeginMeshAllocation() {
+  BeginOneShotCommandBuffer();
+}
+
+void VulkanRenderer::EndMeshAllocation() {
+  EndOneShotCommandBuffer();
+
+  for (size_t i = 0; i < staging_buffer_count; ++i) {
+    vmaDestroyBuffer(allocator, staging_buffers[i], staging_allocs[i]);
+  }
+
+  staging_buffer_count = 0;
 }
 
 void VulkanRenderer::FreeMesh(RenderMesh* mesh) {
