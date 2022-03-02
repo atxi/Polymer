@@ -60,7 +60,7 @@ struct SwapChainSupportDetails {
 struct RenderMesh {
   VkBuffer vertex_buffer;
   VmaAllocation vertex_allocation;
-  size_t vertex_count;
+  u32 vertex_count;
 };
 
 struct VulkanRenderer {
@@ -141,11 +141,14 @@ struct VulkanRenderer {
   void BeginMeshAllocation();
   void EndMeshAllocation();
 
+  void WaitForIdle();
+
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
 
   void GenerateMipmaps(u32 index);
-  void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, u32 layer);
+  void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout,
+                             u32 layer);
   void CreateDepthBuffer();
   void CreateUniformBuffers();
   void BeginOneShotCommandBuffer();

@@ -9,159 +9,6 @@ namespace polymer {
 
 constexpr size_t kTextureSize = 16 * 16 * 4;
 
-u32 Hash(const char* str) {
-  u32 hash = 5381;
-  char c;
-
-  while (c = *str++) {
-    hash = hash * 33 ^ c;
-  }
-
-  return hash;
-}
-
-u32 Hash(const char* str, size_t len) {
-  u32 hash = 5381;
-
-  for (size_t i = 0; i < len; ++i) {
-    hash = hash * 33 ^ str[i];
-  }
-
-  return hash;
-}
-
-TextureIdMap::TextureIdMap(MemoryArena* arena) : arena(arena), free(nullptr) {
-  for (size_t i = 0; i < kTextureIdBuckets; ++i) {
-    elements[i] = nullptr;
-  }
-
-  for (size_t i = 0; i < 1024; ++i) {
-    TextureIdElement* element = memory_arena_push_type(arena, TextureIdElement);
-    element->next = free;
-    free = element;
-  }
-}
-
-TextureIdElement* TextureIdMap::Allocate() {
-  TextureIdElement* result = nullptr;
-
-  if (free) {
-    result = free;
-    free = free->next;
-  } else {
-    result = memory_arena_push_type(arena, TextureIdElement);
-  }
-
-  result->next = nullptr;
-  return result;
-}
-
-void TextureIdMap::Insert(const char* name, u32 value) {
-  u32 bucket = Hash(name) & (kTextureIdBuckets - 1);
-
-  TextureIdElement* element = elements[bucket];
-  while (element) {
-    if (strcmp(element->name, name) == 0) {
-      break;
-    }
-    element = element->next;
-  }
-
-  if (element == nullptr) {
-    element = Allocate();
-
-    assert(strlen(name) < polymer_array_count(element->name));
-
-    strcpy(element->name, name);
-    element->value = value;
-
-    element->next = elements[bucket];
-    elements[bucket] = element;
-  }
-}
-
-u32* TextureIdMap::Find(const char* name) {
-  u32 bucket = Hash(name) & (kTextureIdBuckets - 1);
-  TextureIdElement* element = elements[bucket];
-
-  while (element) {
-    if (strcmp(element->name, name) == 0) {
-      return &element->value;
-    }
-    element = element->next;
-  }
-
-  return nullptr;
-}
-
-FaceTextureMap::FaceTextureMap(MemoryArena* arena) : arena(arena), free(nullptr) {
-  for (size_t i = 0; i < kTextureMapBuckets; ++i) {
-    elements[i] = nullptr;
-  }
-
-  for (size_t i = 0; i < 32; ++i) {
-    FaceTextureElement* element = memory_arena_push_type(arena, FaceTextureElement);
-    element->next = free;
-    free = element;
-  }
-}
-
-FaceTextureElement* FaceTextureMap::Allocate() {
-  FaceTextureElement* result = nullptr;
-
-  if (free) {
-    result = free;
-    free = free->next;
-  } else {
-    result = memory_arena_push_type(arena, FaceTextureElement);
-  }
-
-  result->next = nullptr;
-  return result;
-}
-
-void FaceTextureMap::Insert(const char* name, size_t namelen, const char* value, size_t valuelen) {
-  u32 bucket = Hash(name, namelen) & (kTextureMapBuckets - 1);
-
-  FaceTextureElement* element = elements[bucket];
-  while (element) {
-    if (strcmp(element->name, name) == 0) {
-      break;
-    }
-    element = element->next;
-  }
-
-  if (element == nullptr) {
-    element = Allocate();
-
-    assert(namelen < polymer_array_count(element->name));
-    assert(valuelen < polymer_array_count(element->value));
-
-    strncpy(element->name, name, namelen);
-    strncpy(element->value, value, valuelen);
-
-    element->name[namelen] = 0;
-    element->value[valuelen] = 0;
-
-    element->next = elements[bucket];
-    elements[bucket] = element;
-  }
-}
-
-const char* FaceTextureMap::Find(const char* name, size_t namelen) {
-  u32 bucket = Hash(name, namelen) & (kTextureMapBuckets - 1);
-  FaceTextureElement* element = elements[bucket];
-
-  while (element) {
-    if (strncmp(element->name, name, namelen) == 0) {
-      return element->value;
-    }
-    element = element->next;
-  }
-
-  return nullptr;
-}
-
 void ParsedBlockModel::InsertTextureMap(FaceTextureMap* map) {
   json_object_element_s* root_element = root->start;
 
@@ -172,8 +19,10 @@ void ParsedBlockModel::InsertTextureMap(FaceTextureMap* map) {
       while (texture_element) {
         json_string_s* value_string = json_value_as_string(texture_element->value);
 
-        map->Insert(texture_element->name->string, texture_element->name->string_size, value_string->string,
-                    value_string->string_size);
+        MapStringKey key(poly_string(texture_element->name->string, texture_element->name->string_size));
+        String value = poly_string(value_string->string, value_string->string_size);
+
+        map->Insert(key, value);
 
         texture_element = texture_element->next;
       }
@@ -183,6 +32,55 @@ void ParsedBlockModel::InsertTextureMap(FaceTextureMap* map) {
     root_element = root_element->next;
   }
 }
+
+s32 ParseFaceName(const String& str) {
+  const char* facename = str.data;
+  s32 face_index = 0;
+
+  if (poly_strcmp(str, POLY_STR("down")) == 0 || poly_strcmp(str, POLY_STR("bottom")) == 0) {
+    face_index = 0;
+  } else if (poly_strcmp(str, POLY_STR("up")) == 0 || poly_strcmp(str, POLY_STR("top")) == 0) {
+    face_index = 1;
+  } else if (poly_strcmp(str, POLY_STR("north")) == 0) {
+    face_index = 2;
+  } else if (poly_strcmp(str, POLY_STR("south")) == 0) {
+    face_index = 3;
+  } else if (poly_strcmp(str, POLY_STR("west")) == 0) {
+    face_index = 4;
+  } else if (poly_strcmp(str, POLY_STR("east")) == 0) {
+    face_index = 5;
+  }
+
+  return face_index;
+}
+
+s32 ParseFaceName(const char* facename) {
+  return ParseFaceName(poly_string(facename));
+}
+
+struct JsonVectorParser {
+  json_object_element_s* element;
+  json_array_element_s* array_element;
+
+  JsonVectorParser(json_object_element_s* element) : element(element) {
+    array_element = json_value_as_array(element->value)->start;
+  }
+
+  Vector2f Next() {
+    Vector2f result;
+
+    result[0] = strtol(json_value_as_number(array_element->value)->number, nullptr, 10) / 16.0f;
+    array_element = array_element->next;
+    result[1] = strtol(json_value_as_number(array_element->value)->number, nullptr, 10) / 16.0f;
+    array_element = array_element->next;
+
+    return result;
+  }
+
+  bool HasNext() {
+    return array_element != nullptr && array_element->next != nullptr;
+  }
+};
 
 void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture_face_map,
                                       TextureIdMap* texture_id_map) {
@@ -225,21 +123,7 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
             while (face_obj_element) {
               const char* facename = face_obj_element->name->string;
 
-              size_t face_index = 0;
-
-              if (strcmp(facename, "down") == 0) {
-                face_index = 0;
-              } else if (strcmp(facename, "up") == 0) {
-                face_index = 1;
-              } else if (strcmp(facename, "north") == 0) {
-                face_index = 2;
-              } else if (strcmp(facename, "south") == 0) {
-                face_index = 3;
-              } else if (strcmp(facename, "west") == 0) {
-                face_index = 4;
-              } else if (strcmp(facename, "east") == 0) {
-                face_index = 5;
-              }
+              size_t face_index = ParseFaceName(facename);
 
               json_object_element_s* face_element = json_value_as_object(face_obj_element->value)->start;
               RenderableFace* face = model->elements[model->element_count].faces + face_index;
@@ -248,36 +132,32 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
               face->uv_to = Vector2f(1, 1);
               face->render = true;
               face->tintindex = 0xFFFF;
+              face->cullface = 6;
 
               while (face_element) {
                 const char* face_property = face_element->name->string;
 
                 if (strcmp(face_property, "texture") == 0) {
                   json_string_s* texture_str = json_value_as_string(face_element->value);
-                  const char* texture_name = texture_str->string;
+                  String texture_name = poly_string(texture_str->string, texture_str->string_size);
 
-                  size_t namelen = texture_str->string_size;
+                  while (texture_name.data[0] == '#') {
+                    MapStringKey lookup(texture_name.data + 1, texture_name.size - 1);
+                    String* result = texture_face_map->Find(lookup);
 
-                  while (texture_name[0] == '#') {
-                    texture_name = texture_face_map->Find(texture_name + 1, namelen - 1);
-
-                    if (texture_name == nullptr) {
+                    if (result == nullptr) {
                       return;
                     }
 
-                    namelen = strlen(texture_name);
+                    texture_name = *result;
                   }
 
-                  size_t prefix_size = 6;
-
-                  if (strstr(texture_name, ":")) {
-                    prefix_size = 16;
-                  }
+                  size_t prefix_size = poly_contains(texture_name, ':') ? 16 : 6;
 
                   char lookup[1024];
-                  sprintf(lookup, "%.*s.png", (u32)(namelen - prefix_size), texture_name + prefix_size);
+                  sprintf(lookup, "%.*s.png", (u32)(texture_name.size - prefix_size), texture_name.data + prefix_size);
 
-                  u32* texture_id = texture_id_map->Find(lookup);
+                  u32* texture_id = texture_id_map->Find(poly_string(lookup));
 
                   if (texture_id) {
                     face->texture_id = *texture_id;
@@ -285,26 +165,29 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
                     face->texture_id = 0;
                   }
                 } else if (strcmp(face_property, "uv") == 0) {
-                  Vector2f uv_from;
-                  Vector2f uv_to;
+                  JsonVectorParser vec_parser(face_element);
 
-                  json_array_element_s* value = json_value_as_array(face_element->value)->start;
+                  Vector2f uv_from, uv_to;
 
-                  uv_from[0] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
-                  value = value->next;
-                  uv_from[1] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
-                  value = value->next;
-                  uv_to[0] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
-                  value = value->next;
-                  uv_to[1] = strtol(json_value_as_number(value->value)->number, nullptr, 10) / 16.0f;
+                  if (vec_parser.HasNext()) {
+                    uv_from = vec_parser.Next();
+                  }
+
+                  if (vec_parser.HasNext()) {
+                    uv_to = vec_parser.Next();
+                  }
 
                   face->uv_from = uv_from;
                   face->uv_to = uv_to;
                 } else if (strcmp(face_property, "tintindex") == 0) {
                   face->tintindex = (u32)strtol(json_value_as_number(face_element->value)->number, nullptr, 10);
-                  // if (strstr(path, "leaves") != 0) {
-                  // face->tintindex = 1;
-                  //}
+                } else if (strcmp(face_property, "cullface") == 0) {
+                  json_string_s* texture_str = json_value_as_string(face_element->value);
+                  String face_str = poly_string(texture_str->string, texture_str->string_size);
+
+                  s32 face_index = ParseFaceName(face_str);
+
+                  face->cullface = face_index;
                 }
 
                 face_element = face_element->next;
@@ -408,7 +291,7 @@ bool AssetLoader::Load(const char* jar_path, const char* blocks_path) {
 
               while (state_element) {
                 if (strcmp(state_element->name->string, "model") == 0) {
-                  json_string_s* model_name_str = json_value_as_string(state_element->value);
+                  json_string_s* model_name_json = json_value_as_string(state_element->value);
 
                   // Do a lookup on the model name then store the model in the BlockState.
                   // Model lookup is going to need to be recursive with the root parent data being filled out first then
@@ -416,11 +299,10 @@ bool AssetLoader::Load(const char* jar_path, const char* blocks_path) {
                   const size_t kPrefixSize = 16;
 
                   ArenaSnapshot snapshot = arena->GetSnapshot();
-                  FaceTextureMap texture_face_map(arena);
+                  FaceTextureMap texture_face_map(*arena);
+                  String model_name(model_name_json->string + kPrefixSize, model_name_json->string_size - kPrefixSize);
 
-                  final_states[bid].model =
-                      LoadModel(model_name_str->string + kPrefixSize, model_name_str->string_size - kPrefixSize,
-                                &texture_face_map, &texture_id_map);
+                  final_states[bid].model = LoadModel(model_name, &texture_face_map, &texture_id_map);
                   arena->Revert(snapshot);
                   variant_element = nullptr;
                   break;
@@ -446,26 +328,29 @@ bool AssetLoader::Load(const char* jar_path, const char* blocks_path) {
   return true;
 }
 
-BlockModel AssetLoader::LoadModel(const char* path, size_t path_size, FaceTextureMap* texture_face_map,
-                                  TextureIdMap* texture_id_map) {
-  BlockModel result = {};
+bool AssetLoader::IsTransparentTexture(u32 texture_id) {
+  u8* start = texture_images + texture_id * kTextureSize;
 
-  ParsedBlockModel* parsed_model = nullptr;
-
-  const size_t kPrefixSkip = 30;
-
-  for (size_t i = 0; i < model_count; ++i) {
-    char* check = models[i].filename + kPrefixSkip;
-    
-    if (strcmp(check, path) == 0) {
-      parsed_model = models + i;
-      break;
+  // Loop through texture looking for alpha that isn't fully opaque.
+  for (size_t i = 0; i < kTextureSize; i += 4) {
+    if (start[i + 3] != 0xFF) {
+      return true;
     }
   }
 
-  if (parsed_model == nullptr) {
+  return false;
+}
+
+BlockModel AssetLoader::LoadModel(String path, FaceTextureMap* texture_face_map, TextureIdMap* texture_id_map) {
+  BlockModel result = {};
+
+  ParsedBlockModel** find = parsed_block_map.Find(path);
+
+  if (find == nullptr) {
     return result;
   }
+
+  ParsedBlockModel* parsed_model = *find;
 
   parsed_model->InsertTextureMap(texture_face_map);
   parsed_model->InsertElements(&result, texture_face_map, texture_id_map);
@@ -484,8 +369,9 @@ BlockModel AssetLoader::LoadModel(const char* path, size_t path_size, FaceTextur
         }
       }
 
-      BlockModel parent =
-          LoadModel(parent_name->string + prefix_size, parent_name->string_size, texture_face_map, texture_id_map);
+      String parent_string(parent_name->string + prefix_size, parent_name->string_size - prefix_size);
+
+      BlockModel parent = LoadModel(parent_string, texture_face_map, texture_id_map);
       for (size_t i = 0; i < parent.element_count; ++i) {
         result.elements[result.element_count++] = parent.elements[i];
 
@@ -500,6 +386,10 @@ BlockModel AssetLoader::LoadModel(const char* path, size_t path_size, FaceTextur
     BlockElement* element = result.elements + i;
 
     element->occluding = element->from == Vector3f(0, 0, 0) && element->to == Vector3f(1, 1, 1);
+
+    for (size_t j = 0; j < 6; ++j) {
+      element->faces[j].transparency = IsTransparentTexture(element->faces[j].texture_id);
+    }
   }
 
   return result;
@@ -679,6 +569,7 @@ u32 AssetLoader::GetLastStateId(json_object_s* root) {
 }
 
 size_t AssetLoader::LoadTextures() {
+  constexpr size_t kTexturePathPrefixSize = 32;
   ZipArchiveElement* texture_files = archive.ListFiles(arena, "assets/minecraft/textures/block/", &texture_count);
 
   if (texture_count == 0) {
@@ -698,7 +589,7 @@ size_t AssetLoader::LoadTextures() {
       continue;
     }
 
-    char* texture_name = texture_files[i].name + 32;
+    String texture_name = poly_string(texture_files[i].name + kTexturePathPrefixSize);
 
     this->texture_id_map.Insert(texture_name, i);
 
@@ -761,6 +652,14 @@ size_t AssetLoader::ParseBlockModels() {
     assert(models[i].root_value->type == json_type_object);
 
     models[i].root = json_value_as_object(models[i].root_value);
+
+    char* last_separator = models[i].filename + strlen(models[i].filename);
+    while (*last_separator != '/' && last_separator > models[i].filename) {
+      --last_separator;
+    }
+    ++last_separator;
+
+    parsed_block_map.Insert(MapStringKey(String(last_separator)), models + i);
   }
 
   return model_count;

@@ -2,6 +2,7 @@
 #define POLYMER_ASSET_LOADER_H_
 
 #include "block.h"
+#include "hash_map.h"
 #include "json.h"
 #include "memory.h"
 #include "types.h"
@@ -9,49 +10,8 @@
 
 namespace polymer {
 
-struct TextureIdElement {
-  TextureIdElement* next;
-
-  char name[48];
-  u32 value;
-};
-
-constexpr size_t kTextureIdBuckets = (1 << 7);
-struct TextureIdMap {
-  TextureIdElement* elements[kTextureIdBuckets];
-
-  MemoryArena* arena;
-  TextureIdElement* free;
-
-  TextureIdMap(MemoryArena* arena);
-
-  void Insert(const char* name, u32 value);
-  u32* Find(const char* name);
-
-  TextureIdElement* Allocate();
-};
-
-struct FaceTextureElement {
-  FaceTextureElement* next;
-
-  char name[32];
-  char value[256];
-};
-
-constexpr size_t kTextureMapBuckets = (1 << 5);
-struct FaceTextureMap {
-  FaceTextureElement* elements[kTextureMapBuckets];
-
-  MemoryArena* arena;
-  FaceTextureElement* free;
-
-  FaceTextureMap(MemoryArena* arena);
-
-  void Insert(const char* name, size_t namelen, const char* value, size_t valuelen);
-  const char* Find(const char* name, size_t namelen);
-
-  FaceTextureElement* Allocate();
-};
+typedef HashMap<MapStringKey, u32, MapStringHasher> TextureIdMap;
+typedef HashMap<MapStringKey, String, MapStringHasher> FaceTextureMap;
 
 struct ParsedBlockModel {
   char filename[1024];
@@ -62,6 +22,8 @@ struct ParsedBlockModel {
   void InsertTextureMap(FaceTextureMap* map);
   void InsertElements(BlockModel* model, FaceTextureMap* texture_face_map, TextureIdMap* texture_id_map);
 };
+
+typedef HashMap<MapStringKey, ParsedBlockModel*, MapStringHasher> ParsedBlockMap;
 
 struct ParsedBlockState {
   char filename[1024];
@@ -78,6 +40,7 @@ struct AssetLoader {
   ArenaSnapshot snapshot = 0;
 
   TextureIdMap texture_id_map;
+  ParsedBlockMap parsed_block_map;
 
   size_t model_count = 0;
   ParsedBlockModel* models = nullptr;
@@ -97,7 +60,7 @@ struct AssetLoader {
   char** properties = nullptr;
 
   AssetLoader(MemoryArena* arena, MemoryArena* perm_arena)
-      : arena(arena), perm_arena(perm_arena), texture_id_map(arena) {}
+      : arena(arena), perm_arena(perm_arena), texture_id_map(*arena), parsed_block_map(*arena) {}
   ~AssetLoader();
 
   bool Load(const char* jar_path, const char* blocks_path);
@@ -114,8 +77,8 @@ private:
   size_t LoadTextures();
   size_t ParseBlockModels();
   size_t ParseBlockStates();
-  BlockModel LoadModel(const char* path, size_t path_size, FaceTextureMap* texture_face_map,
-                       TextureIdMap* texture_id_map);
+  BlockModel LoadModel(String path, FaceTextureMap* texture_face_map, TextureIdMap* texture_id_map);
+  bool IsTransparentTexture(u32 texture_id);
 
   void Cleanup();
 };

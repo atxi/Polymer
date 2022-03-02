@@ -124,34 +124,27 @@ void GameState::Update(float dt, InputState* input) {
 
   VkDeviceSize offsets[] = {0};
 
-  for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
-    for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
+  for (s32 chunk_z = 0; chunk_z < (s32)kChunkCacheSize; ++chunk_z) {
+    for (s32 chunk_x = 0; chunk_x < (s32)kChunkCacheSize; ++chunk_x) {
       ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
 
       if (!section_info->loaded) {
         continue;
       }
 
-      Vector3f column_min(section_info->x * 16.0f, 0, section_info->z * 16.0f);
-      Vector3f column_max(section_info->x * 16.0f + 16.0f, 16 * 16.0f, section_info->z * 16.0f + 16.0f);
-
-      if (!frustum.Intersects(column_min, column_max)) {
-        continue;
-      }
-
       RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
 
-      for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+      for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
         RenderMesh* mesh = meshes + chunk_y;
 
-        if (mesh->vertex_count > 0) {
+        if ((section_info->bitmask & (1 << chunk_y))) {
           Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f, section_info->z * 16.0f);
           Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f + 16.0f, section_info->z * 16.0f + 16.0f);
 
-          if (frustum.Intersects(chunk_min, chunk_max)) {
+          if (frustum.Intersects(chunk_min, chunk_max) && mesh->vertex_count > 0) {
             vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1, &mesh->vertex_buffer,
                                    offsets);
-            vkCmdDraw(renderer->command_buffers[renderer->current_frame], (u32)mesh->vertex_count, 1, 0, 0);
+            vkCmdDraw(renderer->command_buffers[renderer->current_frame], mesh->vertex_count, 1, 0, 0);
           }
         }
       }
@@ -219,6 +212,18 @@ inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel*
   }
 
   return 3 - (value1 + value2 + value_corner);
+}
+
+bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
+  // Only check the first element for transparency so blocks with overlay aren't treated as transparent.
+  for (size_t j = 0; j < 6; ++j) {
+    if (to->elements[0].faces[j].transparency) {
+      return false;
+    }
+  }
+
+  // TODO: Implement the rest
+  return to->IsOccluding();
 }
 
 void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z) {
@@ -375,7 +380,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
         BlockModel* east_model = &block_registry.states[east_id].model;
         BlockModel* west_model = &block_registry.states[west_id].model;
 
-        if (!above_model->IsOccluding()) {
+        if (!IsOccluding(model, above_model, BlockFace::Up)) {
           int ao_bl = 3;
           int ao_br = 3;
           int ao_tl = 3;
@@ -449,7 +454,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (!below_model->IsOccluding()) {
+        if (!IsOccluding(model, below_model, BlockFace::Down)) {
           int ao_bl = 3;
           int ao_br = 3;
           int ao_tl = 3;
@@ -523,7 +528,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (!north_model->IsOccluding()) {
+        if (!IsOccluding(model, north_model, BlockFace::North)) {
           int ao_bl = 3;
           int ao_br = 3;
           int ao_tl = 3;
@@ -597,7 +602,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (!south_model->IsOccluding()) {
+        if (!IsOccluding(model, south_model, BlockFace::South)) {
           int ao_bl = 3;
           int ao_br = 3;
           int ao_tl = 3;
@@ -673,7 +678,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (!east_model->IsOccluding()) {
+        if (!IsOccluding(model, east_model, BlockFace::East)) {
           int ao_bl = 3;
           int ao_br = 3;
           int ao_tl = 3;
@@ -747,7 +752,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
           }
         }
 
-        if (!west_model->IsOccluding()) {
+        if (!IsOccluding(model, west_model, BlockFace::West)) {
           int ao_bl = 3;
           int ao_br = 3;
           int ao_tl = 3;
@@ -824,10 +829,16 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
     }
   }
 
+  if (meshes[chunk_y].vertex_count > 0) {
+    // TODO: This should be done in a better way
+    renderer->WaitForIdle();
+    renderer->FreeMesh(meshes + chunk_y);
+  }
+
+  meshes[chunk_y].vertex_count = vertex_count;
+
   if (vertex_count > 0) {
     meshes[chunk_y] = renderer->AllocateMesh((u8*)vertices, sizeof(ChunkVertex) * vertex_count, vertex_count);
-  } else {
-    meshes[chunk_y].vertex_count = 0;
   }
 
   // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
@@ -847,8 +858,11 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z)
 
   renderer->BeginMeshAllocation();
 
+  RenderMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
+
   for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
     if (!(section_info->bitmask & (1 << chunk_y))) {
+      meshes[chunk_y].vertex_count = 0;
       continue;
     }
 

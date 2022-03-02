@@ -264,10 +264,10 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           }
         }
       }
-
-      // Delay the chunk load call until the entire section is loaded.
-      game->OnChunkLoad(chunk_x, chunk_z);
     }
+
+    // Delay the chunk load call until the entire section is loaded.
+    game->OnChunkLoad(chunk_x, chunk_z);
 
     // Jump to after the data because the data_size can be larger than actual chunk data sent according to
     // documentation.

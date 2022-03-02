@@ -152,32 +152,6 @@ int run() {
   assert(connection->read_buffer.data);
   assert(connection->write_buffer.data);
 
-  ConnectResult connect_result = connection->Connect("127.0.0.1", 25565);
-
-  switch (connect_result) {
-  case ConnectResult::ErrorSocket: {
-    fprintf(stderr, "Failed to create socket\n");
-    return 1;
-  }
-  case ConnectResult::ErrorAddrInfo: {
-    fprintf(stderr, "Failed to get address info\n");
-    return 1;
-  }
-  case ConnectResult::ErrorConnect: {
-    fprintf(stderr, "Failed to connect\n");
-    return 1;
-  }
-  default:
-    break;
-  }
-
-  printf("Connected to server.\n");
-
-  connection->SetBlocking(false);
-
-  connection->SendHandshake(754, "127.0.0.1", 25565, ProtocolState::Login);
-  connection->SendLoginStart("polymer");
-
   WNDCLASSEX wc = {};
 
   wc.cbSize = sizeof(wc);
@@ -213,6 +187,7 @@ int run() {
 
   {
     AssetLoader loader(&trans_arena, &perm_arena);
+
     if (!loader.Load("1.16.4.jar", "blocks.json")) {
       fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
       return 1;
@@ -252,6 +227,32 @@ int run() {
 
   vk_render.CreateDescriptorSetLayout();
   vk_render.RecreateSwapchain();
+
+  ConnectResult connect_result = connection->Connect("127.0.0.1", 25565);
+
+  switch (connect_result) {
+  case ConnectResult::ErrorSocket: {
+    fprintf(stderr, "Failed to create socket\n");
+    return 1;
+  }
+  case ConnectResult::ErrorAddrInfo: {
+    fprintf(stderr, "Failed to get address info\n");
+    return 1;
+  }
+  case ConnectResult::ErrorConnect: {
+    fprintf(stderr, "Failed to connect\n");
+    return 1;
+  }
+  default:
+    break;
+  }
+
+  printf("Connected to server.\n");
+
+  connection->SetBlocking(false);
+
+  connection->SendHandshake(754, "127.0.0.1", 25565, ProtocolState::Login);
+  connection->SendLoginStart("polymer");
 
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();

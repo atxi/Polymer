@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <xmmintrin.h>
 
 constexpr float kPi = 3.14159265f;
 
@@ -665,6 +666,7 @@ struct Frustum {
                             min + Vector3f(diff.x, 0, diff.z),
                             max};
 
+#if 0
     for (size_t i = 0; i < 6; ++i) {
       bool in = false;
 
@@ -681,6 +683,49 @@ struct Frustum {
     }
 
     return true;
+#else
+    __m128 zero4x = _mm_set_ps1(0.0f);
+
+    __m128 vxs0 = _mm_setr_ps(vertices[0].x, vertices[1].x, vertices[2].x, vertices[3].x);
+    __m128 vxs1 = _mm_setr_ps(vertices[4].x, vertices[5].x, vertices[6].x, vertices[7].x);
+
+    __m128 vys0 = _mm_setr_ps(vertices[0].y, vertices[1].y, vertices[2].y, vertices[3].y);
+    __m128 vys1 = _mm_setr_ps(vertices[4].y, vertices[5].y, vertices[6].y, vertices[7].y);
+
+    __m128 vzs0 = _mm_setr_ps(vertices[0].z, vertices[1].z, vertices[2].z, vertices[3].z);
+    __m128 vzs1 = _mm_setr_ps(vertices[4].z, vertices[5].z, vertices[6].z, vertices[7].z);
+
+    for (size_t i = 0; i < 6; ++i) {
+      __m128 nxs = _mm_set_ps1(planes[i].normal.x);
+      __m128 nys = _mm_set_ps1(planes[i].normal.y);
+      __m128 nzs = _mm_set_ps1(planes[i].normal.z);
+
+      __m128 dist = _mm_set_ps1(planes[i].distance);
+
+      __m128 xmul0 = _mm_mul_ps(nxs, vxs0);
+      __m128 xmul1 = _mm_mul_ps(nxs, vxs1);
+
+      __m128 ymul0 = _mm_mul_ps(nys, vys0);
+      __m128 ymul1 = _mm_mul_ps(nys, vys1);
+
+      __m128 zmul0 = _mm_mul_ps(nzs, vzs0);
+      __m128 zmul1 = _mm_mul_ps(nzs, vzs1);
+
+      __m128 dot0 = _mm_add_ps(_mm_add_ps(xmul0, ymul0), zmul0);
+      __m128 dot1 = _mm_add_ps(_mm_add_ps(xmul1, ymul1), zmul1);
+      __m128 final0 = _mm_sub_ps(dot0, dist);
+      __m128 final1 = _mm_sub_ps(dot1, dist);
+
+      __m128 cmp0 = _mm_cmplt_ps(final0, zero4x);
+      __m128 cmp1 = _mm_cmplt_ps(final1, zero4x);
+
+      if (_mm_movemask_ps(cmp0) == 0x0F && _mm_movemask_ps(cmp1) == 0x0F) {
+        return false;
+      }
+    }
+
+    return true;
+#endif
   }
 };
 

@@ -8,6 +8,25 @@ namespace polymer {
 
 enum class BlockFace { Down, Up, North, South, West, East };
 
+inline BlockFace GetOppositeFace(BlockFace face) {
+  switch (face) {
+  case BlockFace::Down:
+    return BlockFace::Up;
+  case BlockFace::Up:
+    return BlockFace::Down;
+  case BlockFace::North:
+    return BlockFace::South;
+  case BlockFace::South:
+    return BlockFace::North;
+  case BlockFace::West:
+    return BlockFace::East;
+  case BlockFace::East:
+    return BlockFace::West;
+  }
+
+  return BlockFace::Down;
+}
+
 struct RenderableFace {
   Vector2f uv_from;
   Vector2f uv_to;
@@ -16,6 +35,9 @@ struct RenderableFace {
 
   struct {
     u32 render : 1;
+    u32 transparency : 1;
+    u32 cullface : 3;
+    u32 padding : 11;
     u32 tintindex : 16;
   };
 };
@@ -24,8 +46,12 @@ struct BlockElement {
   RenderableFace faces[6];
   Vector3f from;
   Vector3f to;
-  bool occluding;
-  bool shade;
+
+  struct {
+    u32 occluding : 1;
+    u32 shade : 1;
+    u32 padding : 30;
+  };
 };
 
 struct BlockModel {

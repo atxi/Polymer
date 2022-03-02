@@ -589,6 +589,10 @@ void VulkanRenderer::EndOneShotCommandBuffer() {
   vkQueueWaitIdle(graphics_queue);
 }
 
+void VulkanRenderer::WaitForIdle() {
+  vkQueueWaitIdle(graphics_queue);
+}
+
 RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
   RenderMesh mesh = {};
 
@@ -641,7 +645,7 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
 
   vkCmdCopyBuffer(oneshot_command_buffer, staging_buffer, mesh.vertex_buffer, 1, &copy);
 
-  mesh.vertex_count = count;
+  mesh.vertex_count = (u32)count;
 
   return mesh;
 }
