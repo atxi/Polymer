@@ -160,8 +160,10 @@ struct GameState {
 
   void OnWindowMouseMove(s32 dx, s32 dy);
 
-  void BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z);
+  void BuildChunkMesh(ChunkBuildContext* ctx);
   void BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z);
+
+  void ImmediateRebuild(ChunkBuildContext* ctx, s32 chunk_y);
 
   void Update(float dt, InputState* input);
 

@@ -101,7 +101,7 @@ void GameState::Update(float dt, InputState* input) {
     ChunkBuildContext ctx(chunk_x, chunk_z);
 
     if (ctx.GetNeighbors(&world)) {
-      BuildChunkMesh(&ctx, chunk_x, chunk_z);
+      BuildChunkMesh(&ctx);
       world.build_queue.data[i] = world.build_queue.data[--world.build_queue.count];
     } else {
       ++i;
@@ -816,13 +816,13 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   trans_arena->current = arena_snapshot;
 }
 
-void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z) {
+void GameState::BuildChunkMesh(ChunkBuildContext* ctx) {
   // TODO:
   // This should probably be done on a separate thread or in a compute shader ideally.
   // Either an index buffer or face merging should be done to reduce buffer size.
 
-  u32 x_index = world.GetChunkCacheIndex(chunk_x);
-  u32 z_index = world.GetChunkCacheIndex(chunk_z);
+  u32 x_index = world.GetChunkCacheIndex(ctx->chunk_x);
+  u32 z_index = world.GetChunkCacheIndex(ctx->chunk_z);
 
   ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
 
@@ -836,7 +836,7 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_z)
       continue;
     }
 
-    BuildChunkMesh(ctx, chunk_x, chunk_y, chunk_z);
+    BuildChunkMesh(ctx, ctx->chunk_x, chunk_y, ctx->chunk_z);
   }
 
   renderer->EndMeshAllocation();
@@ -959,18 +959,56 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
     section_info->bitmask |= (1 << (y / 16));
   }
 
-  if (!world.build_queue.IsInQueue(chunk_x, chunk_z)) {
-    ChunkBuildContext ctx(chunk_x, chunk_z);
+  // TODO: Block changes should be batched to update a chunk once in the frame when it changes
+  renderer->BeginMeshAllocation();
 
-    bool has_neighbors = ctx.GetNeighbors(&world);
-    // If the chunk isn't currently queued then it must already be generated
-    assert(has_neighbors);
+  ChunkBuildContext ctx(chunk_x, chunk_z);
+  ImmediateRebuild(&ctx, chunk_y);
 
-    // TODO: Block changes should be batched to update a chunk once in the frame when it changes
-    renderer->BeginMeshAllocation();
-    BuildChunkMesh(&ctx, chunk_x, chunk_y, chunk_z);
-    renderer->EndMeshAllocation();
+  if (relative_x == 0) {
+    // Rebuild west
+    ChunkBuildContext nearby_ctx(chunk_x - 1, chunk_z);
+    ImmediateRebuild(&nearby_ctx, chunk_y);
+  } else if (relative_x == 15) {
+    // Rebuild east
+    ChunkBuildContext nearby_ctx(chunk_x + 1, chunk_z);
+    ImmediateRebuild(&nearby_ctx, chunk_y);
   }
+
+  if (relative_z == 0) {
+    // Rebuild north
+    ChunkBuildContext nearby_ctx(chunk_x, chunk_z - 1);
+    ImmediateRebuild(&nearby_ctx, chunk_y);
+  } else if (relative_z == 15) {
+    // Rebuild south
+    ChunkBuildContext nearby_ctx(chunk_x, chunk_z + 1);
+    ImmediateRebuild(&nearby_ctx, chunk_y);
+  }
+
+  if (relative_y == 0 && chunk_y > 0) {
+    // Rebuild below
+    ChunkBuildContext nearby_ctx(chunk_x, chunk_z);
+    ImmediateRebuild(&nearby_ctx, chunk_y - 1);
+  } else if (relative_y == 15 && chunk_y < 15) {
+    // Rebuild above
+    ChunkBuildContext nearby_ctx(chunk_x, chunk_z);
+    ImmediateRebuild(&nearby_ctx, chunk_y + 1);
+  }
+
+  renderer->EndMeshAllocation();
+}
+
+void GameState::ImmediateRebuild(ChunkBuildContext* ctx, s32 chunk_y) {
+  s32 chunk_x = ctx->chunk_x;
+  s32 chunk_z = ctx->chunk_z;
+
+  if (world.build_queue.IsInQueue(chunk_x, chunk_z))
+    return;
+  // It should always have neighbors if it's not in the build queue, but sanity check anyway.
+  if (!ctx->GetNeighbors(&world))
+    return;
+
+  BuildChunkMesh(ctx, chunk_x, chunk_y, chunk_z);
 }
 
 void GameState::FreeMeshes() {
