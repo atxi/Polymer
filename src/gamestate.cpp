@@ -209,6 +209,10 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
   ChunkSection* west_section = ctx->west_section;
   ChunkSection* north_section = ctx->north_section;
   ChunkSection* south_section = ctx->south_section;
+  ChunkSection* north_east_section = ctx->north_east_section;
+  ChunkSection* north_west_section = ctx->north_west_section;
+  ChunkSection* south_east_section = ctx->south_east_section;
+  ChunkSection* south_west_section = ctx->south_west_section;
 
   // Create an initial pointer to transient memory with zero vertices allocated.
   // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
@@ -264,23 +268,155 @@ void GameState::BuildChunkMesh(ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y,
     }
   }
 
-  if (chunk_y < 16 && section->info->bitmask & (1 << (chunk_y + 1))) {
-    // Load above blocks
-    for (s64 z = 0; z < 16; ++z) {
-      for (s64 x = 0; x < 16; ++x) {
-        size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + (x + 1));
-        bordered_chunk[index] = section->chunks[chunk_y + 1].blocks[0][z][x];
+  // South-east corner
+  for (size_t y = 0; y < 16; ++y) {
+    size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + 17);
+    bordered_chunk[index] = south_east_section->chunks[chunk_y].blocks[y][0][0];
+  }
+
+  // North-east corner
+  for (size_t y = 0; y < 16; ++y) {
+    size_t index = (size_t)((y + 1) * 18 * 18 + 0 * 18 + 17);
+    bordered_chunk[index] = north_east_section->chunks[chunk_y].blocks[y][15][0];
+  }
+
+  // South-west corner
+  for (size_t y = 0; y < 16; ++y) {
+    size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + 0);
+    bordered_chunk[index] = south_west_section->chunks[chunk_y].blocks[y][0][15];
+  }
+
+  // North-west corner
+  for (size_t y = 0; y < 16; ++y) {
+    size_t index = (size_t)((y + 1) * 18 * 18 + 0 * 18 + 0);
+    bordered_chunk[index] = north_west_section->chunks[chunk_y].blocks[y][15][15];
+  }
+
+  if (chunk_y < 16) {
+    if (section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above blocks
+      for (s64 z = 0; z < 16; ++z) {
+        for (s64 x = 0; x < 16; ++x) {
+          size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + (x + 1));
+          bordered_chunk[index] = section->chunks[chunk_y + 1].blocks[0][z][x];
+        }
       }
+    }
+
+    if (south_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-south
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (size_t)(17 * 18 * 18 + 17 * 18 + (x + 1));
+        bordered_chunk[index] = south_section->chunks[chunk_y + 1].blocks[0][0][x];
+      }
+    }
+
+    if (north_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-north
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (size_t)(17 * 18 * 18 + 0 * 18 + (x + 1));
+        bordered_chunk[index] = north_section->chunks[chunk_y + 1].blocks[0][15][x];
+      }
+    }
+
+    if (east_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-east
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + 17);
+        bordered_chunk[index] = east_section->chunks[chunk_y + 1].blocks[0][z][0];
+      }
+    }
+
+    if (west_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-west
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + 0);
+        bordered_chunk[index] = west_section->chunks[chunk_y + 1].blocks[0][z][15];
+      }
+    }
+
+    if (south_east_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-south-east
+      bordered_chunk[(size_t)(17 * 18 * 18 + 17 * 18 + 17)] = south_east_section->chunks[chunk_y + 1].blocks[0][0][0];
+    }
+
+    if (south_west_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-south-west
+      bordered_chunk[(size_t)(17 * 18 * 18 + 17 * 18 + 0)] = south_west_section->chunks[chunk_y + 1].blocks[0][0][15];
+    }
+
+    if (north_east_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-north-east
+      bordered_chunk[(size_t)(17 * 18 * 18 + 0 * 18 + 17)] = north_east_section->chunks[chunk_y + 1].blocks[0][15][0];
+    }
+
+    if (north_west_section->info->bitmask & (1 << (chunk_y + 1))) {
+      // Load above-north-west
+      bordered_chunk[(size_t)(17 * 18 * 18 + 0 * 18 + 0)] = north_west_section->chunks[chunk_y + 1].blocks[0][15][15];
     }
   }
 
-  if (chunk_y > 0 && section->info->bitmask & (1 << (chunk_y - 1))) {
-    // Load below blocks
-    for (s64 z = 0; z < 16; ++z) {
-      for (s64 x = 0; x < 16; ++x) {
-        size_t index = (size_t)((z + 1) * 18 + (x + 1));
-        bordered_chunk[index] = section->chunks[chunk_y - 1].blocks[15][z][x];
+  if (chunk_y > 0) {
+    if (section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below blocks
+      for (s64 z = 0; z < 16; ++z) {
+        for (s64 x = 0; x < 16; ++x) {
+          size_t index = (size_t)((z + 1) * 18 + (x + 1));
+          bordered_chunk[index] = section->chunks[chunk_y - 1].blocks[15][z][x];
+        }
       }
+    }
+
+    if (south_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-south
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (size_t)(0 * 18 * 18 + 17 * 18 + (x + 1));
+        bordered_chunk[index] = south_section->chunks[chunk_y - 1].blocks[15][0][x];
+      }
+    }
+
+    if (north_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-north
+      for (s64 x = 0; x < 16; ++x) {
+        size_t index = (size_t)(0 * 18 * 18 + 0 * 18 + (x + 1));
+        bordered_chunk[index] = north_section->chunks[chunk_y - 1].blocks[15][15][x];
+      }
+    }
+
+    if (east_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-east
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)(0 * 18 * 18 + (z + 1) * 18 + 17);
+        bordered_chunk[index] = east_section->chunks[chunk_y - 1].blocks[15][z][0];
+      }
+    }
+
+    if (west_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-west
+      for (s64 z = 0; z < 16; ++z) {
+        size_t index = (size_t)(0 * 18 * 18 + (z + 1) * 18 + 0);
+        bordered_chunk[index] = west_section->chunks[chunk_y - 1].blocks[15][z][15];
+      }
+    }
+
+    if (south_east_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-south-east
+      bordered_chunk[(size_t)(0 * 18 * 18 + 17 * 18 + 17)] = south_east_section->chunks[chunk_y - 1].blocks[15][0][0];
+    }
+
+    if (south_west_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-south-west
+      bordered_chunk[(size_t)(0 * 18 * 18 + 17 * 18 + 0)] = south_west_section->chunks[chunk_y - 1].blocks[15][0][15];
+    }
+
+    if (north_east_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-north-east
+      bordered_chunk[(size_t)(0 * 18 * 18 + 0 * 18 + 17)] = north_east_section->chunks[chunk_y - 1].blocks[15][15][0];
+    }
+
+    if (north_west_section->info->bitmask & (1 << (chunk_y - 1))) {
+      // Load below-north-west
+      bordered_chunk[(size_t)(0 * 18 * 18 + 0 * 18 + 0)] = north_west_section->chunks[chunk_y - 1].blocks[15][15][15];
     }
   }
 

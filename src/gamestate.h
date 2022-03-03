@@ -90,6 +90,10 @@ struct ChunkBuildContext {
   ChunkSection* west_section = nullptr;
   ChunkSection* north_section = nullptr;
   ChunkSection* south_section = nullptr;
+  ChunkSection* south_east_section = nullptr;
+  ChunkSection* south_west_section = nullptr;
+  ChunkSection* north_east_section = nullptr;
+  ChunkSection* north_west_section = nullptr;
 
   ChunkBuildContext(s32 chunk_x, s32 chunk_z) : chunk_x(chunk_x), chunk_z(chunk_z) {}
 
@@ -98,7 +102,16 @@ struct ChunkBuildContext {
            (west_section->info->loaded && west_section->info->x == chunk_x - 1 && west_section->info->z == chunk_z) &&
            (north_section->info->loaded && north_section->info->z == chunk_z - 1 &&
             north_section->info->x == chunk_x) &&
-           (south_section->info->loaded && south_section->info->z == chunk_z + 1 && south_section->info->x == chunk_x);
+           (south_section->info->loaded && south_section->info->z == chunk_z + 1 &&
+            south_section->info->x == chunk_x) &&
+           (south_east_section->info->loaded && south_east_section->info->z == chunk_z + 1 &&
+            south_east_section->info->x == chunk_x + 1) &&
+           (south_west_section->info->loaded && south_west_section->info->z == chunk_z + 1 &&
+            south_west_section->info->x == chunk_x - 1) &&
+           (north_east_section->info->loaded && north_east_section->info->z == chunk_z - 1 &&
+            north_east_section->info->x == chunk_x + 1) &&
+           (north_west_section->info->loaded && north_west_section->info->z == chunk_z - 1 &&
+            north_west_section->info->x == chunk_x - 1);
   }
 
   bool GetNeighbors(World* world) {
@@ -115,6 +128,10 @@ struct ChunkBuildContext {
     west_section = &world->chunks[z_index][xwest_index];
     north_section = &world->chunks[znorth_index][x_index];
     south_section = &world->chunks[zsouth_index][x_index];
+    south_east_section = &world->chunks[zsouth_index][xeast_index];
+    south_west_section = &world->chunks[zsouth_index][xwest_index];
+    north_east_section = &world->chunks[znorth_index][xeast_index];
+    north_west_section = &world->chunks[znorth_index][xwest_index];
 
     return IsBuildable();
   }
