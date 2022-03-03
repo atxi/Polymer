@@ -32,6 +32,38 @@ struct ChunkSection {
   Chunk chunks[16];
 };
 
+struct ChunkBuildQueue {
+  size_t count;
+  ChunkCoord data[1024];
+
+  inline void Enqueue(s32 chunk_x, s32 chunk_z) {
+    data[count++] = {chunk_x, chunk_z};
+  }
+
+  inline void Dequeue(s32 chunk_x, s32 chunk_z) {
+    for (size_t i = 0; i < count; ++i) {
+      if (data[i].x == chunk_x && data[i].z == chunk_z) {
+        data[i] = data[--count];
+        return;
+      }
+    }
+  }
+
+  inline bool IsInQueue(s32 chunk_x, s32 chunk_z) {
+    for (size_t i = 0; i < count; ++i) {
+      if (data[i].x == chunk_x && data[i].z == chunk_z) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  inline void Clear() {
+    count = 0;
+  }
+};
+
 constexpr size_t kChunkCacheSize = 32;
 struct World {
   // Store the chunk data separately to make render iteration faster
@@ -39,8 +71,7 @@ struct World {
   ChunkSectionInfo chunk_infos[kChunkCacheSize][kChunkCacheSize];
   RenderMesh meshes[kChunkCacheSize][kChunkCacheSize][16];
 
-  size_t build_queue_count;
-  ChunkCoord build_queue[1024];
+  ChunkBuildQueue build_queue;
 
   inline u32 GetChunkCacheIndex(s32 v) {
     return ((v % (s32)kChunkCacheSize) + (s32)kChunkCacheSize) % (s32)kChunkCacheSize;
@@ -63,8 +94,11 @@ struct ChunkBuildContext {
   ChunkBuildContext(s32 chunk_x, s32 chunk_z) : chunk_x(chunk_x), chunk_z(chunk_z) {}
 
   bool IsBuildable() {
-    return east_section->info->loaded && west_section->info->loaded && north_section->info->loaded &&
-           south_section->info->loaded;
+    return (east_section->info->loaded && east_section->info->x == chunk_x + 1 && east_section->info->z == chunk_z) &&
+           (west_section->info->loaded && west_section->info->x == chunk_x - 1 && west_section->info->z == chunk_z) &&
+           (north_section->info->loaded && north_section->info->z == chunk_z - 1 &&
+            north_section->info->x == chunk_x) &&
+           (south_section->info->loaded && south_section->info->z == chunk_z + 1 && south_section->info->x == chunk_x);
   }
 
   bool GetNeighbors(World* world) {

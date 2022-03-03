@@ -254,6 +254,8 @@ int run() {
   connection->SendHandshake(754, "127.0.0.1", 25565, ProtocolState::Login);
   connection->SendLoginStart("polymer");
 
+  fflush(stdout);
+
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
 

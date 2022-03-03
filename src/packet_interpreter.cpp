@@ -29,6 +29,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     if (length > 0) {
       printf("%.*s\n", (int)length, sstr.str);
+      fflush(stdout);
     }
   } break;
   case PlayProtocol::Disconnect: {
@@ -309,6 +310,7 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
   case LoginProtocol::LoginSuccess: {
     printf("Login success\n");
     connection->protocol_state = ProtocolState::Play;
+    fflush(stdout);
   } break;
   case LoginProtocol::SetCompression: {
     compression = true;
