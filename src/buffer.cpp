@@ -177,7 +177,7 @@ void RingBuffer::WriteDouble(double value) {
   }
 }
 
-void RingBuffer::WriteString(SizedString& str) {
+void RingBuffer::WriteString(const String& str) {
   size_t remaining = this->GetFreeSize();
 
   size_t size = str.size + GetVarIntSize(str.size);
@@ -185,18 +185,18 @@ void RingBuffer::WriteString(SizedString& str) {
   if (remaining >= size) {
     WriteVarInt(str.size);
 
-    memcpy(this->data + this->write_offset, str.str, str.size);
+    memcpy(this->data + this->write_offset, str.data, str.size);
     this->write_offset = (write_offset + str.size) % this->size;
   } else {
     WriteVarInt(str.size);
 
     remaining = this->GetFreeSize();
     if (remaining >= str.size) {
-      memcpy(this->data + this->write_offset, str.str, str.size);
+      memcpy(this->data + this->write_offset, str.data, str.size);
       this->write_offset = (write_offset + str.size) % this->size;
     } else {
-      memcpy(this->data + this->write_offset, str.str, remaining);
-      memcpy(this->data, str.str + remaining, str.size - remaining);
+      memcpy(this->data + this->write_offset, str.data, remaining);
+      memcpy(this->data, str.data + remaining, str.size - remaining);
       this->write_offset = str.size - remaining;
     }
   }
@@ -340,7 +340,7 @@ double RingBuffer::ReadDouble() {
   return result;
 }
 
-size_t RingBuffer::ReadString(SizedString* str) {
+size_t RingBuffer::ReadString(String* str) {
   u64 length = 0;
   size_t offset_snapshot = this->read_offset;
 
@@ -349,7 +349,7 @@ size_t RingBuffer::ReadString(SizedString* str) {
     return 0;
   }
 
-  if (str->str == nullptr) {
+  if (str->data == nullptr) {
     this->read_offset = offset_snapshot;
     return (size_t)length;
   }
@@ -361,34 +361,34 @@ size_t RingBuffer::ReadString(SizedString* str) {
   }
 
   for (size_t i = 0; i < remaining; ++i) {
-    str->str[i] = this->data[this->read_offset++];
+    str->data[i] = this->data[this->read_offset++];
   }
 
   if (length - remaining > 0) {
     this->read_offset = 0;
 
     for (size_t i = 0; i < (size_t)length - remaining; ++i) {
-      str->str[i + remaining] = this->data[this->read_offset++];
+      str->data[i + remaining] = this->data[this->read_offset++];
     }
   }
 
   return (size_t)length;
 }
 
-void RingBuffer::ReadRawString(SizedString* str, size_t size) {
+void RingBuffer::ReadRawString(String* str, size_t size) {
   size_t remaining = this->size - this->read_offset;
 
   if (remaining > size) {
     remaining = size;
   }
 
-  memcpy(str->str, this->data + this->read_offset, remaining);
+  memcpy(str->data, this->data + this->read_offset, remaining);
 
   this->read_offset = (this->read_offset + remaining) % this->size;
 
   if (size - remaining > 0) {
     this->read_offset = 0;
-    memcpy(str->str + remaining, this->data, remaining);
+    memcpy(str->data + remaining, this->data, remaining);
     this->read_offset = size - remaining;
   }
 }

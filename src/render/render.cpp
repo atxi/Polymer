@@ -1,6 +1,6 @@
 #include "render.h"
 
-#include "math.h"
+#include "../math.h"
 
 #include <cassert>
 #include <cstdio>
@@ -8,6 +8,7 @@
 #pragma warning(disable : 26812) // disable unscoped enum warning
 
 namespace polymer {
+namespace render {
 
 const char* const kRequiredExtensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_utils"};
 const char* const kDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -46,8 +47,8 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
   }
 }
 
-SizedString ReadEntireFile(const char* filename, MemoryArena* arena) {
-  SizedString result = {};
+String ReadEntireFile(const char* filename, MemoryArena* arena) {
+  String result = {};
   FILE* f = fopen(filename, "rb");
 
   if (!f) {
@@ -62,7 +63,7 @@ SizedString ReadEntireFile(const char* filename, MemoryArena* arena) {
   fread(buffer, 1, size, f);
   fclose(f);
 
-  result.str = buffer;
+  result.data = buffer;
   result.size = size;
 
   return result;
@@ -991,8 +992,8 @@ void VulkanRenderer::CreateDescriptorSetLayout() {
 }
 
 void VulkanRenderer::CreateGraphicsPipeline() {
-  SizedString vert_code = ReadEntireFile("shaders/vert.spv", trans_arena);
-  SizedString frag_code = ReadEntireFile("shaders/frag.spv", trans_arena);
+  String vert_code = ReadEntireFile("shaders/vert.spv", trans_arena);
+  String frag_code = ReadEntireFile("shaders/frag.spv", trans_arena);
 
   if (vert_code.size == 0) {
     fprintf(stderr, "Failed to read vertex shader file.\n");
@@ -1181,12 +1182,12 @@ void VulkanRenderer::CreateGraphicsPipeline() {
   vkDestroyShaderModule(device, frag_shader, nullptr);
 }
 
-VkShaderModule VulkanRenderer::CreateShaderModule(SizedString code) {
+VkShaderModule VulkanRenderer::CreateShaderModule(String code) {
   VkShaderModuleCreateInfo create_info{};
 
   create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   create_info.codeSize = code.size;
-  create_info.pCode = (u32*)code.str;
+  create_info.pCode = (u32*)code.data;
 
   VkShaderModule shader;
 
@@ -1640,4 +1641,5 @@ void VulkanRenderer::Cleanup() {
   vkDestroyInstance(instance, nullptr);
 }
 
+} // namespace render
 } // namespace polymer

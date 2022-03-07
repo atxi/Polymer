@@ -1,5 +1,5 @@
-#ifndef POLYMER_RENDER_H_
-#define POLYMER_RENDER_H_
+#ifndef POLYMER_RENDER_RENDER_H_
+#define POLYMER_RENDER_RENDER_H_
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -16,11 +16,12 @@
 #undef far
 #endif
 
-#include "buffer.h"
-#include "math.h"
-#include "memory.h"
+#include "../buffer.h"
+#include "../math.h"
+#include "../memory.h"
 
 namespace polymer {
+namespace render {
 
 constexpr size_t kMaxFramesInFlight = 2;
 
@@ -162,7 +163,7 @@ private:
   void CreateDescriptorPool();
   void CreateDescriptorSets();
   void CreateGraphicsPipeline();
-  VkShaderModule CreateShaderModule(SizedString code);
+  VkShaderModule CreateShaderModule(String code);
   void CreateImageViews();
   void CreateSwapchain();
   VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
@@ -181,6 +182,7 @@ private:
   bool CreateInstance();
 };
 
+} // namespace render
 } // namespace polymer
 
 #endif

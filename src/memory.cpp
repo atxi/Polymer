@@ -1,7 +1,8 @@
 #include "memory.h"
 
 #include <assert.h>
-#include <cstdio>
+#include <stdio.h>
+#include <stdlib.h>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -9,6 +10,25 @@
 #endif
 
 namespace polymer {
+
+// TODO: Get rid of these when a real platform layer is created.
+void PlatformFree(u8* ptr) {
+#ifdef _WIN32
+  VirtualFree(ptr, 0, MEM_RELEASE);
+#else
+  free(ptr);
+#endif
+}
+
+u8* PlatformAllocate(size_t size) {
+#ifdef _WIN32
+  u8* result = (u8*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+#else
+  u8* result = (u8*)malloc(size);
+#endif
+
+  return result;
+}
 
 MemoryArena::MemoryArena(u8* memory, size_t max_size) : base(memory), current(memory), max_size(max_size) {}
 
@@ -26,6 +46,26 @@ u8* MemoryArena::Allocate(size_t size, size_t alignment) {
 
 void MemoryArena::Reset() {
   this->current = this->base;
+}
+
+void MemoryArena::Destroy() {
+  PlatformFree(this->base);
+
+  this->base = this->current = nullptr;
+  this->max_size = 0;
+}
+
+MemoryArena CreateArena(size_t size) {
+  MemoryArena result;
+
+  assert(size > 0);
+
+  result.base = result.current = PlatformAllocate(size);
+  result.max_size = size;
+
+  assert(result.base);
+
+  return result;
 }
 
 u8* AllocateMirroredBuffer(size_t size) {

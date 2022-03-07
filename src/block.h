@@ -89,7 +89,23 @@ struct BlockState {
   BlockModel model;
   float x;
   float y;
-  bool uvlock;
+
+  struct {
+    u32 uvlock : 1;
+    // TODO: Need a better way of storing the properties. Just using the blockstate flag field for fluid levels until a
+    // better way is implemented.
+    u32 leveled : 1;
+    u32 level : 4;
+    u32 padding : 26;
+  };
+};
+
+struct BlockRegistry {
+  size_t state_count;
+  BlockState* states;
+
+  size_t info_count;
+  BlockStateInfo* infos;
 };
 
 } // namespace polymer

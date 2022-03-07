@@ -1,10 +1,11 @@
-#include "asset_loader.h"
+#include "asset_system.h"
 #include "connection.h"
 #include "gamestate.h"
 #include "memory.h"
 #include "packet_interpreter.h"
-#include "render.h"
 #include "types.h"
+
+#include "render/render.h"
 
 #include <cassert>
 #include <chrono>
@@ -25,7 +26,7 @@ constexpr u32 kWidth = 1280;
 // Window surface height
 constexpr u32 kHeight = 720;
 
-VulkanRenderer vk_render;
+render::VulkanRenderer vk_render;
 
 static GameState* g_game = nullptr;
 static MemoryArena* g_trans_arena = nullptr;
@@ -121,8 +122,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 int run() {
   constexpr size_t kMirrorBufferSize = 65536 * 32;
-  constexpr size_t kPermanentSize = gigabytes(1);
-  constexpr size_t kTransientSize = megabytes(32);
+  constexpr size_t kPermanentSize = Gigabytes(1);
+  constexpr size_t kTransientSize = Megabytes(32);
 
   u8* perm_memory = (u8*)VirtualAlloc(NULL, kPermanentSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
   u8* trans_memory = (u8*)VirtualAlloc(NULL, kTransientSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -186,23 +187,14 @@ int run() {
   vk_render.Initialize(hwnd);
 
   {
-    AssetLoader loader(&trans_arena, &perm_arena);
+    AssetSystem assets;
 
-    if (!loader.Load("1.16.4.jar", "blocks.json")) {
+    if (!assets.Load(vk_render, "1.16.4.jar", "blocks.json")) {
       fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
       return 1;
     }
 
-    game->block_registry.states = loader.final_states;
-    game->block_registry.state_count = loader.final_state_count;
-    game->block_registry.infos = loader.block_infos;
-    game->block_registry.info_count = loader.block_info_count;
-
-    vk_render.CreateTexture(16, 16, loader.texture_count);
-
-    for (size_t i = 0; i < loader.texture_count; ++i) {
-      vk_render.PushTexture(loader.GetTexture(i), 16 * 16 * 4, i);
-    }
+    game->block_registry = assets.block_registry;
   }
 
   MSG msg = {};

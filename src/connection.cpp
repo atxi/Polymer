@@ -127,8 +127,8 @@ void Connection::SetBlocking(bool blocking) {
 void Connection::SendHandshake(u32 version, const char* address, u16 port, ProtocolState state_request) {
   RingBuffer& wb = write_buffer;
 
-  SizedString sstr;
-  sstr.str = (char*)address;
+  String sstr;
+  sstr.data = (char*)address;
   sstr.size = strlen(address);
 
   u32 pid = 0;
@@ -160,8 +160,8 @@ void Connection::SendPingRequest() {
 void Connection::SendLoginStart(const char* username) {
   RingBuffer& wb = write_buffer;
 
-  SizedString sstr;
-  sstr.str = (char*)username;
+  String sstr;
+  sstr.data = (char*)username;
   sstr.size = strlen(username);
 
   u32 pid = 0;

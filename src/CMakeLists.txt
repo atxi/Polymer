@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 
-file(GLOB SOURCES *.cpp)
+file(GLOB_RECURSE SOURCES *.cpp)
 
 find_package(Vulkan REQUIRED)
 

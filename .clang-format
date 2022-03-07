@@ -4,3 +4,4 @@ ColumnLimit: 120
 AllowShortFunctionsOnASingleLine: Empty
 AlwaysBreakTemplateDeclarations: true
 PointerAlignment: Left
+AllowShortIfStatementsOnASingleLine: true

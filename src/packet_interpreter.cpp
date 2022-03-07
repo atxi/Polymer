@@ -21,26 +21,26 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
   switch (type) {
   case PlayProtocol::ChatMessage: {
-    SizedString sstr;
-    sstr.str = memory_arena_push_type_count(trans_arena, char, 32767);
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
 
     size_t length = rb->ReadString(&sstr);
 
     if (length > 0) {
-      printf("%.*s\n", (int)length, sstr.str);
+      printf("%.*s\n", (int)length, sstr.data);
       fflush(stdout);
     }
   } break;
   case PlayProtocol::Disconnect: {
-    SizedString sstr;
-    sstr.str = memory_arena_push_type_count(trans_arena, char, 32767);
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
 
     size_t length = rb->ReadString(&sstr);
 
     if (length > 0) {
-      printf("Disconnected: %.*s\n", (int)length, sstr.str);
+      printf("Disconnected: %.*s\n", (int)length, sstr.data);
     }
   } break;
   case PlayProtocol::Explosion: {
@@ -160,8 +160,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u64 bitmask;
     rb->ReadVarInt(&bitmask);
 
-    SizedString sstr;
-    sstr.str = memory_arena_push_type_count(trans_arena, char, 32767);
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
 
     // TODO: Implement simple NBT parsing api
@@ -291,14 +291,14 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
 
   switch (type) {
   case LoginProtocol::Disconnect: {
-    SizedString sstr;
-    sstr.str = memory_arena_push_type_count(trans_arena, char, 32767);
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
 
     size_t length = rb->ReadString(&sstr);
 
     if (length > 0) {
-      printf("Disconnect reason: %.*s\n", (int)length, sstr.str);
+      printf("Disconnect reason: %.*s\n", (int)length, sstr.data);
     }
 
     connection->Disconnect();

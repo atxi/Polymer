@@ -6,11 +6,6 @@
 
 namespace polymer {
 
-struct SizedString {
-  char* str;
-  size_t size;
-};
-
 // Simple circular buffer where the read and write methods assume there's space to operate
 // The only method that checks for read/write cursor wrapping is ReadVarInt.
 // This could be simplified greatly by using virtual memory wrapping.
@@ -30,7 +25,7 @@ struct RingBuffer {
   void WriteVarInt(u64 value);
   void WriteFloat(float value);
   void WriteDouble(double value);
-  void WriteString(SizedString& str);
+  void WriteString(const String& str);
 
   u8 ReadU8();
   u16 ReadU16();
@@ -39,8 +34,8 @@ struct RingBuffer {
   bool ReadVarInt(u64* value);
   float ReadFloat();
   double ReadDouble();
-  size_t ReadString(SizedString* str);
-  void ReadRawString(SizedString* str, size_t size);
+  size_t ReadString(String* str);
+  void ReadRawString(String* str, size_t size);
 
   size_t GetFreeSize() const;
   size_t GetReadAmount() const;
