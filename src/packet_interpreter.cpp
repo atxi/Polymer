@@ -219,16 +219,19 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         u16 block_count = rb->ReadU16();
         u8 bpb = rb->ReadU8();
 
-        if (bpb < 4) {
-          bpb = 4;
-        }
-
         if (block_count > 0) {
           section_info->bitmask |= (1 << chunk_y);
         }
 
         u64* palette = nullptr;
-        if (bpb < 9) {
+        u64 single_palette = 0;
+
+        if (bpb == 0) {
+          rb->ReadVarInt(&single_palette);
+          palette = &single_palette;
+        } else if (bpb < 9) {
+          if (bpb < 4) bpb = 4;
+
           u64 palette_length = 0;
           rb->ReadVarInt(&palette_length);
 
@@ -264,10 +267,14 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         }
 
         u8 biome_bpe = rb->ReadU8();
-        if (biome_bpe < 4) biome_bpe = 4;
 
         u64* biome_palette = nullptr;
-        if (biome_bpe < 9) {
+        u64 single_biome_palette = 0;
+
+        if (biome_bpe == 0) {
+          rb->ReadVarInt(&single_biome_palette);
+          biome_palette = &single_biome_palette;
+        } else if (biome_bpe < 9) {
           u64 biome_palette_length = 0;
           rb->ReadVarInt(&biome_palette_length);
 
