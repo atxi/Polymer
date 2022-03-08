@@ -122,7 +122,7 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
   renderer.CreateTexture(16, 16, texture_count);
 
   for (size_t i = 0; i < texture_count; ++i) {
-    renderer.PushTexture(asset_parser.GetTexture(i), 16 * 16 * 4, i);
+    renderer.PushTexture(trans_arena, asset_parser.GetTexture(i), i);
   }
 
   for (size_t i = 0; i < asset_parser.model_count; ++i) {

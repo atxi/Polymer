@@ -137,7 +137,7 @@ struct VulkanRenderer {
   void FreeMesh(RenderMesh* mesh);
 
   void CreateTexture(size_t width, size_t height, size_t layers);
-  void PushTexture(u8* texture, size_t size, size_t index);
+  void PushTexture(MemoryArena& temp_arena, u8* texture, size_t index);
 
   void BeginMeshAllocation();
   void EndMeshAllocation();

@@ -69,6 +69,76 @@ String ReadEntireFile(const char* filename, MemoryArena* arena) {
   return result;
 }
 
+struct Mipmap {
+  unsigned char* data;
+  size_t dimension;
+
+  Mipmap(unsigned char* data, size_t dimension) : data(data), dimension(dimension) {}
+
+  int Sample(size_t x, size_t y, size_t color_offset) {
+    return data[(y * dimension + x) * 4 + color_offset];
+  }
+};
+
+inline float GetColorGamma(int a, int b, int c, int d) {
+  float an = a / 255.0f;
+  float bn = b / 255.0f;
+  float cn = c / 255.0f;
+  float dn = d / 255.0f;
+
+  return (powf(an, 2.2f) + powf(bn, 2.2f) + powf(cn, 2.2f) + powf(dn, 2.2f)) / 4.0f;
+}
+
+// Blend four samples into a final result after doing gamma conversions
+inline int GammaBlend(int a, int b, int c, int d) {
+  float result = powf(GetColorGamma(a, b, c, d), 1.0f / 2.2f);
+
+  return static_cast<int>(255.0f * result);
+}
+
+// Performs basic pixel averaging filter for generating mipmap.
+void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim) {
+  size_t size_per_tex = dim * dim * 4;
+  size_t count = data_size / size_per_tex;
+  size_t prev_dim = dim * 2;
+
+  unsigned int* pixel = (unsigned int*)data;
+  for (size_t i = 0; i < count; ++i) {
+    unsigned char* prev_tex = previous + i * (prev_dim * prev_dim * 4);
+
+    Mipmap source(prev_tex, prev_dim);
+
+    for (size_t y = 0; y < dim; ++y) {
+      for (size_t x = 0; x < dim; ++x) {
+        int red, green, blue, alpha;
+
+        const size_t red_index = 0;
+        const size_t green_index = 1;
+        const size_t blue_index = 2;
+        const size_t alpha_index = 3;
+
+        red = GammaBlend(source.Sample(x * 2, y * 2, red_index), source.Sample(x * 2 + 1, y * 2, red_index),
+                         source.Sample(x * 2, y * 2 + 1, red_index), source.Sample(x * 2 + 1, y * 2 + 1, red_index));
+
+        green =
+            GammaBlend(source.Sample(x * 2, y * 2, green_index), source.Sample(x * 2 + 1, y * 2, green_index),
+                       source.Sample(x * 2, y * 2 + 1, green_index), source.Sample(x * 2 + 1, y * 2 + 1, green_index));
+
+        blue = GammaBlend(source.Sample(x * 2, y * 2, blue_index), source.Sample(x * 2 + 1, y * 2, blue_index),
+                          source.Sample(x * 2, y * 2 + 1, blue_index), source.Sample(x * 2 + 1, y * 2 + 1, blue_index));
+
+        alpha =
+            GammaBlend(source.Sample(x * 2, y * 2, alpha_index), source.Sample(x * 2 + 1, y * 2, alpha_index),
+                       source.Sample(x * 2, y * 2 + 1, alpha_index), source.Sample(x * 2 + 1, y * 2 + 1, alpha_index));
+
+        // AA BB GG RR
+        *pixel = ((alpha & 0xFF) << 24) | ((blue & 0xFF) << 16) | ((green & 0xFF) << 8) | (red & 0xFF);
+        ++pixel;
+      }
+    }
+  }
+}
+
 bool VulkanRenderer::Initialize(HWND hwnd) {
   this->hwnd = hwnd;
   this->render_paused = false;
@@ -175,17 +245,17 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
   VkSamplerCreateInfo sampler_info = {};
   sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
   sampler_info.magFilter = VK_FILTER_NEAREST;
-  sampler_info.minFilter = VK_FILTER_LINEAR;
-  sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sampler_info.minFilter = VK_FILTER_NEAREST;
+  sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
   sampler_info.anisotropyEnable = VK_TRUE;
   sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
   sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
   sampler_info.unnormalizedCoordinates = VK_FALSE;
   sampler_info.compareEnable = VK_FALSE;
   sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
-  sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
   sampler_info.mipLodBias = 0.0f;
   sampler_info.minLod = 0.0f;
   sampler_info.maxLod = (float)texture_mips;
@@ -207,7 +277,7 @@ void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkIma
   barrier.image = image;
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   barrier.subresourceRange.baseMipLevel = 0;
-  barrier.subresourceRange.levelCount = 5;
+  barrier.subresourceRange.levelCount = texture_mips;
   barrier.subresourceRange.baseArrayLayer = layer;
   barrier.subresourceRange.layerCount = 1;
   barrier.srcAccessMask = 0;
@@ -240,7 +310,7 @@ void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkIma
   EndOneShotCommandBuffer();
 }
 
-void VulkanRenderer::PushTexture(u8* texture, size_t size, size_t index) {
+void VulkanRenderer::PushTexture(MemoryArena& temp_arena, u8* texture, size_t index) {
   if (texture == nullptr) {
     TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (u32)index);
@@ -249,59 +319,81 @@ void VulkanRenderer::PushTexture(u8* texture, size_t size, size_t index) {
     return;
   }
 
-  VkBufferCreateInfo buffer_info = {};
-
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = size;
-  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  VmaAllocationCreateInfo alloc_create_info = {};
-  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-  alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-  VkBuffer staging_buffer = VK_NULL_HANDLE;
-  VmaAllocation staging_alloc = VK_NULL_HANDLE;
-  VmaAllocationInfo staging_alloc_info = {};
-
-  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &staging_buffer, &staging_alloc,
-                      &staging_alloc_info) != VK_SUCCESS) {
-    printf("Failed to create staging buffer for texture push.\n");
-    return;
-  }
-
-  if (staging_alloc_info.pMappedData) {
-    memcpy(staging_alloc_info.pMappedData, texture, size);
-  }
-
-  VkBufferImageCopy region = {};
-  region.bufferOffset = 0;
-  region.bufferRowLength = 0;
-  region.bufferImageHeight = 0;
-
-  region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  region.imageSubresource.mipLevel = 0;
-  region.imageSubresource.baseArrayLayer = (u32)index;
-  region.imageSubresource.layerCount = 1;
-
-  region.imageOffset = {0, 0, 0};
-  region.imageExtent = {16, 16, 1};
-
   // Transition image to copy-destination optimal, then copy, then transition to shader-read optimal.
   TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED,
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (u32)index);
 
-  BeginOneShotCommandBuffer();
-  vkCmdCopyBufferToImage(oneshot_command_buffer, staging_buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
-                         &region);
-  EndOneShotCommandBuffer();
+  u32 dim = 16;
 
-  GenerateMipmaps((u32)index);
+  ArenaSnapshot snapshot = temp_arena.GetSnapshot();
 
-  // TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-  // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, (u32)index);
+  // Create a buffer that can hold any size mipmap
+  u8* previous_data = temp_arena.Allocate(dim * dim * 4);
+  u8* buffer_data = temp_arena.Allocate(dim * dim * 4);
 
-  vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
+  memcpy(previous_data, texture, dim * dim * 4);
+  memcpy(buffer_data, texture, dim * dim * 4);
+
+  for (size_t i = 0; i < texture_mips; ++i) {
+    BeginOneShotCommandBuffer();
+
+    VkBuffer staging_buffer = VK_NULL_HANDLE;
+    VmaAllocation staging_alloc = VK_NULL_HANDLE;
+    VmaAllocationInfo staging_alloc_info = {};
+
+    VkBufferCreateInfo buffer_info = {};
+
+    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size = dim * dim * 4;
+    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo alloc_create_info = {};
+    alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+    alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &staging_buffer, &staging_alloc,
+                        &staging_alloc_info) != VK_SUCCESS) {
+      printf("Failed to create staging buffer for texture push.\n");
+      return;
+    }
+
+    if (staging_alloc_info.pMappedData) {
+      if (i > 0) {
+        BoxFilterMipmap(previous_data, buffer_data, buffer_info.size, dim);
+      }
+
+      memcpy(staging_alloc_info.pMappedData, buffer_data, buffer_info.size);
+      memcpy(previous_data, buffer_data, buffer_info.size);
+    }
+
+    VkBufferImageCopy region = {};
+
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = (u32)i;
+    region.imageSubresource.baseArrayLayer = (u32)index;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {dim, dim, 1};
+
+    vkCmdCopyBufferToImage(oneshot_command_buffer, staging_buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &region);
+
+    dim /= 2;
+
+    EndOneShotCommandBuffer();
+    vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
+  }
+
+  temp_arena.Revert(snapshot);
+
+  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, (u32)index);
 }
 
 void VulkanRenderer::GenerateMipmaps(u32 index) {
@@ -768,8 +860,7 @@ void VulkanRenderer::CreateDescriptorSets() {
 }
 
 void VulkanRenderer::CleanupSwapchain() {
-  if (swapchain == VK_NULL_HANDLE || swap_image_count == 0)
-    return;
+  if (swapchain == VK_NULL_HANDLE || swap_image_count == 0) return;
 
   vmaFreeMemory(allocator, depth_allocation);
   vkDestroyImageView(device, depth_image_view, nullptr);
@@ -1528,8 +1619,7 @@ bool VulkanRenderer::PickPhysicalDevice() {
 }
 
 void VulkanRenderer::SetupDebugMessenger() {
-  if (!kEnableValidationLayers)
-    return;
+  if (!kEnableValidationLayers) return;
 
   VkDebugUtilsMessengerCreateInfoEXT create_info{};
 
