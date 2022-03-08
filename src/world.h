@@ -7,6 +7,8 @@
 
 namespace polymer {
 
+constexpr size_t kChunkColumnCount = 24;
+
 struct ChunkCoord {
   s32 x;
   s32 z;
@@ -25,7 +27,7 @@ struct ChunkSectionInfo {
 
 struct ChunkSection {
   ChunkSectionInfo* info;
-  Chunk chunks[16];
+  Chunk chunks[kChunkColumnCount];
 };
 
 constexpr size_t kChunkCacheSize = 32;
@@ -33,7 +35,7 @@ struct World {
   // Store the chunk data separately to make render iteration faster
   ChunkSection chunks[kChunkCacheSize][kChunkCacheSize];
   ChunkSectionInfo chunk_infos[kChunkCacheSize][kChunkCacheSize];
-  render::RenderMesh meshes[kChunkCacheSize][kChunkCacheSize][16];
+  render::RenderMesh meshes[kChunkCacheSize][kChunkCacheSize][kChunkColumnCount];
 
   inline u32 GetChunkCacheIndex(s32 v) {
     return ((v % (s32)kChunkCacheSize) + (s32)kChunkCacheSize) % (s32)kChunkCacheSize;

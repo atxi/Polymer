@@ -175,7 +175,7 @@ void Connection::SendLoginStart(const char* username) {
 void Connection::SendKeepAlive(u64 id) {
   RingBuffer& wb = write_buffer;
 
-  u32 pid = 0x10;
+  u32 pid = 0x0F;
   size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + sizeof(id);
 
   wb.WriteVarInt(size);

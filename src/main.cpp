@@ -21,6 +21,10 @@
 
 namespace polymer {
 
+constexpr const char* kServerIp = "127.0.0.1";
+constexpr u16 kServerPort = 25565;
+constexpr const char* kMinecraftJar = "1.18.2.jar";
+
 // Window surface width
 constexpr u32 kWidth = 1280;
 // Window surface height
@@ -189,8 +193,8 @@ int run() {
   {
     AssetSystem assets;
 
-    if (!assets.Load(vk_render, "1.16.4.jar", "blocks.json")) {
-      fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and 1.16.4.jar.\n");
+    if (!assets.Load(vk_render, kMinecraftJar, "blocks.json")) {
+      fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and %s.\n", kMinecraftJar);
       return 1;
     }
 
@@ -220,7 +224,7 @@ int run() {
   vk_render.CreateDescriptorSetLayout();
   vk_render.RecreateSwapchain();
 
-  ConnectResult connect_result = connection->Connect("127.0.0.1", 25565);
+  ConnectResult connect_result = connection->Connect(kServerIp, kServerPort);
 
   switch (connect_result) {
   case ConnectResult::ErrorSocket: {
@@ -243,7 +247,9 @@ int run() {
 
   connection->SetBlocking(false);
 
-  connection->SendHandshake(754, "127.0.0.1", 25565, ProtocolState::Login);
+  constexpr u32 kProtocolVersion = 758;
+
+  connection->SendHandshake(kProtocolVersion, kServerIp, kServerPort, ProtocolState::Login);
   connection->SendLoginStart("polymer");
 
   fflush(stdout);

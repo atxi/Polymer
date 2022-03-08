@@ -27,7 +27,7 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
 
       render::RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
 
-      for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+      for (u32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
         meshes[chunk_y].vertex_count = 0;
       }
     }
@@ -124,12 +124,12 @@ void GameState::Update(float dt, InputState* input) {
 
       render::RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
 
-      for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+      for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
         render::RenderMesh* mesh = meshes + chunk_y;
 
         if ((section_info->bitmask & (1 << chunk_y))) {
-          Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f, section_info->z * 16.0f);
-          Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f + 16.0f, section_info->z * 16.0f + 16.0f);
+          Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f - 64.0f, section_info->z * 16.0f);
+          Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, section_info->z * 16.0f + 16.0f);
 
           if (frustum.Intersects(chunk_min, chunk_max) && mesh->vertex_count > 0) {
             vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1, &mesh->vertex_buffer,
@@ -206,7 +206,7 @@ void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx) {
 
   render::RenderMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
 
-  for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+  for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (!(section_info->bitmask & (1 << chunk_y))) {
       meshes[chunk_y].vertex_count = 0;
       continue;
@@ -228,7 +228,7 @@ void GameState::OnDimensionChange() {
 
       section_info->loaded = false;
 
-      for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+      for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
         render::RenderMesh* mesh = meshes + chunk_y;
 
         if (mesh->vertex_count > 0) {
@@ -255,7 +255,7 @@ void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
     build_queue.Dequeue(section_info->x, section_info->z);
 
     // Force clear any existing meshes
-    for (s32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+    for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
       render::RenderMesh* mesh = meshes + chunk_y;
 
       if (mesh->vertex_count > 0) {
@@ -289,7 +289,7 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
   section_info->bitmask = 0;
   section_info->loaded = false;
 
-  for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
+  for (size_t chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (section_info->bitmask & (1 << chunk_y)) {
       memset(section->chunks[chunk_y].blocks, 0, sizeof(section->chunks[chunk_y].blocks));
     }
@@ -299,7 +299,7 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
 
   renderer->WaitForIdle();
 
-  for (size_t chunk_y = 0; chunk_y < 16; ++chunk_y) {
+  for (size_t chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (meshes[chunk_y].vertex_count > 0) {
       renderer->FreeMesh(meshes + chunk_y);
       meshes[chunk_y].vertex_count = 0;
@@ -310,7 +310,7 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
 void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   s32 chunk_x = (s32)std::floor(x / 16.0f);
   s32 chunk_z = (s32)std::floor(z / 16.0f);
-  s32 chunk_y = y / 16;
+  s32 chunk_y = (y / 16) + 4;
 
   ChunkSection* section = &world.chunks[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
 
@@ -333,7 +333,7 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   if (new_bid != 0) {
     ChunkSectionInfo* section_info =
         &world.chunk_infos[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
-    section_info->bitmask |= (1 << (y / 16));
+    section_info->bitmask |= (1 << chunk_y);
   }
 
   // TODO: Block changes should be batched to update a chunk once in the frame when it changes
@@ -391,7 +391,7 @@ void GameState::FreeMeshes() {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
       render::RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
 
-      for (u32 chunk_y = 0; chunk_y < 16; ++chunk_y) {
+      for (u32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
         render::RenderMesh* mesh = meshes + chunk_y;
 
         if (mesh->vertex_count > 0) {

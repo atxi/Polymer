@@ -57,7 +57,7 @@ ChunkMesh BlockMesher::CreateMesh(BlockRegistry& block_registry, ChunkBuildConte
   render::ChunkVertex* vertices = (render::ChunkVertex*)arena.Allocate(0);
   u32 vertex_count = 0;
 
-  Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f);
+  Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
 
   for (size_t relative_y = 0; relative_y < 16; ++relative_y) {
     for (size_t relative_z = 0; relative_z < 16; ++relative_z) {

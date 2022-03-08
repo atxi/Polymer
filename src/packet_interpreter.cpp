@@ -48,15 +48,21 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     float y = rb->ReadFloat();
     float z = rb->ReadFloat();
     float strength = rb->ReadFloat();
-    u32 records = rb->ReadU32();
 
-    for (u32 i = 0; i < records; ++i) {
+    u64 records;
+    rb->ReadVarInt(&records);
+
+    for (u64 i = 0; i < records; ++i) {
       s8 x_offset = rb->ReadU8();
       s8 y_offset = rb->ReadU8();
       s8 z_offset = rb->ReadU8();
 
       game->OnBlockChange((s32)x + x_offset, (s32)y + y_offset, (s32)z + z_offset, 0);
     }
+
+    float velocity_x = rb->ReadFloat();
+    float velocity_y = rb->ReadFloat();
+    float velocity_z = rb->ReadFloat();
   } break;
   case PlayProtocol::UnloadChunk: {
     s32 chunk_x = rb->ReadU32();
@@ -133,6 +139,10 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       chunk_x -= (1 << 22);
     }
 
+    if (chunk_y >= (1 << 19)) {
+      chunk_y -= (1 << 20);
+    }
+
     if (chunk_z >= (1 << 21)) {
       chunk_z -= (1 << 22);
     }
@@ -156,9 +166,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   case PlayProtocol::ChunkData: {
     s32 chunk_x = rb->ReadU32();
     s32 chunk_z = rb->ReadU32();
-    bool is_full = rb->ReadU8();
-    u64 bitmask;
-    rb->ReadVarInt(&bitmask);
 
     String sstr;
     sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
@@ -191,27 +198,23 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u8 end_tag = rb->ReadU8();
     assert(end_tag == 0);
 
-    if (is_full) {
-      u64 biome_length;
-      rb->ReadVarInt(&biome_length);
-
-      for (u64 i = 0; i < biome_length; ++i) {
-        u64 biome;
-
-        rb->ReadVarInt(&biome);
-      }
-    }
     u64 data_size;
     rb->ReadVarInt(&data_size);
 
     size_t new_offset = (rb->read_offset + data_size) % rb->size;
 
-    if (data_size > 0) {
-      for (u64 chunk_y = 0; chunk_y < 16; ++chunk_y) {
-        if (!(bitmask & (1LL << chunk_y))) {
-          continue;
-        }
+    u32 x_index = game->world.GetChunkCacheIndex(chunk_x);
+    u32 z_index = game->world.GetChunkCacheIndex(chunk_z);
 
+    ChunkSection* section = &game->world.chunks[z_index][x_index];
+    ChunkSectionInfo* section_info = &game->world.chunk_infos[z_index][x_index];
+
+    section_info->x = chunk_x;
+    section_info->z = chunk_z;
+    section_info->bitmask = 0;
+
+    if (data_size > 0) {
+      for (u64 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
         // Read Chunk data here
         u16 block_count = rb->ReadU16();
         u8 bpb = rb->ReadU8();
@@ -220,9 +223,13 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           bpb = 4;
         }
 
+        if (block_count > 0) {
+          section_info->bitmask |= (1 << chunk_y);
+        }
+
         u64* palette = nullptr;
-        u64 palette_length = 0;
         if (bpb < 9) {
+          u64 palette_length = 0;
           rb->ReadVarInt(&palette_length);
 
           palette = memory_arena_push_type_count(trans_arena, u64, (size_t)palette_length);
@@ -234,20 +241,11 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           }
         }
 
-        u32 x_index = game->world.GetChunkCacheIndex(chunk_x);
-        u32 z_index = game->world.GetChunkCacheIndex(chunk_z);
-
-        ChunkSection* section = &game->world.chunks[z_index][x_index];
-        ChunkSectionInfo* section_info = &game->world.chunk_infos[z_index][x_index];
-
-        section_info->x = chunk_x;
-        section_info->z = chunk_z;
-        section_info->bitmask = (u32)bitmask;
-
         u32* chunk = (u32*)section->chunks[chunk_y].blocks;
 
         u64 data_array_length;
         rb->ReadVarInt(&data_array_length);
+
         u64 id_mask = (1LL << bpb) - 1;
         u64 block_index = 0;
 
@@ -262,6 +260,45 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
             } else {
               chunk[block_index++] = (u32)palette_index;
             }
+          }
+        }
+
+        u8 biome_bpe = rb->ReadU8();
+        if (biome_bpe < 4) biome_bpe = 4;
+
+        u64* biome_palette = nullptr;
+        if (biome_bpe < 9) {
+          u64 biome_palette_length = 0;
+          rb->ReadVarInt(&biome_palette_length);
+
+          biome_palette = memory_arena_push_type_count(trans_arena, u64, (size_t)biome_palette_length);
+
+          for (u64 i = 0; i < biome_palette_length; ++i) {
+            u64 biome_palette_data;
+            rb->ReadVarInt(&biome_palette_data);
+            biome_palette[i] = biome_palette_data;
+          }
+        }
+
+        u64 biome_data_array_length;
+        rb->ReadVarInt(&biome_data_array_length);
+
+        u64 biome_id_mask = (1LL << biome_bpe) - 1;
+        u64 biome_index = 0;
+
+        for (u64 i = 0; i < biome_data_array_length; ++i) {
+          u64 data_value = rb->ReadU64();
+
+          for (u64 j = 0; j < 64 / biome_bpe; ++j) {
+            size_t palette_index = (size_t)((data_value >> (j * biome_bpe)) & biome_id_mask);
+
+            if (biome_palette) {
+              // u32 biome_id = (u32)biome_palette[palette_index];
+            } else {
+              // u32 biome_id = (u32)palette_index;
+            }
+
+            ++biome_index;
           }
         }
       }
