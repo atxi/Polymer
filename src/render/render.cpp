@@ -554,6 +554,11 @@ bool VulkanRenderer::BeginFrame() {
     return false;
   }
 
+  if (vkBeginCommandBuffer(alpha_command_buffers[current_frame], &begin_info) != VK_SUCCESS) {
+    fprintf(stderr, "Failed ot begin recording command buffer.\n");
+    return false;
+  }
+
   VkRenderPassBeginInfo render_pass_info = {};
 
   render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -574,6 +579,16 @@ bool VulkanRenderer::BeginFrame() {
                             descriptor_sets + current_frame, 0, nullptr);
   }
 
+  render_pass_info.renderPass = alpha_render_pass;
+  render_pass_info.clearValueCount = 0;
+
+  vkCmdBeginRenderPass(alpha_command_buffers[current_frame], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+  {
+    vkCmdBindPipeline(alpha_command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, alpha_pipeline);
+    vkCmdBindDescriptorSets(alpha_command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0,
+                            1, descriptor_sets + current_frame, 0, nullptr);
+  }
+
   return true;
 }
 
@@ -592,28 +607,60 @@ void VulkanRenderer::Render() {
     fprintf(stderr, "Failed to record command buffer.\n");
   }
 
-  VkSubmitInfo submit_info = {};
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  vkCmdEndRenderPass(alpha_command_buffers[current_frame]);
 
-  VkSemaphore waitSemaphores[] = {image_available_semaphores[current_frame]};
-  VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+  if (vkEndCommandBuffer(alpha_command_buffers[current_frame]) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to record alpha command buffer.\n");
+  }
 
-  submit_info.waitSemaphoreCount = 1;
-  submit_info.pWaitSemaphores = waitSemaphores;
-  submit_info.pWaitDstStageMask = waitStages;
+  VkSemaphore finished_signal_semaphores[] = {render_finished_semaphores[current_frame]};
 
-  submit_info.commandBufferCount = 1;
-  submit_info.pCommandBuffers = command_buffers + current_frame;
+  {
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-  VkSemaphore signal_semaphores[] = {render_finished_semaphores[current_frame]};
+    VkSemaphore waitSemaphores[] = {image_available_semaphores[current_frame]};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
-  submit_info.signalSemaphoreCount = 1;
-  submit_info.pSignalSemaphores = signal_semaphores;
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = waitSemaphores;
+    submit_info.pWaitDstStageMask = waitStages;
 
-  vkResetFences(device, 1, frame_fences + current_frame);
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = command_buffers + current_frame;
 
-  if (vkQueueSubmit(graphics_queue, 1, &submit_info, frame_fences[current_frame]) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to submit draw command buffer.\n");
+    VkSemaphore signal_semaphores[] = {draw_finished_semaphores[current_frame]};
+
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to submit draw command buffer.\n");
+    }
+  }
+
+  {
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore waitSemaphores[] = {draw_finished_semaphores[current_frame]};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = waitSemaphores;
+    submit_info.pWaitDstStageMask = waitStages;
+
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = alpha_command_buffers + current_frame;
+
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = finished_signal_semaphores;
+
+    vkResetFences(device, 1, frame_fences + current_frame);
+
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, frame_fences[current_frame]) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to submit draw command buffer.\n");
+    }
   }
 
   VkSwapchainKHR swapchains[] = {swapchain};
@@ -622,7 +669,7 @@ void VulkanRenderer::Render() {
 
   present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   present_info.waitSemaphoreCount = 1;
-  present_info.pWaitSemaphores = signal_semaphores;
+  present_info.pWaitSemaphores = finished_signal_semaphores;
   present_info.swapchainCount = 1;
   present_info.pSwapchains = swapchains;
   present_info.pImageIndices = &image_index;
@@ -869,6 +916,7 @@ void VulkanRenderer::CleanupSwapchain() {
   for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
     vkDestroySemaphore(device, image_available_semaphores[i], nullptr);
     vkDestroySemaphore(device, render_finished_semaphores[i], nullptr);
+    vkDestroySemaphore(device, draw_finished_semaphores[i], nullptr);
     vkDestroyFence(device, frame_fences[i], nullptr);
   }
 
@@ -883,8 +931,10 @@ void VulkanRenderer::CleanupSwapchain() {
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
   vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, command_buffers);
+  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, alpha_command_buffers);
 
   vkDestroyPipeline(device, graphics_pipeline, nullptr);
+  vkDestroyPipeline(device, alpha_pipeline, nullptr);
   vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
   vkDestroyRenderPass(device, render_pass, nullptr);
 
@@ -935,7 +985,8 @@ void VulkanRenderer::CreateSyncObjects() {
 
   for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
     if (vkCreateSemaphore(device, &semaphore_info, nullptr, image_available_semaphores + i) != VK_SUCCESS ||
-        vkCreateSemaphore(device, &semaphore_info, nullptr, render_finished_semaphores + i) != VK_SUCCESS) {
+        vkCreateSemaphore(device, &semaphore_info, nullptr, render_finished_semaphores + i) != VK_SUCCESS ||
+        vkCreateSemaphore(device, &semaphore_info, nullptr, draw_finished_semaphores + i) != VK_SUCCESS) {
 
       fprintf(stderr, "Failed to create semaphores.\n");
     }
@@ -960,6 +1011,10 @@ void VulkanRenderer::CreateCommandBuffers() {
 
   if (vkAllocateCommandBuffers(device, &alloc_info, command_buffers) != VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate command buffers.\n");
+  }
+
+  if (vkAllocateCommandBuffers(device, &alloc_info, alpha_command_buffers) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to allocate alpha command buffers.\n");
   }
 }
 
@@ -995,31 +1050,11 @@ void VulkanRenderer::CreateFramebuffers() {
   }
 }
 
-void VulkanRenderer::CreateRenderPass() {
-  VkAttachmentDescription color_attachment = {};
-
-  color_attachment.format = swap_format;
-  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
+void CreateRenderPassType(VkDevice device, VkFormat swap_format, VkRenderPass* render_pass,
+                          VkAttachmentDescription color_attachment, VkAttachmentDescription depth_attachment) {
   VkAttachmentReference color_attachment_ref = {};
   color_attachment_ref.attachment = 0;
   color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-  VkAttachmentDescription depth_attachment = {};
-  depth_attachment.format = VK_FORMAT_D32_SFLOAT;
-  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
   VkAttachmentReference depth_attachment_ref = {};
   depth_attachment_ref.attachment = 1;
@@ -1050,8 +1085,60 @@ void VulkanRenderer::CreateRenderPass() {
   render_pass_info.dependencyCount = 1;
   render_pass_info.pDependencies = &dependency;
 
-  if (vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass) != VK_SUCCESS) {
+  if (vkCreateRenderPass(device, &render_pass_info, nullptr, render_pass) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create render pass.\n");
+  }
+}
+
+void VulkanRenderer::CreateRenderPass() {
+  {
+    VkAttachmentDescription color_attachment = {};
+
+    color_attachment.format = swap_format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentDescription depth_attachment = {};
+    depth_attachment.format = VK_FORMAT_D32_SFLOAT;
+    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    CreateRenderPassType(device, swap_format, &render_pass, color_attachment, depth_attachment);
+  }
+
+  {
+    VkAttachmentDescription color_attachment = {};
+
+    color_attachment.format = swap_format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentDescription depth_attachment = {};
+    depth_attachment.format = VK_FORMAT_D32_SFLOAT;
+    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    CreateRenderPassType(device, swap_format, &alpha_render_pass, color_attachment, depth_attachment);
   }
 }
 
@@ -1197,9 +1284,10 @@ void VulkanRenderer::CreateGraphicsPipeline() {
   VkPipelineColorBlendAttachmentState blend_attachment = {};
   blend_attachment.colorWriteMask =
       VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
   blend_attachment.blendEnable = VK_FALSE;
-  blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-  blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+  blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+  blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
   blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
   blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
   blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
@@ -1267,6 +1355,12 @@ void VulkanRenderer::CreateGraphicsPipeline() {
 
   if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create graphics pipeline.\n");
+  }
+
+  blend_attachment.blendEnable = VK_TRUE;
+
+  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &alpha_pipeline) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to create alpha pipeline.\n");
   }
 
   vkDestroyShaderModule(device, vertex_shader, nullptr);

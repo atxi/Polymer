@@ -12,7 +12,6 @@ namespace polymer {
 constexpr size_t kTextureSize = 16 * 16 * 4;
 constexpr size_t kNamespaceSize = 10; // "minecraft:"
 
-typedef HashMap<MapStringKey, u32, MapStringHasher> TextureIdMap;
 typedef HashMap<MapStringKey, String, MapStringHasher> FaceTextureMap;
 
 struct ParsedBlockModel {
@@ -41,6 +40,7 @@ struct AssetParser {
   ZipArchive archive;
 
   TextureIdMap texture_id_map;
+  TextureIdMap* full_texture_id_map = nullptr;
   ParsedBlockMap parsed_block_map;
 
   size_t model_count;
@@ -79,39 +79,64 @@ AssetSystem::AssetSystem() {
   block_registry.state_count = 0;
 }
 
+TextureIdRange AssetSystem::GetTextureRange(const String& texture_path) {
+  if (texture_id_map) {
+    TextureIdRange* find = texture_id_map->Find(MapStringKey(texture_path));
+
+    if (find) {
+      return *find;
+    }
+  }
+
+  TextureIdRange empty = {};
+
+  return empty;
+}
+
 bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path) {
   MemoryArena trans_arena = CreateArena(Megabytes(128));
   AssetParser asset_parser(&trans_arena, &block_registry);
 
+  arena = CreateArena(Megabytes(128));
+  texture_id_map = memory_arena_construct_type(&arena, TextureIdMap, arena);
+  asset_parser.full_texture_id_map = texture_id_map;
+
   if (!asset_parser.archive.Open(jar_path)) {
     trans_arena.Destroy();
+    texture_id_map = nullptr;
+    arena.Destroy();
     return false;
   }
 
   if (!asset_parser.ParseBlockModels()) {
     asset_parser.archive.Close();
     trans_arena.Destroy();
+    texture_id_map = nullptr;
+    arena.Destroy();
     return false;
   }
 
   if (!asset_parser.ParseBlockStates()) {
     asset_parser.archive.Close();
     trans_arena.Destroy();
+    texture_id_map = nullptr;
+    arena.Destroy();
     return false;
   }
 
   if (asset_parser.LoadTextures() == 0) {
     asset_parser.archive.Close();
     trans_arena.Destroy();
+    texture_id_map = nullptr;
+    arena.Destroy();
     return false;
   }
-
-  this->arena = CreateArena(Megabytes(128));
 
   if (!asset_parser.ParseBlocks(&this->arena, blocks_path)) {
     asset_parser.archive.Close();
     trans_arena.Destroy();
-    this->arena.Destroy();
+    texture_id_map = nullptr;
+    arena.Destroy();
     return false;
   }
 
@@ -231,13 +256,32 @@ size_t AssetParser::LoadTextures() {
       continue;
     }
 
-    String texture_name = poly_string(texture_files[i].name + kTexturePathPrefixSize);
+    if (width % 16 == 0 && height % 16 == 0) {
+      String texture_name = poly_string(texture_files[i].name + kTexturePathPrefixSize);
 
-    this->texture_id_map.Insert(texture_name, i);
+      TextureIdRange range;
+      range.base = i;
+      range.count = height / 16;
 
-    u8* destination = texture_images + i * kTextureSize;
+      assert(range.count > 0);
 
-    memcpy(destination, image, kTextureSize);
+      this->texture_id_map.Insert(texture_name, range);
+
+      size_t perm_name_size = texture_name.size + kTexturePathPrefixSize;
+      char* perm_name_alloc = (char*)full_texture_id_map->arena.Allocate(perm_name_size);
+      memcpy(perm_name_alloc, texture_files[i].name, perm_name_size);
+
+      String full_texture_name(perm_name_alloc, perm_name_size);
+
+      full_texture_id_map->Insert(full_texture_name, range);
+
+      for (u32 j = 0; j < range.count; ++j) {
+        u8* destination = texture_images + (i + j) * kTextureSize;
+        memcpy(destination, image + j * (width * 16 * 4), kTextureSize);
+      }
+    } else {
+      printf("Found image %s with dimensions %d, %d instead of 16 multiple.\n", texture_files[i].name, width, height);
+    }
 
     stbi_image_free(image);
   }
@@ -730,10 +774,10 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
                   char lookup[1024];
                   sprintf(lookup, "%.*s.png", (u32)(texture_name.size - prefix_size), texture_name.data + prefix_size);
 
-                  u32* texture_id = texture_id_map->Find(poly_string(lookup));
+                  TextureIdRange* texture_id_range = texture_id_map->Find(poly_string(lookup));
 
-                  if (texture_id) {
-                    face->texture_id = *texture_id;
+                  if (texture_id_range) {
+                    face->texture_id = texture_id_range->base;
                   } else {
                     face->texture_id = 0;
                   }

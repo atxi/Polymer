@@ -1,6 +1,7 @@
 #ifndef POLYMER_GAMESTATE_H_
 #define POLYMER_GAMESTATE_H_
 
+#include "asset_system.h"
 #include "block.h"
 #include "camera.h"
 #include "connection.h"
@@ -29,6 +30,7 @@ struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
   render::VulkanRenderer* renderer;
+  AssetSystem assets;
 
   Connection connection;
   Camera camera;

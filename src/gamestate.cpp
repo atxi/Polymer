@@ -25,10 +25,11 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
 
       section->info = section_info;
 
-      render::RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
 
       for (u32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        meshes[chunk_y].vertex_count = 0;
+        meshes[chunk_y].mesh.vertex_count = 0;
+        meshes[chunk_y].alpha_mesh.vertex_count = 0;
       }
     }
   }
@@ -122,19 +123,28 @@ void GameState::Update(float dt, InputState* input) {
         continue;
       }
 
-      render::RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
 
       for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        render::RenderMesh* mesh = meshes + chunk_y;
+        ChunkMesh* mesh = meshes + chunk_y;
 
         if ((section_info->bitmask & (1 << chunk_y))) {
           Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f - 64.0f, section_info->z * 16.0f);
           Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, section_info->z * 16.0f + 16.0f);
 
-          if (frustum.Intersects(chunk_min, chunk_max) && mesh->vertex_count > 0) {
-            vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1, &mesh->vertex_buffer,
-                                   offsets);
-            vkCmdDraw(renderer->command_buffers[renderer->current_frame], mesh->vertex_count, 1, 0, 0);
+          if (frustum.Intersects(chunk_min, chunk_max)) {
+            if (mesh->mesh.vertex_count > 0) {
+              vkCmdBindVertexBuffers(renderer->command_buffers[renderer->current_frame], 0, 1,
+                                     &mesh->mesh.vertex_buffer, offsets);
+              vkCmdDraw(renderer->command_buffers[renderer->current_frame], mesh->mesh.vertex_count, 1, 0, 0);
+            }
+
+            if (mesh->alpha_mesh.vertex_count > 0) {
+              vkCmdBindVertexBuffers(renderer->alpha_command_buffers[renderer->current_frame], 0, 1,
+                                     &mesh->alpha_mesh.vertex_buffer, offsets);
+              vkCmdDraw(renderer->alpha_command_buffers[renderer->current_frame], mesh->alpha_mesh.vertex_count, 1, 0,
+                        0);
+            }
           }
         }
       }
@@ -166,26 +176,43 @@ void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 
   u8* arena_snapshot = trans_arena->current;
 
   render::BlockMesher mesher(*trans_arena);
-  render::ChunkMesh mesh = mesher.CreateMesh(block_registry, ctx, chunk_y);
+  render::ChunkVertexData vertex_data = mesher.CreateMesh(assets, block_registry, ctx, chunk_y);
 
-  size_t vertex_count = mesh.vertex_count;
-  u8* vertices = mesh.vertices;
+  ChunkMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
 
-  render::RenderMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
-
-  if (meshes[chunk_y].vertex_count > 0) {
+  if (meshes[chunk_y].mesh.vertex_count > 0) {
     // TODO: This should be done in a better way
     renderer->WaitForIdle();
-    renderer->FreeMesh(meshes + chunk_y);
-    meshes[chunk_y].vertex_count = 0;
+    renderer->FreeMesh(&meshes[chunk_y].mesh);
+    meshes[chunk_y].mesh.vertex_count = 0;
   }
 
-  if (vertex_count > 0) {
-    assert(vertex_count <= 0xFFFFFFFF);
+  if (vertex_data.vertex_count > 0) {
+    assert(vertex_data.vertex_count <= 0xFFFFFFFF);
 
-    meshes[chunk_y].vertex_count = (u32)vertex_count;
-    meshes[chunk_y] = renderer->AllocateMesh(vertices, sizeof(render::ChunkVertex) * vertex_count, vertex_count);
+    meshes[chunk_y].mesh.vertex_count = (u32)vertex_data.vertex_count;
+    meshes[chunk_y].mesh = renderer->AllocateMesh(
+        vertex_data.vertices, sizeof(render::ChunkVertex) * vertex_data.vertex_count, vertex_data.vertex_count);
   }
+
+  if (meshes[chunk_y].alpha_mesh.vertex_count > 0) {
+    // TODO: This should be done in a better way
+    renderer->WaitForIdle();
+    renderer->FreeMesh(&meshes[chunk_y].alpha_mesh);
+    meshes[chunk_y].alpha_mesh.vertex_count = 0;
+  }
+
+  if (vertex_data.alpha_vertex_count > 0) {
+    assert(vertex_data.alpha_vertex_count <= 0xFFFFFFFF);
+
+    meshes[chunk_y].alpha_mesh.vertex_count = (u32)vertex_data.alpha_vertex_count;
+    meshes[chunk_y].alpha_mesh =
+        renderer->AllocateMesh(vertex_data.alpha_vertices, sizeof(render::ChunkVertex) * vertex_data.alpha_vertex_count,
+                               vertex_data.alpha_vertex_count);
+  }
+
+  // TODO: Get rid of this since creating and destroying an arena every chunk build is expensive
+  mesher.alpha_arena.Destroy();
 
   // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
   // useful.
@@ -204,11 +231,12 @@ void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx) {
 
   renderer->BeginMeshAllocation();
 
-  render::RenderMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
+  ChunkMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
 
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (!(section_info->bitmask & (1 << chunk_y))) {
-      meshes[chunk_y].vertex_count = 0;
+      meshes[chunk_y].mesh.vertex_count = 0;
+      meshes[chunk_y].alpha_mesh.vertex_count = 0;
       continue;
     }
 
@@ -224,16 +252,21 @@ void GameState::OnDimensionChange() {
   for (s32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (s32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
       ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
-      render::RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
 
       section_info->loaded = false;
 
       for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        render::RenderMesh* mesh = meshes + chunk_y;
+        ChunkMesh* mesh = meshes + chunk_y;
 
-        if (mesh->vertex_count > 0) {
-          renderer->FreeMesh(mesh);
-          mesh->vertex_count = 0;
+        if (mesh->mesh.vertex_count > 0) {
+          renderer->FreeMesh(&mesh->mesh);
+          mesh->mesh.vertex_count = 0;
+        }
+
+        if (mesh->alpha_mesh.vertex_count > 0) {
+          renderer->FreeMesh(&mesh->alpha_mesh);
+          mesh->alpha_mesh.vertex_count = 0;
         }
       }
     }
@@ -247,7 +280,7 @@ void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   u32 z_index = world.GetChunkCacheIndex(chunk_z);
 
   ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
-  render::RenderMesh* meshes = world.meshes[z_index][x_index];
+  ChunkMesh* meshes = world.meshes[z_index][x_index];
 
   if (section_info->loaded) {
     renderer->WaitForIdle();
@@ -256,11 +289,16 @@ void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
 
     // Force clear any existing meshes
     for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-      render::RenderMesh* mesh = meshes + chunk_y;
+      ChunkMesh* mesh = meshes + chunk_y;
 
-      if (mesh->vertex_count > 0) {
-        renderer->FreeMesh(mesh);
-        mesh->vertex_count = 0;
+      if (mesh->mesh.vertex_count > 0) {
+        renderer->FreeMesh(&mesh->mesh);
+        mesh->mesh.vertex_count = 0;
+      }
+
+      if (mesh->alpha_mesh.vertex_count > 0) {
+        renderer->FreeMesh(&mesh->alpha_mesh);
+        mesh->alpha_mesh.vertex_count = 0;
       }
     }
   }
@@ -280,8 +318,8 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
 
   build_queue.Dequeue(chunk_x, chunk_z);
 
-  // It's possible to receive an unload packet after receiving a new chunk that would take this chunk's position in the
-  // cache, so it needs to be checked before anything is changed in the cache.
+  // It's possible to receive an unload packet after receiving a new chunk that would take this chunk's position in
+  // the cache, so it needs to be checked before anything is changed in the cache.
   if (section_info->x != chunk_x || section_info->z != chunk_z) {
     return;
   }
@@ -295,14 +333,19 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
     }
   }
 
-  render::RenderMesh* meshes = world.meshes[z_index][x_index];
+  ChunkMesh* meshes = world.meshes[z_index][x_index];
 
   renderer->WaitForIdle();
 
   for (size_t chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-    if (meshes[chunk_y].vertex_count > 0) {
-      renderer->FreeMesh(meshes + chunk_y);
-      meshes[chunk_y].vertex_count = 0;
+    if (meshes[chunk_y].mesh.vertex_count > 0) {
+      renderer->FreeMesh(&meshes[chunk_y].mesh);
+      meshes[chunk_y].mesh.vertex_count = 0;
+    }
+
+    if (meshes[chunk_y].alpha_mesh.vertex_count > 0) {
+      renderer->FreeMesh(&meshes[chunk_y].alpha_mesh);
+      meshes[chunk_y].alpha_mesh.vertex_count = 0;
     }
   }
 }
@@ -389,16 +432,22 @@ void GameState::ImmediateRebuild(render::ChunkBuildContext* ctx, s32 chunk_y) {
 void GameState::FreeMeshes() {
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
-      render::RenderMesh* meshes = world.meshes[chunk_z][chunk_x];
+      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
 
       for (u32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        render::RenderMesh* mesh = meshes + chunk_y;
+        ChunkMesh* mesh = meshes + chunk_y;
 
-        if (mesh->vertex_count > 0) {
-          renderer->FreeMesh(mesh);
+        if (mesh->mesh.vertex_count > 0) {
+          renderer->FreeMesh(&mesh->mesh);
         }
 
-        mesh->vertex_count = 0;
+        mesh->mesh.vertex_count = 0;
+
+        if (mesh->alpha_mesh.vertex_count > 0) {
+          renderer->FreeMesh(&mesh->alpha_mesh);
+        }
+
+        mesh->alpha_mesh.vertex_count = 0;
       }
     }
   }

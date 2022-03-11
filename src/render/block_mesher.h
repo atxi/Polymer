@@ -1,6 +1,7 @@
 #ifndef POLYMER_RENDER_BLOCKMESHER_H_
 #define POLYMER_RENDER_BLOCKMESHER_H_
 
+#include "../asset_system.h"
 #include "../memory.h"
 #include "../types.h"
 #include "../world.h"
@@ -102,11 +103,15 @@ struct ChunkBuildContext {
   }
 };
 
-struct ChunkMesh {
+// TODO: This should support any number of draw layers
+struct ChunkVertexData {
   u8* vertices;
   size_t vertex_count;
 
-  ChunkMesh() : vertices(nullptr), vertex_count(0) {}
+  u8* alpha_vertices;
+  size_t alpha_vertex_count;
+
+  ChunkVertexData() : vertices(nullptr), vertex_count(0), alpha_vertices(0), alpha_vertex_count(0) {}
 };
 
 // TODO: This could be a standalone function, but I wanted to create a struct in preparation for each mesher creating
@@ -114,9 +119,11 @@ struct ChunkMesh {
 struct BlockMesher {
   BlockMesher(MemoryArena& arena) : arena(arena) {}
 
+  TextureIdRange water_texture;
   MemoryArena& arena;
+  MemoryArena alpha_arena;
 
-  ChunkMesh CreateMesh(BlockRegistry& block_registry, ChunkBuildContext* ctx, s32 chunk_y);
+  ChunkVertexData CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx, s32 chunk_y);
 };
 
 } // namespace render

@@ -43,19 +43,519 @@ inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel*
   return 3 - (value1 + value2 + value_corner);
 }
 
-ChunkMesh BlockMesher::CreateMesh(BlockRegistry& block_registry, ChunkBuildContext* ctx, s32 chunk_y) {
-  ChunkMesh mesh;
+static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk, u32 bid,
+                      size_t relative_x, size_t relative_y, size_t relative_z, render::ChunkVertex* vertices,
+                      u32* vertex_count, const Vector3f& chunk_base) {
+  BlockModel* model = &block_registry.states[bid].model;
+
+  if (model->element_count == 0) {
+    return;
+  }
+
+  size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
+  size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
+
+  size_t north_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
+  size_t south_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
+  size_t east_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
+  size_t west_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
+
+  size_t north_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
+  size_t north_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
+  size_t south_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
+  size_t south_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
+
+  size_t above_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
+  size_t above_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
+  size_t above_north_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
+  size_t above_south_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
+
+  size_t above_north_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
+  size_t above_north_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
+  size_t above_south_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
+  size_t above_south_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
+
+  size_t below_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
+  size_t below_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
+  size_t below_north_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
+  size_t below_south_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
+
+  size_t below_north_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
+  size_t below_north_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
+  size_t below_south_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
+  size_t below_south_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
+
+  u32 above_id = bordered_chunk[above_index];
+  u32 below_id = bordered_chunk[below_index];
+  u32 north_id = bordered_chunk[north_index];
+  u32 south_id = bordered_chunk[south_index];
+  u32 east_id = bordered_chunk[east_index];
+  u32 west_id = bordered_chunk[west_index];
+
+  float x = (float)relative_x;
+  float y = (float)relative_y;
+  float z = (float)relative_z;
+
+  BlockModel* above_model = &block_registry.states[above_id].model;
+  BlockModel* below_model = &block_registry.states[below_id].model;
+
+  BlockModel* north_model = &block_registry.states[north_id].model;
+  BlockModel* south_model = &block_registry.states[south_id].model;
+  BlockModel* east_model = &block_registry.states[east_id].model;
+  BlockModel* west_model = &block_registry.states[west_id].model;
+
+  if (!IsOccluding(model, above_model, BlockFace::Up)) {
+    int ao_bl = 3;
+    int ao_br = 3;
+    int ao_tl = 3;
+    int ao_tr = 3;
+
+    if (model->HasShadedElement()) {
+      BlockModel* above_west_model = &block_registry.states[bordered_chunk[above_west_index]].model;
+      BlockModel* above_east_model = &block_registry.states[bordered_chunk[above_east_index]].model;
+      BlockModel* above_north_model = &block_registry.states[bordered_chunk[above_north_index]].model;
+      BlockModel* above_south_model = &block_registry.states[bordered_chunk[above_south_index]].model;
+      BlockModel* above_north_west_model = &block_registry.states[bordered_chunk[above_north_west_index]].model;
+      BlockModel* above_south_west_model = &block_registry.states[bordered_chunk[above_south_west_index]].model;
+      BlockModel* above_north_east_model = &block_registry.states[bordered_chunk[above_north_east_index]].model;
+      BlockModel* above_south_east_model = &block_registry.states[bordered_chunk[above_south_east_index]].model;
+
+      ao_bl = GetAmbientOcclusion(above_west_model, above_north_model, above_north_west_model);
+      ao_br = GetAmbientOcclusion(above_west_model, above_south_model, above_south_west_model);
+
+      ao_tl = GetAmbientOcclusion(above_east_model, above_north_model, above_north_east_model);
+      ao_tr = GetAmbientOcclusion(above_east_model, above_south_model, above_south_east_model);
+    }
+
+    for (size_t i = 0; i < model->element_count; ++i) {
+      BlockElement* element = model->elements + i;
+      RenderableFace* face = element->faces + 1;
+
+      if (!face->render) continue;
+
+      u32 texture_id = face->texture_id;
+      u32 tintindex = face->tintindex;
+
+      Vector3f& from = element->from;
+      Vector3f& to = element->to;
+
+      Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
+      Vector3f bottom_right(x + from.x, y + to.y, z + to.z);
+      Vector3f top_left(x + to.x, y + to.y, z + from.z);
+      Vector3f top_right(x + to.x, y + to.y, z + to.z);
+
+      Vector2f bl_uv(face->uv_from.x, face->uv_from.y);
+      Vector2f br_uv(face->uv_from.x, face->uv_to.y);
+      Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
+      Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
+
+      int ele_ao_bl = 3;
+      int ele_ao_br = 3;
+      int ele_ao_tl = 3;
+      int ele_ao_tr = 3;
+
+      if (element->shade) {
+        ele_ao_bl = ao_bl;
+        ele_ao_br = ao_br;
+        ele_ao_tl = ao_tl;
+        ele_ao_tr = ao_tr;
+      }
+
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    }
+  }
+
+  if (!IsOccluding(model, below_model, BlockFace::Down)) {
+    int ao_bl = 3;
+    int ao_br = 3;
+    int ao_tl = 3;
+    int ao_tr = 3;
+
+    if (model->HasShadedElement()) {
+      BlockModel* below_west_model = &block_registry.states[bordered_chunk[below_west_index]].model;
+      BlockModel* below_east_model = &block_registry.states[bordered_chunk[below_east_index]].model;
+      BlockModel* below_north_model = &block_registry.states[bordered_chunk[below_north_index]].model;
+      BlockModel* below_south_model = &block_registry.states[bordered_chunk[below_south_index]].model;
+      BlockModel* below_north_west_model = &block_registry.states[bordered_chunk[below_north_west_index]].model;
+      BlockModel* below_south_west_model = &block_registry.states[bordered_chunk[below_south_west_index]].model;
+      BlockModel* below_north_east_model = &block_registry.states[bordered_chunk[below_north_east_index]].model;
+      BlockModel* below_south_east_model = &block_registry.states[bordered_chunk[below_south_east_index]].model;
+
+      ao_bl = GetAmbientOcclusion(below_east_model, below_north_model, below_north_east_model);
+      ao_br = GetAmbientOcclusion(below_east_model, below_south_model, below_south_east_model);
+
+      ao_tl = GetAmbientOcclusion(below_west_model, below_north_model, below_north_west_model);
+      ao_tr = GetAmbientOcclusion(below_west_model, below_south_model, below_south_west_model);
+    }
+
+    for (size_t i = 0; i < model->element_count; ++i) {
+      BlockElement* element = model->elements + i;
+      RenderableFace* face = element->faces + 0;
+
+      if (!face->render) continue;
+
+      u32 texture_id = face->texture_id;
+      u32 tintindex = face->tintindex;
+
+      Vector3f& from = element->from;
+      Vector3f& to = element->to;
+
+      Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
+      Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
+      Vector3f top_left(x + from.x, y + from.y, z + from.z);
+      Vector3f top_right(x + from.x, y + from.y, z + to.z);
+
+      Vector2f bl_uv(face->uv_to.x, face->uv_to.y);
+      Vector2f br_uv(face->uv_to.x, face->uv_from.y);
+      Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
+      Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
+
+      int ele_ao_bl = 3;
+      int ele_ao_br = 3;
+      int ele_ao_tl = 3;
+      int ele_ao_tr = 3;
+
+      if (element->shade) {
+        ele_ao_bl = ao_bl;
+        ele_ao_br = ao_br;
+        ele_ao_tl = ao_tl;
+        ele_ao_tr = ao_tr;
+      }
+
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    }
+  }
+
+  if (!IsOccluding(model, north_model, BlockFace::North)) {
+    int ao_bl = 3;
+    int ao_br = 3;
+    int ao_tl = 3;
+    int ao_tr = 3;
+
+    if (model->HasShadedElement()) {
+      BlockModel* north_east_model = &block_registry.states[bordered_chunk[north_east_index]].model;
+      BlockModel* north_west_model = &block_registry.states[bordered_chunk[north_west_index]].model;
+      BlockModel* above_north_model = &block_registry.states[bordered_chunk[above_north_index]].model;
+      BlockModel* above_north_east_model = &block_registry.states[bordered_chunk[above_north_east_index]].model;
+      BlockModel* above_north_west_model = &block_registry.states[bordered_chunk[above_north_west_index]].model;
+      BlockModel* below_north_model = &block_registry.states[bordered_chunk[below_north_index]].model;
+      BlockModel* below_north_east_model = &block_registry.states[bordered_chunk[below_north_east_index]].model;
+      BlockModel* below_north_west_model = &block_registry.states[bordered_chunk[below_north_west_index]].model;
+
+      ao_bl = GetAmbientOcclusion(north_east_model, below_north_model, below_north_east_model);
+      ao_br = GetAmbientOcclusion(below_north_model, north_west_model, below_north_west_model);
+
+      ao_tl = GetAmbientOcclusion(above_north_model, north_east_model, above_north_east_model);
+      ao_tr = GetAmbientOcclusion(above_north_model, north_west_model, above_north_west_model);
+    }
+
+    for (size_t i = 0; i < model->element_count; ++i) {
+      BlockElement* element = model->elements + i;
+      RenderableFace* face = element->faces + 2;
+
+      if (!face->render) continue;
+
+      u32 texture_id = face->texture_id;
+      u32 tintindex = face->tintindex;
+
+      Vector3f& from = element->from;
+      Vector3f& to = element->to;
+
+      Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
+      Vector3f bottom_right(x + from.x, y + from.y, z + from.z);
+      Vector3f top_left(x + to.x, y + to.y, z + from.z);
+      Vector3f top_right(x + from.x, y + to.y, z + from.z);
+
+      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+      int ele_ao_bl = 3;
+      int ele_ao_br = 3;
+      int ele_ao_tl = 3;
+      int ele_ao_tr = 3;
+
+      if (element->shade) {
+        ele_ao_bl = ao_bl;
+        ele_ao_br = ao_br;
+        ele_ao_tl = ao_tl;
+        ele_ao_tr = ao_tr;
+      }
+
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    }
+  }
+
+  if (!IsOccluding(model, south_model, BlockFace::South)) {
+    int ao_bl = 3;
+    int ao_br = 3;
+    int ao_tl = 3;
+    int ao_tr = 3;
+
+    if (model->HasShadedElement()) {
+      BlockModel* south_east_model = &block_registry.states[bordered_chunk[south_east_index]].model;
+      BlockModel* south_west_model = &block_registry.states[bordered_chunk[south_west_index]].model;
+
+      BlockModel* above_south_model = &block_registry.states[bordered_chunk[above_south_index]].model;
+      BlockModel* above_south_east_model = &block_registry.states[bordered_chunk[above_south_east_index]].model;
+      BlockModel* above_south_west_model = &block_registry.states[bordered_chunk[above_south_west_index]].model;
+
+      BlockModel* below_south_model = &block_registry.states[bordered_chunk[below_south_index]].model;
+      BlockModel* below_south_east_model = &block_registry.states[bordered_chunk[below_south_east_index]].model;
+      BlockModel* below_south_west_model = &block_registry.states[bordered_chunk[below_south_west_index]].model;
+
+      ao_bl = GetAmbientOcclusion(south_west_model, below_south_model, below_south_west_model);
+      ao_br = GetAmbientOcclusion(south_east_model, below_south_model, below_south_east_model);
+
+      ao_tl = GetAmbientOcclusion(above_south_model, south_west_model, above_south_west_model);
+      ao_tr = GetAmbientOcclusion(above_south_model, south_east_model, above_south_east_model);
+    }
+
+    for (size_t i = 0; i < model->element_count; ++i) {
+      BlockElement* element = model->elements + i;
+      RenderableFace* face = element->faces + 3;
+
+      if (!face->render) continue;
+
+      u32 texture_id = face->texture_id;
+      u32 tintindex = face->tintindex;
+
+      Vector3f& from = element->from;
+      Vector3f& to = element->to;
+
+      Vector3f bottom_left(x + from.x, y + from.y, z + to.z);
+      Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
+      Vector3f top_left(x + from.x, y + to.y, z + to.z);
+      Vector3f top_right(x + to.x, y + to.y, z + to.z);
+
+      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+      int ele_ao_bl = 3;
+      int ele_ao_br = 3;
+      int ele_ao_tl = 3;
+      int ele_ao_tr = 3;
+
+      if (element->shade) {
+        ele_ao_bl = ao_bl;
+        ele_ao_br = ao_br;
+        ele_ao_tl = ao_tl;
+        ele_ao_tr = ao_tr;
+      }
+
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    }
+  }
+
+  if (!IsOccluding(model, east_model, BlockFace::East)) {
+    int ao_bl = 3;
+    int ao_br = 3;
+    int ao_tl = 3;
+    int ao_tr = 3;
+
+    if (model->HasShadedElement()) {
+      BlockModel* north_east_model = &block_registry.states[bordered_chunk[north_east_index]].model;
+      BlockModel* south_east_model = &block_registry.states[bordered_chunk[south_east_index]].model;
+      BlockModel* above_east_model = &block_registry.states[bordered_chunk[above_east_index]].model;
+      BlockModel* above_north_east_model = &block_registry.states[bordered_chunk[above_north_east_index]].model;
+      BlockModel* above_south_east_model = &block_registry.states[bordered_chunk[above_south_east_index]].model;
+      BlockModel* below_east_model = &block_registry.states[bordered_chunk[below_east_index]].model;
+      BlockModel* below_north_east_model = &block_registry.states[bordered_chunk[below_north_east_index]].model;
+      BlockModel* below_south_east_model = &block_registry.states[bordered_chunk[below_south_east_index]].model;
+
+      ao_bl = GetAmbientOcclusion(south_east_model, below_east_model, below_south_east_model);
+      ao_br = GetAmbientOcclusion(below_east_model, north_east_model, below_north_east_model);
+
+      ao_tl = GetAmbientOcclusion(above_east_model, south_east_model, above_south_east_model);
+      ao_tr = GetAmbientOcclusion(above_east_model, north_east_model, above_north_east_model);
+    }
+
+    for (size_t i = 0; i < model->element_count; ++i) {
+      BlockElement* element = model->elements + i;
+      RenderableFace* face = element->faces + 5;
+
+      if (!face->render) continue;
+
+      u32 texture_id = face->texture_id;
+      u32 tintindex = face->tintindex;
+
+      Vector3f& from = element->from;
+      Vector3f& to = element->to;
+
+      Vector3f bottom_left(x + to.x, y + from.y, z + to.z);
+      Vector3f bottom_right(x + to.x, y + from.y, z + from.z);
+      Vector3f top_left(x + to.x, y + to.y, z + to.z);
+      Vector3f top_right(x + to.x, y + to.y, z + from.z);
+
+      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+      int ele_ao_bl = 3;
+      int ele_ao_br = 3;
+      int ele_ao_tl = 3;
+      int ele_ao_tr = 3;
+
+      if (element->shade) {
+        ele_ao_bl = ao_bl;
+        ele_ao_br = ao_br;
+        ele_ao_tl = ao_tl;
+        ele_ao_tr = ao_tr;
+      }
+
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    }
+  }
+
+  if (!IsOccluding(model, west_model, BlockFace::West)) {
+    int ao_bl = 3;
+    int ao_br = 3;
+    int ao_tl = 3;
+    int ao_tr = 3;
+
+    if (model->HasShadedElement()) {
+      BlockModel* north_west_model = &block_registry.states[bordered_chunk[north_west_index]].model;
+      BlockModel* south_west_model = &block_registry.states[bordered_chunk[south_west_index]].model;
+      BlockModel* above_west_model = &block_registry.states[bordered_chunk[above_west_index]].model;
+      BlockModel* above_north_west_model = &block_registry.states[bordered_chunk[above_north_west_index]].model;
+      BlockModel* above_south_west_model = &block_registry.states[bordered_chunk[above_south_west_index]].model;
+      BlockModel* below_west_model = &block_registry.states[bordered_chunk[below_west_index]].model;
+      BlockModel* below_north_west_model = &block_registry.states[bordered_chunk[below_north_west_index]].model;
+      BlockModel* below_south_west_model = &block_registry.states[bordered_chunk[below_south_west_index]].model;
+
+      ao_bl = GetAmbientOcclusion(below_west_model, north_west_model, below_north_west_model);
+      ao_br = GetAmbientOcclusion(below_west_model, south_west_model, below_south_west_model);
+
+      ao_tl = GetAmbientOcclusion(above_west_model, north_west_model, above_north_west_model);
+      ao_tr = GetAmbientOcclusion(above_west_model, south_west_model, above_south_west_model);
+    }
+
+    for (size_t i = 0; i < model->element_count; ++i) {
+      BlockElement* element = model->elements + i;
+      RenderableFace* face = element->faces + 4;
+
+      if (!face->render) continue;
+
+      u32 texture_id = face->texture_id;
+      u32 tintindex = face->tintindex;
+
+      Vector3f& from = element->from;
+      Vector3f& to = element->to;
+
+      Vector3f bottom_left(x + from.x, y + from.y, z + from.z);
+      Vector3f bottom_right(x + from.x, y + from.y, z + to.z);
+      Vector3f top_left(x + from.x, y + to.y, z + from.z);
+      Vector3f top_right(x + from.x, y + to.y, z + to.z);
+
+      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+      int ele_ao_bl = 3;
+      int ele_ao_br = 3;
+      int ele_ao_tl = 3;
+      int ele_ao_tr = 3;
+
+      if (element->shade) {
+        ele_ao_bl = ao_bl;
+        ele_ao_br = ao_br;
+        ele_ao_tl = ao_tl;
+        ele_ao_tr = ao_tr;
+      }
+
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    }
+  }
+}
+
+static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk, u32 bid,
+                      size_t relative_x, size_t relative_y, size_t relative_z, render::ChunkVertex* vertices,
+                      u32* vertex_count, const Vector3f& chunk_base, TextureIdRange water_texture) {
+  float x = (float)relative_x;
+  float y = (float)relative_y;
+  float z = (float)relative_z;
+  Vector3f position = chunk_base + Vector3f(x, y, z);
+
+  u32 texture_id = water_texture.base;
+  const float water_y = 0.9f;
+  const u32 tint_index = 50;
+
+  // TODO: Real implementation. This just renders the top face for rendering tests.
+
+  PushVertex(arena, vertices, vertex_count, position + Vector3f(0, water_y, 0), Vector2f(0, 0), texture_id, tint_index, 3);
+  PushVertex(arena, vertices, vertex_count, position + Vector3f(0, water_y, 1), Vector2f(0, 1), texture_id, tint_index, 3);
+  PushVertex(arena, vertices, vertex_count, position + Vector3f(1, water_y, 1), Vector2f(1, 1), texture_id, tint_index, 3);
+
+  PushVertex(arena, vertices, vertex_count, position + Vector3f(1, water_y, 1), Vector2f(1, 1), texture_id, tint_index, 3);
+  PushVertex(arena, vertices, vertex_count, position + Vector3f(1, water_y, 0), Vector2f(1, 0), texture_id, tint_index, 3);
+  PushVertex(arena, vertices, vertex_count, position + Vector3f(0, water_y, 0), Vector2f(0, 0), texture_id, tint_index, 3);
+}
+
+inline bool IsFluid(u32 bid) {
+  return bid >= 34 && bid <= 49;
+}
+
+ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx,
+                                        s32 chunk_y) {
+  ChunkVertexData vertex_data;
 
   s32 chunk_x = ctx->chunk_x;
   s32 chunk_z = ctx->chunk_z;
 
   u32* bordered_chunk = CreateBorderedChunk(arena, ctx, chunk_y);
-  if (!bordered_chunk) return mesh;
+  if (!bordered_chunk) return vertex_data;
+
+  water_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_still.png"));
+
+  alpha_arena = CreateArena(Megabytes(32));
 
   // Create an initial pointer to transient memory with zero vertices allocated.
   // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
   render::ChunkVertex* vertices = (render::ChunkVertex*)arena.Allocate(0);
+  render::ChunkVertex* alpha_vertices = (render::ChunkVertex*)alpha_arena.Allocate(0);
   u32 vertex_count = 0;
+  u32 alpha_vertex_count = 0;
 
   Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
 
@@ -65,493 +565,25 @@ ChunkMesh BlockMesher::CreateMesh(BlockRegistry& block_registry, ChunkBuildConte
         size_t index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
 
         u32 bid = bordered_chunk[index];
-        BlockModel* model = &block_registry.states[bid].model;
 
-        if (model->element_count == 0) {
-          continue;
-        }
+        if (IsFluid(bid)) {
+          MeshFluid(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, alpha_vertices,
+                    &alpha_vertex_count, chunk_base, water_texture);
+        } else {
 
-        size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
-        size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
-
-        size_t north_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
-        size_t south_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
-        size_t east_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
-        size_t west_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
-
-        size_t north_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
-        size_t north_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
-        size_t south_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
-        size_t south_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
-
-        size_t above_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
-        size_t above_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
-        size_t above_north_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
-        size_t above_south_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
-
-        size_t above_north_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
-        size_t above_north_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
-        size_t above_south_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
-        size_t above_south_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
-
-        size_t below_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
-        size_t below_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
-        size_t below_north_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
-        size_t below_south_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
-
-        size_t below_north_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
-        size_t below_north_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
-        size_t below_south_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
-        size_t below_south_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
-
-        u32 above_id = bordered_chunk[above_index];
-        u32 below_id = bordered_chunk[below_index];
-        u32 north_id = bordered_chunk[north_index];
-        u32 south_id = bordered_chunk[south_index];
-        u32 east_id = bordered_chunk[east_index];
-        u32 west_id = bordered_chunk[west_index];
-
-        float x = (float)relative_x;
-        float y = (float)relative_y;
-        float z = (float)relative_z;
-
-        BlockModel* above_model = &block_registry.states[above_id].model;
-        BlockModel* below_model = &block_registry.states[below_id].model;
-
-        BlockModel* north_model = &block_registry.states[north_id].model;
-        BlockModel* south_model = &block_registry.states[south_id].model;
-        BlockModel* east_model = &block_registry.states[east_id].model;
-        BlockModel* west_model = &block_registry.states[west_id].model;
-
-        if (!IsOccluding(model, above_model, BlockFace::Up)) {
-          int ao_bl = 3;
-          int ao_br = 3;
-          int ao_tl = 3;
-          int ao_tr = 3;
-
-          if (model->HasShadedElement()) {
-            BlockModel* above_west_model = &block_registry.states[bordered_chunk[above_west_index]].model;
-            BlockModel* above_east_model = &block_registry.states[bordered_chunk[above_east_index]].model;
-            BlockModel* above_north_model = &block_registry.states[bordered_chunk[above_north_index]].model;
-            BlockModel* above_south_model = &block_registry.states[bordered_chunk[above_south_index]].model;
-            BlockModel* above_north_west_model = &block_registry.states[bordered_chunk[above_north_west_index]].model;
-            BlockModel* above_south_west_model = &block_registry.states[bordered_chunk[above_south_west_index]].model;
-            BlockModel* above_north_east_model = &block_registry.states[bordered_chunk[above_north_east_index]].model;
-            BlockModel* above_south_east_model = &block_registry.states[bordered_chunk[above_south_east_index]].model;
-
-            ao_bl = GetAmbientOcclusion(above_west_model, above_north_model, above_north_west_model);
-            ao_br = GetAmbientOcclusion(above_west_model, above_south_model, above_south_west_model);
-
-            ao_tl = GetAmbientOcclusion(above_east_model, above_north_model, above_north_east_model);
-            ao_tr = GetAmbientOcclusion(above_east_model, above_south_model, above_south_east_model);
-          }
-
-          for (size_t i = 0; i < model->element_count; ++i) {
-            BlockElement* element = model->elements + i;
-            RenderableFace* face = element->faces + 1;
-
-            if (!face->render) continue;
-
-            u32 texture_id = face->texture_id;
-            u32 tintindex = face->tintindex;
-
-            Vector3f& from = element->from;
-            Vector3f& to = element->to;
-
-            Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
-            Vector3f bottom_right(x + from.x, y + to.y, z + to.z);
-            Vector3f top_left(x + to.x, y + to.y, z + from.z);
-            Vector3f top_right(x + to.x, y + to.y, z + to.z);
-
-            Vector2f bl_uv(face->uv_from.x, face->uv_from.y);
-            Vector2f br_uv(face->uv_from.x, face->uv_to.y);
-            Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
-            Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
-
-            int ele_ao_bl = 3;
-            int ele_ao_br = 3;
-            int ele_ao_tl = 3;
-            int ele_ao_tr = 3;
-
-            if (element->shade) {
-              ele_ao_bl = ao_bl;
-              ele_ao_br = ao_br;
-              ele_ao_tl = ao_tl;
-              ele_ao_tr = ao_tr;
-            }
-
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-            PushVertex(arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
-                       ele_ao_br);
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-          }
-        }
-
-        if (!IsOccluding(model, below_model, BlockFace::Down)) {
-          int ao_bl = 3;
-          int ao_br = 3;
-          int ao_tl = 3;
-          int ao_tr = 3;
-
-          if (model->HasShadedElement()) {
-            BlockModel* below_west_model = &block_registry.states[bordered_chunk[below_west_index]].model;
-            BlockModel* below_east_model = &block_registry.states[bordered_chunk[below_east_index]].model;
-            BlockModel* below_north_model = &block_registry.states[bordered_chunk[below_north_index]].model;
-            BlockModel* below_south_model = &block_registry.states[bordered_chunk[below_south_index]].model;
-            BlockModel* below_north_west_model = &block_registry.states[bordered_chunk[below_north_west_index]].model;
-            BlockModel* below_south_west_model = &block_registry.states[bordered_chunk[below_south_west_index]].model;
-            BlockModel* below_north_east_model = &block_registry.states[bordered_chunk[below_north_east_index]].model;
-            BlockModel* below_south_east_model = &block_registry.states[bordered_chunk[below_south_east_index]].model;
-
-            ao_bl = GetAmbientOcclusion(below_east_model, below_north_model, below_north_east_model);
-            ao_br = GetAmbientOcclusion(below_east_model, below_south_model, below_south_east_model);
-
-            ao_tl = GetAmbientOcclusion(below_west_model, below_north_model, below_north_west_model);
-            ao_tr = GetAmbientOcclusion(below_west_model, below_south_model, below_south_west_model);
-          }
-
-          for (size_t i = 0; i < model->element_count; ++i) {
-            BlockElement* element = model->elements + i;
-            RenderableFace* face = element->faces + 0;
-
-            if (!face->render) continue;
-
-            u32 texture_id = face->texture_id;
-            u32 tintindex = face->tintindex;
-
-            Vector3f& from = element->from;
-            Vector3f& to = element->to;
-
-            Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
-            Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
-            Vector3f top_left(x + from.x, y + from.y, z + from.z);
-            Vector3f top_right(x + from.x, y + from.y, z + to.z);
-
-            Vector2f bl_uv(face->uv_to.x, face->uv_to.y);
-            Vector2f br_uv(face->uv_to.x, face->uv_from.y);
-            Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
-            Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
-
-            int ele_ao_bl = 3;
-            int ele_ao_br = 3;
-            int ele_ao_tl = 3;
-            int ele_ao_tr = 3;
-
-            if (element->shade) {
-              ele_ao_bl = ao_bl;
-              ele_ao_br = ao_br;
-              ele_ao_tl = ao_tl;
-              ele_ao_tr = ao_tr;
-            }
-
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-            PushVertex(arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
-                       ele_ao_br);
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-          }
-        }
-
-        if (!IsOccluding(model, north_model, BlockFace::North)) {
-          int ao_bl = 3;
-          int ao_br = 3;
-          int ao_tl = 3;
-          int ao_tr = 3;
-
-          if (model->HasShadedElement()) {
-            BlockModel* north_east_model = &block_registry.states[bordered_chunk[north_east_index]].model;
-            BlockModel* north_west_model = &block_registry.states[bordered_chunk[north_west_index]].model;
-            BlockModel* above_north_model = &block_registry.states[bordered_chunk[above_north_index]].model;
-            BlockModel* above_north_east_model = &block_registry.states[bordered_chunk[above_north_east_index]].model;
-            BlockModel* above_north_west_model = &block_registry.states[bordered_chunk[above_north_west_index]].model;
-            BlockModel* below_north_model = &block_registry.states[bordered_chunk[below_north_index]].model;
-            BlockModel* below_north_east_model = &block_registry.states[bordered_chunk[below_north_east_index]].model;
-            BlockModel* below_north_west_model = &block_registry.states[bordered_chunk[below_north_west_index]].model;
-
-            ao_bl = GetAmbientOcclusion(north_east_model, below_north_model, below_north_east_model);
-            ao_br = GetAmbientOcclusion(below_north_model, north_west_model, below_north_west_model);
-
-            ao_tl = GetAmbientOcclusion(above_north_model, north_east_model, above_north_east_model);
-            ao_tr = GetAmbientOcclusion(above_north_model, north_west_model, above_north_west_model);
-          }
-
-          for (size_t i = 0; i < model->element_count; ++i) {
-            BlockElement* element = model->elements + i;
-            RenderableFace* face = element->faces + 2;
-
-            if (!face->render) continue;
-
-            u32 texture_id = face->texture_id;
-            u32 tintindex = face->tintindex;
-
-            Vector3f& from = element->from;
-            Vector3f& to = element->to;
-
-            Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
-            Vector3f bottom_right(x + from.x, y + from.y, z + from.z);
-            Vector3f top_left(x + to.x, y + to.y, z + from.z);
-            Vector3f top_right(x + from.x, y + to.y, z + from.z);
-
-            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
-
-            int ele_ao_bl = 3;
-            int ele_ao_br = 3;
-            int ele_ao_tl = 3;
-            int ele_ao_tr = 3;
-
-            if (element->shade) {
-              ele_ao_bl = ao_bl;
-              ele_ao_br = ao_br;
-              ele_ao_tl = ao_tl;
-              ele_ao_tr = ao_tr;
-            }
-
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-            PushVertex(arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
-                       ele_ao_br);
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-          }
-        }
-
-        if (!IsOccluding(model, south_model, BlockFace::South)) {
-          int ao_bl = 3;
-          int ao_br = 3;
-          int ao_tl = 3;
-          int ao_tr = 3;
-
-          if (model->HasShadedElement()) {
-            BlockModel* south_east_model = &block_registry.states[bordered_chunk[south_east_index]].model;
-            BlockModel* south_west_model = &block_registry.states[bordered_chunk[south_west_index]].model;
-
-            BlockModel* above_south_model = &block_registry.states[bordered_chunk[above_south_index]].model;
-            BlockModel* above_south_east_model = &block_registry.states[bordered_chunk[above_south_east_index]].model;
-            BlockModel* above_south_west_model = &block_registry.states[bordered_chunk[above_south_west_index]].model;
-
-            BlockModel* below_south_model = &block_registry.states[bordered_chunk[below_south_index]].model;
-            BlockModel* below_south_east_model = &block_registry.states[bordered_chunk[below_south_east_index]].model;
-            BlockModel* below_south_west_model = &block_registry.states[bordered_chunk[below_south_west_index]].model;
-
-            ao_bl = GetAmbientOcclusion(south_west_model, below_south_model, below_south_west_model);
-            ao_br = GetAmbientOcclusion(south_east_model, below_south_model, below_south_east_model);
-
-            ao_tl = GetAmbientOcclusion(above_south_model, south_west_model, above_south_west_model);
-            ao_tr = GetAmbientOcclusion(above_south_model, south_east_model, above_south_east_model);
-          }
-
-          for (size_t i = 0; i < model->element_count; ++i) {
-            BlockElement* element = model->elements + i;
-            RenderableFace* face = element->faces + 3;
-
-            if (!face->render) continue;
-
-            u32 texture_id = face->texture_id;
-            u32 tintindex = face->tintindex;
-
-            Vector3f& from = element->from;
-            Vector3f& to = element->to;
-
-            Vector3f bottom_left(x + from.x, y + from.y, z + to.z);
-            Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
-            Vector3f top_left(x + from.x, y + to.y, z + to.z);
-            Vector3f top_right(x + to.x, y + to.y, z + to.z);
-
-            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
-
-            int ele_ao_bl = 3;
-            int ele_ao_br = 3;
-            int ele_ao_tl = 3;
-            int ele_ao_tr = 3;
-
-            if (element->shade) {
-              ele_ao_bl = ao_bl;
-              ele_ao_br = ao_br;
-              ele_ao_tl = ao_tl;
-              ele_ao_tr = ao_tr;
-            }
-
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-            PushVertex(arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
-                       ele_ao_br);
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-          }
-        }
-
-        if (!IsOccluding(model, east_model, BlockFace::East)) {
-          int ao_bl = 3;
-          int ao_br = 3;
-          int ao_tl = 3;
-          int ao_tr = 3;
-
-          if (model->HasShadedElement()) {
-            BlockModel* north_east_model = &block_registry.states[bordered_chunk[north_east_index]].model;
-            BlockModel* south_east_model = &block_registry.states[bordered_chunk[south_east_index]].model;
-            BlockModel* above_east_model = &block_registry.states[bordered_chunk[above_east_index]].model;
-            BlockModel* above_north_east_model = &block_registry.states[bordered_chunk[above_north_east_index]].model;
-            BlockModel* above_south_east_model = &block_registry.states[bordered_chunk[above_south_east_index]].model;
-            BlockModel* below_east_model = &block_registry.states[bordered_chunk[below_east_index]].model;
-            BlockModel* below_north_east_model = &block_registry.states[bordered_chunk[below_north_east_index]].model;
-            BlockModel* below_south_east_model = &block_registry.states[bordered_chunk[below_south_east_index]].model;
-
-            ao_bl = GetAmbientOcclusion(south_east_model, below_east_model, below_south_east_model);
-            ao_br = GetAmbientOcclusion(below_east_model, north_east_model, below_north_east_model);
-
-            ao_tl = GetAmbientOcclusion(above_east_model, south_east_model, above_south_east_model);
-            ao_tr = GetAmbientOcclusion(above_east_model, north_east_model, above_north_east_model);
-          }
-
-          for (size_t i = 0; i < model->element_count; ++i) {
-            BlockElement* element = model->elements + i;
-            RenderableFace* face = element->faces + 5;
-
-            if (!face->render) continue;
-
-            u32 texture_id = face->texture_id;
-            u32 tintindex = face->tintindex;
-
-            Vector3f& from = element->from;
-            Vector3f& to = element->to;
-
-            Vector3f bottom_left(x + to.x, y + from.y, z + to.z);
-            Vector3f bottom_right(x + to.x, y + from.y, z + from.z);
-            Vector3f top_left(x + to.x, y + to.y, z + to.z);
-            Vector3f top_right(x + to.x, y + to.y, z + from.z);
-
-            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
-
-            int ele_ao_bl = 3;
-            int ele_ao_br = 3;
-            int ele_ao_tl = 3;
-            int ele_ao_tr = 3;
-
-            if (element->shade) {
-              ele_ao_bl = ao_bl;
-              ele_ao_br = ao_br;
-              ele_ao_tl = ao_tl;
-              ele_ao_tr = ao_tr;
-            }
-
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-            PushVertex(arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
-                       ele_ao_br);
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-          }
-        }
-
-        if (!IsOccluding(model, west_model, BlockFace::West)) {
-          int ao_bl = 3;
-          int ao_br = 3;
-          int ao_tl = 3;
-          int ao_tr = 3;
-
-          if (model->HasShadedElement()) {
-            BlockModel* north_west_model = &block_registry.states[bordered_chunk[north_west_index]].model;
-            BlockModel* south_west_model = &block_registry.states[bordered_chunk[south_west_index]].model;
-            BlockModel* above_west_model = &block_registry.states[bordered_chunk[above_west_index]].model;
-            BlockModel* above_north_west_model = &block_registry.states[bordered_chunk[above_north_west_index]].model;
-            BlockModel* above_south_west_model = &block_registry.states[bordered_chunk[above_south_west_index]].model;
-            BlockModel* below_west_model = &block_registry.states[bordered_chunk[below_west_index]].model;
-            BlockModel* below_north_west_model = &block_registry.states[bordered_chunk[below_north_west_index]].model;
-            BlockModel* below_south_west_model = &block_registry.states[bordered_chunk[below_south_west_index]].model;
-
-            ao_bl = GetAmbientOcclusion(below_west_model, north_west_model, below_north_west_model);
-            ao_br = GetAmbientOcclusion(below_west_model, south_west_model, below_south_west_model);
-
-            ao_tl = GetAmbientOcclusion(above_west_model, north_west_model, above_north_west_model);
-            ao_tr = GetAmbientOcclusion(above_west_model, south_west_model, above_south_west_model);
-          }
-
-          for (size_t i = 0; i < model->element_count; ++i) {
-            BlockElement* element = model->elements + i;
-            RenderableFace* face = element->faces + 4;
-
-            if (!face->render) continue;
-
-            u32 texture_id = face->texture_id;
-            u32 tintindex = face->tintindex;
-
-            Vector3f& from = element->from;
-            Vector3f& to = element->to;
-
-            Vector3f bottom_left(x + from.x, y + from.y, z + from.z);
-            Vector3f bottom_right(x + from.x, y + from.y, z + to.z);
-            Vector3f top_left(x + from.x, y + to.y, z + from.z);
-            Vector3f top_right(x + from.x, y + to.y, z + to.z);
-
-            Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-            Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-            Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-            Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
-
-            int ele_ao_bl = 3;
-            int ele_ao_br = 3;
-            int ele_ao_tl = 3;
-            int ele_ao_tr = 3;
-
-            if (element->shade) {
-              ele_ao_bl = ao_bl;
-              ele_ao_br = ao_br;
-              ele_ao_tl = ao_tl;
-              ele_ao_tr = ao_tr;
-            }
-
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-            PushVertex(arena, vertices, &vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex,
-                       ele_ao_br);
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-
-            PushVertex(arena, vertices, &vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-            PushVertex(arena, vertices, &vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-            PushVertex(arena, vertices, &vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex,
-                       ele_ao_bl);
-          }
+          MeshBlock(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, vertices,
+                    &vertex_count, chunk_base);
         }
       }
     }
   }
 
-  mesh.vertices = (u8*)vertices;
-  mesh.vertex_count = vertex_count;
+  vertex_data.vertices = (u8*)vertices;
+  vertex_data.vertex_count = vertex_count;
+  vertex_data.alpha_vertex_count = alpha_vertex_count;
+  vertex_data.alpha_vertices = (u8*)alpha_vertices;
 
-  return mesh;
+  return vertex_data;
 }
 
 u32* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s32 chunk_y) {
@@ -642,7 +674,7 @@ u32* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s32 chunk_y
     bordered_chunk[index] = north_west_section->chunks[chunk_y].blocks[y][15][15];
   }
 
-  if (chunk_y < 16) {
+  if (chunk_y < kChunkColumnCount) {
     if (section->info->bitmask & (1 << (chunk_y + 1))) {
       // Load above blocks
       for (s64 z = 0; z < 16; ++z) {

@@ -191,14 +191,12 @@ int run() {
   vk_render.Initialize(hwnd);
 
   {
-    AssetSystem assets;
-
-    if (!assets.Load(vk_render, kMinecraftJar, "blocks.json")) {
+    if (!g_game->assets.Load(vk_render, kMinecraftJar, "blocks.json")) {
       fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and %s.\n", kMinecraftJar);
       return 1;
     }
 
-    game->block_registry = assets.block_registry;
+    game->block_registry = g_game->assets.block_registry;
   }
 
   MSG msg = {};

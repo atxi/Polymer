@@ -20,6 +20,10 @@
 #include "../math.h"
 #include "../memory.h"
 
+// TODO: This entire thing needs to be re-written because it's just hacked together in a way that doesn't allow multiple
+// dependent draw submissions easily. It also doesn't support creating any kind of textures except the texture array
+// used for block rendering.
+
 namespace polymer {
 namespace render {
 
@@ -84,8 +88,10 @@ struct VulkanRenderer {
   VkFormat swap_format;
   VkExtent2D swap_extent;
   VkRenderPass render_pass;
+  VkRenderPass alpha_render_pass;
   VkPipelineLayout pipeline_layout;
   VkPipeline graphics_pipeline;
+  VkPipeline alpha_pipeline;
 
   VmaAllocator allocator;
 
@@ -97,9 +103,12 @@ struct VulkanRenderer {
 
   VkCommandPool command_pool;
   VkCommandBuffer command_buffers[kMaxFramesInFlight];
+  VkCommandBuffer alpha_command_buffers[kMaxFramesInFlight];
   VkCommandBuffer oneshot_command_buffer;
   VkSemaphore image_available_semaphores[kMaxFramesInFlight];
   VkSemaphore render_finished_semaphores[kMaxFramesInFlight];
+  VkSemaphore draw_finished_semaphores[kMaxFramesInFlight];
+
   VkFence frame_fences[kMaxFramesInFlight];
   VkFence image_fences[6];
 
