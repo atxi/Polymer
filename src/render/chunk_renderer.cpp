@@ -294,6 +294,8 @@ void ChunkRenderer::CreatePipeline(VkDevice device, VkShaderModule vertex_shader
     fprintf(stderr, "Failed to create graphics pipeline.\n");
   }
 
+  depth_stencil.depthWriteEnable = VK_FALSE;
+
   blend_attachment.blendEnable = VK_TRUE;
   pipeline_info.renderPass = alpha_renderer.render_pass;
 
