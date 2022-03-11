@@ -519,21 +519,196 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
 
   u32 texture_id = water_texture.base;
   const float water_y = 0.9f;
-  const u32 tint_index = 50;
+  const u32 tintindex = 50;
 
-  // TODO: Real implementation. This just renders the top face for rendering tests.
+  size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
+  size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
 
-  PushVertex(arena, vertices, vertex_count, position + Vector3f(0, water_y, 0), Vector2f(0, 0), texture_id, tint_index, 3);
-  PushVertex(arena, vertices, vertex_count, position + Vector3f(0, water_y, 1), Vector2f(0, 1), texture_id, tint_index, 3);
-  PushVertex(arena, vertices, vertex_count, position + Vector3f(1, water_y, 1), Vector2f(1, 1), texture_id, tint_index, 3);
+  size_t north_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
+  size_t south_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
+  size_t east_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
+  size_t west_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
 
-  PushVertex(arena, vertices, vertex_count, position + Vector3f(1, water_y, 1), Vector2f(1, 1), texture_id, tint_index, 3);
-  PushVertex(arena, vertices, vertex_count, position + Vector3f(1, water_y, 0), Vector2f(1, 0), texture_id, tint_index, 3);
-  PushVertex(arena, vertices, vertex_count, position + Vector3f(0, water_y, 0), Vector2f(0, 0), texture_id, tint_index, 3);
+  size_t north_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
+  size_t north_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
+  size_t south_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
+  size_t south_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
+
+  size_t above_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
+  size_t above_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
+  size_t above_north_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
+  size_t above_south_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
+
+  size_t above_north_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
+  size_t above_north_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
+  size_t above_south_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
+  size_t above_south_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
+
+  size_t below_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
+  size_t below_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
+  size_t below_north_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
+  size_t below_south_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
+
+  size_t below_north_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
+  size_t below_north_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
+  size_t below_south_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
+  size_t below_south_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
+
+  u32 above_id = bordered_chunk[above_index];
+  u32 below_id = bordered_chunk[below_index];
+  u32 north_id = bordered_chunk[north_index];
+  u32 south_id = bordered_chunk[south_index];
+  u32 east_id = bordered_chunk[east_index];
+  u32 west_id = bordered_chunk[west_index];
+
+  BlockModel* above_model = &block_registry.states[above_id].model;
+  BlockModel* below_model = &block_registry.states[below_id].model;
+
+  BlockModel* north_model = &block_registry.states[north_id].model;
+  BlockModel* south_model = &block_registry.states[south_id].model;
+  BlockModel* east_model = &block_registry.states[east_id].model;
+  BlockModel* west_model = &block_registry.states[west_id].model;
+
+  int ele_ao_bl = 3;
+  int ele_ao_br = 3;
+  int ele_ao_tl = 3;
+  int ele_ao_tr = 3;
+
+  Vector3f from(0, 0, 0);
+  Vector3f to(1, 1, 1);
+
+  RenderableFace face_;
+  face_.uv_from = Vector2f(0, 0);
+  face_.uv_to = Vector2f(1, 1);
+  RenderableFace* face = &face_;
+
+  // TODO: Real implementation.
+
+  if (above_id == 0 || above_id == 5215) {
+    Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
+    Vector3f bottom_right(x + from.x, y + to.y, z + to.z);
+    Vector3f top_left(x + to.x, y + to.y, z + from.z);
+    Vector3f top_right(x + to.x, y + to.y, z + to.z);
+
+    Vector2f bl_uv(face->uv_from.x, face->uv_from.y);
+    Vector2f br_uv(face->uv_from.x, face->uv_to.y);
+    Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
+    Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
+
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+  }
+
+  if (below_id == 0) {
+    Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
+    Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
+    Vector3f top_left(x + from.x, y + from.y, z + from.z);
+    Vector3f top_right(x + from.x, y + from.y, z + to.z);
+
+    Vector2f bl_uv(face->uv_to.x, face->uv_to.y);
+    Vector2f br_uv(face->uv_to.x, face->uv_from.y);
+    Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
+    Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
+
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+  }
+
+  if (north_id == 0) {
+    Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
+    Vector3f bottom_right(x + from.x, y + from.y, z + from.z);
+    Vector3f top_left(x + to.x, y + to.y, z + from.z);
+    Vector3f top_right(x + from.x, y + to.y, z + from.z);
+
+    Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+    Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+    Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+    Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+  }
+
+  if (south_id == 0) {
+    Vector3f bottom_left(x + from.x, y + from.y, z + to.z);
+    Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
+    Vector3f top_left(x + from.x, y + to.y, z + to.z);
+    Vector3f top_right(x + to.x, y + to.y, z + to.z);
+
+    Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+    Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+    Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+    Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+  }
+
+  if (east_id == 0) {
+    Vector3f bottom_left(x + to.x, y + from.y, z + to.z);
+    Vector3f bottom_right(x + to.x, y + from.y, z + from.z);
+    Vector3f top_left(x + to.x, y + to.y, z + to.z);
+    Vector3f top_right(x + to.x, y + to.y, z + from.z);
+
+    Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+    Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+    Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+    Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+  }
+
+  if (west_id == 0) {
+    Vector3f bottom_left(x + from.x, y + from.y, z + from.z);
+    Vector3f bottom_right(x + from.x, y + from.y, z + to.z);
+    Vector3f top_left(x + from.x, y + to.y, z + from.z);
+    Vector3f top_right(x + from.x, y + to.y, z + to.z);
+
+    Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
+    Vector2f br_uv(face->uv_to.x, face->uv_to.y);
+    Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
+    Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+  }
 }
 
+// TODO: Pull these from the asset system
 inline bool IsFluid(u32 bid) {
-  return bid >= 34 && bid <= 49;
+  // water || kelp || seagrass
+  return (bid >= 34 && bid <= 49) || (bid >= 9720 && bid <= 9746) || (bid >= 1401 && bid <= 1403);
 }
 
 ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx,
@@ -569,19 +744,17 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
         if (IsFluid(bid)) {
           MeshFluid(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, alpha_vertices,
                     &alpha_vertex_count, chunk_base, water_texture);
-        } else {
-
-          MeshBlock(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, vertices,
-                    &vertex_count, chunk_base);
         }
+
+        // Always mesh block even if it's a fluid because the plants have both
+        MeshBlock(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, vertices,
+                  &vertex_count, chunk_base);
       }
     }
   }
 
-  vertex_data.vertices = (u8*)vertices;
-  vertex_data.vertex_count = vertex_count;
-  vertex_data.alpha_vertex_count = alpha_vertex_count;
-  vertex_data.alpha_vertices = (u8*)alpha_vertices;
+  vertex_data.SetVertices(RenderLayer::Standard, (u8*)vertices, vertex_count);
+  vertex_data.SetVertices(RenderLayer::Alpha, (u8*)alpha_vertices, alpha_vertex_count);
 
   return vertex_data;
 }

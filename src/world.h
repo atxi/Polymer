@@ -30,10 +30,8 @@ struct ChunkSection {
   Chunk chunks[kChunkColumnCount];
 };
 
-// TODO: This should support any number of draw layers, or at least be setup in a way that makes it easier to add them.
 struct ChunkMesh {
-  render::RenderMesh mesh;
-  render::RenderMesh alpha_mesh;
+  render::RenderMesh meshes[kRenderLayerCount];
 };
 
 constexpr size_t kChunkCacheSize = 32;

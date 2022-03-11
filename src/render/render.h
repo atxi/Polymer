@@ -16,6 +16,8 @@
 #undef far
 #endif
 
+#include "chunk_renderer.h"
+
 #include "../buffer.h"
 #include "../math.h"
 #include "../memory.h"
@@ -25,20 +27,20 @@
 // used for block rendering.
 
 namespace polymer {
+
+enum class RenderLayer {
+  Standard,
+  Alpha, // Water
+  // NoMip, // Plants
+
+  Count,
+};
+
+constexpr size_t kRenderLayerCount = (size_t)RenderLayer::Count;
+
 namespace render {
 
 constexpr size_t kMaxFramesInFlight = 2;
-
-struct UniformBufferObject {
-  mat4 mvp;
-};
-
-struct ChunkVertex {
-  Vector3f position;
-  Vector2f texcoord;
-  u32 texture_id;
-  u32 tint_index;
-};
 
 struct QueueFamilyIndices {
   u32 graphics;
@@ -68,6 +70,9 @@ struct RenderMesh {
   u32 vertex_count;
 };
 
+void CreateRenderPassType(VkDevice device, VkFormat swap_format, VkRenderPass* render_pass,
+                          VkAttachmentDescription color_attachment, VkAttachmentDescription depth_attachment);
+
 struct VulkanRenderer {
   MemoryArena* trans_arena;
   HWND hwnd;
@@ -87,11 +92,7 @@ struct VulkanRenderer {
   VkFramebuffer swap_framebuffers[6];
   VkFormat swap_format;
   VkExtent2D swap_extent;
-  VkRenderPass render_pass;
-  VkRenderPass alpha_render_pass;
   VkPipelineLayout pipeline_layout;
-  VkPipeline graphics_pipeline;
-  VkPipeline alpha_pipeline;
 
   VmaAllocator allocator;
 
@@ -102,12 +103,9 @@ struct VulkanRenderer {
   VmaAllocation uniform_allocations[kMaxFramesInFlight];
 
   VkCommandPool command_pool;
-  VkCommandBuffer command_buffers[kMaxFramesInFlight];
-  VkCommandBuffer alpha_command_buffers[kMaxFramesInFlight];
   VkCommandBuffer oneshot_command_buffer;
   VkSemaphore image_available_semaphores[kMaxFramesInFlight];
   VkSemaphore render_finished_semaphores[kMaxFramesInFlight];
-  VkSemaphore draw_finished_semaphores[kMaxFramesInFlight];
 
   VkFence frame_fences[kMaxFramesInFlight];
   VkFence image_fences[6];
@@ -126,6 +124,8 @@ struct VulkanRenderer {
   u32 current_image = 0;
   bool render_paused;
   bool invalid_swapchain;
+
+  ChunkRenderer chunk_renderer;
 
   // A list of staging buffers that need to be freed after pushing the oneshot allocation command buffer.
   VkBuffer staging_buffers[2048];

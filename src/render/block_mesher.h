@@ -105,13 +105,20 @@ struct ChunkBuildContext {
 
 // TODO: This should support any number of draw layers
 struct ChunkVertexData {
-  u8* vertices;
-  size_t vertex_count;
+  u8* vertices[kRenderLayerCount];
+  size_t vertex_count[kRenderLayerCount];
 
-  u8* alpha_vertices;
-  size_t alpha_vertex_count;
+  ChunkVertexData() {
+    for (size_t i = 0; i < kRenderLayerCount; ++i) {
+      vertices[i] = nullptr;
+      vertex_count[i] = 0;
+    }
+  }
 
-  ChunkVertexData() : vertices(nullptr), vertex_count(0), alpha_vertices(0), alpha_vertex_count(0) {}
+  inline void SetVertices(RenderLayer layer, u8* new_vertices, size_t new_vertex_count) {
+    vertices[(size_t)layer] = new_vertices;
+    vertex_count[(size_t)layer] = new_vertex_count;
+  }
 };
 
 // TODO: This could be a standalone function, but I wanted to create a struct in preparation for each mesher creating
