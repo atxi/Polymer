@@ -36,13 +36,19 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
   }
 
   camera.near = 0.1f;
-  camera.far = 256.0f;
+  camera.far = 1024.0f;
   camera.fov = Radians(80.0f);
 }
 
 void GameState::Update(float dt, InputState* input) {
   const float kMoveSpeed = 20.0f;
   const float kSprintModifier = 1.3f;
+  static float frame_acc = 0.0f;
+
+  frame_acc += dt;
+  if (frame_acc >= 128.0f) {
+    frame_acc -= 128.0f;
+  }
 
   Vector3f movement;
 
@@ -107,6 +113,7 @@ void GameState::Update(float dt, InputState* input) {
   void* data = nullptr;
 
   ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+  ubo.frame = (u32)(frame_acc * 8.0f);
 
   vmaMapMemory(renderer->allocator, renderer->uniform_allocations[renderer->current_frame], &data);
   memcpy(data, ubo.mvp.data, sizeof(render::UniformBufferObject));

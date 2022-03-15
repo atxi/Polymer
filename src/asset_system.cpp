@@ -243,8 +243,13 @@ size_t AssetParser::LoadTextures() {
     return 0;
   }
 
-  this->texture_images = memory_arena_push_type_count(arena, u8, kTextureSize * texture_count);
+  // TODO: Allocate this better. This should be enough for current versions but it would be better to allocate to handle
+  // any amount.
+  this->texture_images = memory_arena_push_type_count(arena, u8, kTextureSize * state_count * 4);
 
+  u32 current_texture_id = 0;
+
+  // TODO: Check for mcmeta file to see if the texture should be rendered with custom rendering settings.
   for (u32 i = 0; i < texture_count; ++i) {
     size_t size = 0;
     u8* raw_image = (u8*)archive.ReadFile(arena, texture_files[i].name, &size);
@@ -260,7 +265,7 @@ size_t AssetParser::LoadTextures() {
       String texture_name = poly_string(texture_files[i].name + kTexturePathPrefixSize);
 
       TextureIdRange range;
-      range.base = i;
+      range.base = current_texture_id;
       range.count = height / 16;
 
       assert(range.count > 0);
@@ -276,8 +281,10 @@ size_t AssetParser::LoadTextures() {
       full_texture_id_map->Insert(full_texture_name, range);
 
       for (u32 j = 0; j < range.count; ++j) {
-        u8* destination = texture_images + (i + j) * kTextureSize;
+        u8* destination = texture_images + (current_texture_id * kTextureSize);
         memcpy(destination, image + j * (width * 16 * 4), kTextureSize);
+
+        ++current_texture_id;
       }
     } else {
       printf("Found image %s with dimensions %d, %d instead of 16 multiple.\n", texture_files[i].name, width, height);
@@ -286,7 +293,8 @@ size_t AssetParser::LoadTextures() {
     stbi_image_free(image);
   }
 
-  return texture_count;
+  texture_count = current_texture_id;
+  return current_texture_id;
 }
 
 static u32 GetLastStateId(json_object_s* root) {
@@ -778,8 +786,10 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
 
                   if (texture_id_range) {
                     face->texture_id = texture_id_range->base;
+                    face->frame_count = texture_id_range->count;
                   } else {
                     face->texture_id = 0;
+                    face->frame_count = 1;
                   }
                 } else if (strcmp(face_property, "uv") == 0) {
                   JsonVectorParser vec_parser(face_element);

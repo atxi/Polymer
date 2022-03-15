@@ -8,13 +8,17 @@ namespace render {
 u32* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s32 chunk_y);
 
 inline void PushVertex(MemoryArena& arena, render::ChunkVertex* vertices, u32* count, const Vector3f& position,
-                       const Vector2f& uv, u32 texture_id, u32 tintindex, u32 ao) {
+                       const Vector2f& uv, u32 texture_id, u32 tintindex, u32 ao, u32 anim_count,
+                       bool anim_repeat = false) {
   arena.Allocate(sizeof(render::ChunkVertex), 1);
 
   vertices[*count].position = position;
   vertices[*count].texcoord = uv;
   vertices[*count].texture_id = texture_id;
-  vertices[*count].tint_index = tintindex | (ao << 16);
+
+  anim_count |= ((u32)anim_repeat << 7);
+
+  vertices[*count].tint_index = (tintindex & 0xFF) | ((anim_count & 0xFF) << 8) | (ao << 16);
 
   ++*count;
 }
@@ -161,13 +165,19 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
 
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
     }
   }
 
@@ -228,13 +238,19 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
 
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
     }
   }
 
@@ -295,13 +311,19 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
 
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
     }
   }
 
@@ -364,13 +386,19 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
 
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
     }
   }
 
@@ -431,13 +459,19 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
 
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
     }
   }
 
@@ -498,29 +532,34 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
 
-      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+      PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+                 face->frame_count);
+      PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+                 face->frame_count);
     }
   }
 }
 
 static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk, u32 bid,
                       size_t relative_x, size_t relative_y, size_t relative_z, render::ChunkVertex* vertices,
-                      u32* vertex_count, const Vector3f& chunk_base, TextureIdRange water_texture) {
+                      u32* vertex_count, const Vector3f& chunk_base, TextureIdRange texture_range, u32 tintindex) {
   float x = (float)relative_x;
   float y = (float)relative_y;
   float z = (float)relative_z;
   Vector3f position = chunk_base + Vector3f(x, y, z);
 
-  u32 texture_id = water_texture.base;
-  const float water_y = 0.9f;
-  const u32 tintindex = 50;
-
+  u32 texture_id = texture_range.base;
+  u32 texture_count = texture_range.count;
+  
   size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
   size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
 
@@ -595,13 +634,19 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
     Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
 
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
 
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
   }
 
   if (below_id == 0) {
@@ -615,13 +660,19 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
 
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
 
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
   }
 
   if (north_id == 0) {
@@ -635,13 +686,19 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
 
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
   }
 
   if (south_id == 0) {
@@ -655,13 +712,19 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
 
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
   }
 
   if (east_id == 0) {
@@ -675,13 +738,19 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
 
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
   }
 
   if (west_id == 0) {
@@ -695,20 +764,35 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
-    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br);
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
 
-    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr);
-    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl);
-    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl);
+    PushVertex(arena, vertices, vertex_count, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl,
+               texture_count, true);
+    PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
+               texture_count, true);
   }
 }
 
-// TODO: Pull these from the asset system
-inline bool IsFluid(u32 bid) {
-  // water || kelp || seagrass
-  return (bid >= 34 && bid <= 49) || (bid >= 9720 && bid <= 9746) || (bid >= 1401 && bid <= 1403);
+struct MaterialDescription {
+  bool fluid;
+  bool water;
+};
+
+inline MaterialDescription GetMaterialDescription(u32 bid) {
+  MaterialDescription result = {};
+
+  // TODO: Pull these from the asset system
+  result.water = (bid >= 34 && bid <= 49) || (bid >= 9720 && bid <= 9746) || (bid >= 1401 && bid <= 1403);
+  result.fluid = result.water || (bid >= 50 && bid <= 65);
+
+  return result;
 }
 
 ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx,
@@ -722,6 +806,7 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
   if (!bordered_chunk) return vertex_data;
 
   water_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_still.png"));
+  TextureIdRange lava_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/lava_still.png"));
 
   alpha_arena = CreateArena(Megabytes(32));
 
@@ -741,9 +826,23 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
 
         u32 bid = bordered_chunk[index];
 
-        if (IsFluid(bid)) {
-          MeshFluid(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, alpha_vertices,
-                    &alpha_vertex_count, chunk_base, water_texture);
+        MaterialDescription desc = GetMaterialDescription(bid);
+
+        if (desc.fluid) {
+          ChunkVertex* output = vertices;
+          u32* count_out = &vertex_count;
+          TextureIdRange texture_range = lava_texture;
+          u32 tintindex = 0xFF;
+
+          if (desc.water) {
+            output = alpha_vertices;
+            count_out = &alpha_vertex_count;
+            texture_range = water_texture;
+            tintindex = 50;
+          }
+
+          MeshFluid(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, output, count_out,
+                    chunk_base, texture_range, tintindex);
         }
 
         // Always mesh block even if it's a fluid because the plants have both

@@ -3,6 +3,7 @@
 
 layout(binding = 0) uniform UniformBufferObject {
   mat4 mvp;
+  uint frame;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;
@@ -15,14 +16,30 @@ layout(location = 1) flat out uint fragTexId;
 layout(location = 2) out vec4 fragColorMod;
 
 void main() {
+  uint animCount = (inTintIndex >> 8) & 0x7F;
+  uint animRepeat = (inTintIndex >> 15) & 1;
+
   gl_Position = ubo.mvp * vec4(inPosition, 1.0);
   fragTexCoord = inTexCoord;
-  fragTexId = inTexId;
+
+  // Have animation repeat itself backwards
+  uint frame = 0;
+
+  if (animRepeat > 0) {
+    frame = ubo.frame % (animCount * 2);
+    if (frame >= animCount) {
+      frame = animCount - (frame - animCount) - 1;
+    }  
+  } else {
+    frame = ubo.frame % animCount;
+  }
+
+  fragTexId = inTexId + frame;
   fragColorMod = vec4(1, 1, 1, 1);
 
   // TODO: Remove this and sample biome in fragment shader
   // Jungle tints
-  uint tintindex = inTintIndex & 0xFFFF;
+  uint tintindex = inTintIndex & 0xFF;
   uint ao = inTintIndex >> 16;
   if (tintindex == 0) {
     fragColorMod = vec4(0.34, 0.78, 0.235, 1.0);

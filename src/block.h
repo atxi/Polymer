@@ -32,6 +32,7 @@ struct RenderableFace {
   Vector2f uv_to;
 
   u32 texture_id;
+  u32 frame_count;
 
   struct {
     u32 render : 1;

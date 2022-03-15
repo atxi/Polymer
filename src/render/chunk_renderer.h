@@ -11,6 +11,7 @@ namespace render {
 
 struct UniformBufferObject {
   mat4 mvp;
+  u32 frame;
 };
 
 struct ChunkVertex {
