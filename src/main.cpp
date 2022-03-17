@@ -191,10 +191,20 @@ int run() {
   vk_render.Initialize(hwnd);
 
   {
+
+    using ms_float = std::chrono::duration<float, std::milli>;
+    auto start = std::chrono::high_resolution_clock::now();
+
     if (!g_game->assets.Load(vk_render, kMinecraftJar, "blocks.json")) {
       fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and %s.\n", kMinecraftJar);
       return 1;
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto frame_time = std::chrono::duration_cast<ms_float>(end - start).count();
+
+    printf("Asset time: %f\n", frame_time);
+    fflush(stdout);
 
     game->block_registry = g_game->assets.block_registry;
   }

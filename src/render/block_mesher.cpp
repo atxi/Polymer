@@ -47,6 +47,21 @@ inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel*
   return 3 - (value1 + value2 + value_corner);
 }
 
+struct MaterialDescription {
+  bool fluid;
+  bool water;
+};
+
+inline MaterialDescription GetMaterialDescription(u32 bid) {
+  MaterialDescription result = {};
+
+  // TODO: Pull these from the asset system
+  result.water = (bid >= 34 && bid <= 49) || (bid >= 9720 && bid <= 9746) || (bid >= 1401 && bid <= 1403);
+  result.fluid = result.water || (bid >= 50 && bid <= 65);
+
+  return result;
+}
+
 static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk, u32 bid,
                       size_t relative_x, size_t relative_y, size_t relative_z, render::ChunkVertex* vertices,
                       u32* vertex_count, const Vector3f& chunk_base) {
@@ -549,6 +564,7 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
   }
 }
 
+// TODO: Real implementation.
 static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk, u32 bid,
                       size_t relative_x, size_t relative_y, size_t relative_z, render::ChunkVertex* vertices,
                       u32* vertex_count, const Vector3f& chunk_base, TextureIdRange texture_range, u32 tintindex) {
@@ -559,7 +575,7 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
 
   u32 texture_id = texture_range.base;
   u32 texture_count = texture_range.count;
-  
+
   size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
   size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
 
@@ -621,9 +637,10 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
   face_.uv_to = Vector2f(1, 1);
   RenderableFace* face = &face_;
 
-  // TODO: Real implementation.
+  bool fluid_below = GetMaterialDescription(below_id).fluid;
 
   if (above_id == 0 || above_id == 5215) {
+    Vector3f to(1, 0.9f, 1);
     Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
     Vector3f bottom_right(x + from.x, y + to.y, z + to.z);
     Vector3f top_left(x + to.x, y + to.y, z + from.z);
@@ -674,6 +691,12 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
                texture_count, true);
   }
+
+  if (fluid_below) {
+    from = Vector3f(0, -0.1f, 0);
+  }
+
+  to = Vector3f(1, 0.9f, 1);
 
   if (north_id == 0) {
     Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
@@ -778,21 +801,6 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     PushVertex(arena, vertices, vertex_count, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl,
                texture_count, true);
   }
-}
-
-struct MaterialDescription {
-  bool fluid;
-  bool water;
-};
-
-inline MaterialDescription GetMaterialDescription(u32 bid) {
-  MaterialDescription result = {};
-
-  // TODO: Pull these from the asset system
-  result.water = (bid >= 34 && bid <= 49) || (bid >= 9720 && bid <= 9746) || (bid >= 1401 && bid <= 1403);
-  result.fluid = result.water || (bid >= 50 && bid <= 65);
-
-  return result;
 }
 
 ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx,

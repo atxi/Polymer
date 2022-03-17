@@ -146,9 +146,13 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
 
   renderer.CreateTexture(16, 16, texture_count);
 
+  render::TexturePushState push_state = renderer.BeginTexturePush(16, texture_count);
+
   for (size_t i = 0; i < texture_count; ++i) {
-    renderer.PushTexture(trans_arena, asset_parser.GetTexture(i), i);
+    renderer.PushTexture(trans_arena, push_state, asset_parser.GetTexture(i), i);
   }
+
+  renderer.CommitTexturePush(push_state);
 
   for (size_t i = 0; i < asset_parser.model_count; ++i) {
     free(asset_parser.models[i].root_value);
@@ -372,6 +376,7 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
     BlockStateInfo* info = registry->infos + registry->info_count++;
     assert(element->name->string_size < polymer_array_count(info->name));
     memcpy(info->name, element->name->string, element->name->string_size);
+    info->name_length = element->name->string_size;
 
     json_object_element_s* block_element = block_obj->start;
     while (block_element) {
@@ -484,13 +489,12 @@ void AssetParser::LoadModels() {
         json_object_s* variant_obj = json_value_as_object(root_element->value);
 
         for (size_t bid = 0; bid < registry->state_count; ++bid) {
-          char* name = registry->states[bid].info->name + 10;
-
           if (registry->states[bid].model.element_count > 0) {
             continue;
           }
 
-          String state_name(registry->states[bid].info->name + kNamespaceSize);
+          String state_name(registry->states[bid].info->name + kNamespaceSize,
+                            registry->states[bid].info->name_length - kNamespaceSize);
 
           if (poly_strcmp(state_name, blockstate_name) != 0) {
             continue;
@@ -582,7 +586,6 @@ bool AssetParser::IsTransparentTexture(u32 texture_id) {
 
 BlockModel AssetParser::LoadModel(String path, FaceTextureMap* texture_face_map, TextureIdMap* texture_id_map) {
   BlockModel result = {};
-
   ParsedBlockModel** find = parsed_block_map.Find(path);
 
   if (find == nullptr) {

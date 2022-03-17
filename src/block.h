@@ -81,6 +81,7 @@ struct BlockModel {
 
 struct BlockStateInfo {
   char name[48];
+  size_t name_length;
 };
 
 struct BlockState {

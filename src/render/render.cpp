@@ -306,7 +306,7 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
 }
 
 void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout,
-                                           VkImageLayout new_layout, u32 layer) {
+                                           VkImageLayout new_layout, u32 base_layer, u32 layer_count) {
 
   VkImageMemoryBarrier barrier = {};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -318,8 +318,8 @@ void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkIma
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   barrier.subresourceRange.baseMipLevel = 0;
   barrier.subresourceRange.levelCount = texture_mips;
-  barrier.subresourceRange.baseArrayLayer = layer;
-  barrier.subresourceRange.layerCount = 1;
+  barrier.subresourceRange.baseArrayLayer = base_layer;
+  barrier.subresourceRange.layerCount = layer_count;
   barrier.srcAccessMask = 0;
   barrier.dstAccessMask = 0;
 
@@ -350,18 +350,61 @@ void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkIma
   EndOneShotCommandBuffer();
 }
 
-void VulkanRenderer::PushTexture(MemoryArena& temp_arena, u8* texture, size_t index) {
-  if (texture == nullptr) {
-    TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (u32)index);
-    TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, (u32)index);
-    return;
+TexturePushState VulkanRenderer::BeginTexturePush(size_t dimensions, size_t layers) {
+  TexturePushState result = {};
+
+  VkBufferCreateInfo buffer_info = {};
+
+  // Calculate the size of one texture with all of its mips.
+  size_t texture_data_size = 0;
+  size_t current_dim = dimensions;
+  for (size_t i = 0; i < texture_mips; ++i) {
+    texture_data_size += current_dim * current_dim * 4;
+    current_dim /= 2;
+  }
+
+  result.texture_data_size = texture_data_size;
+
+  // Calculate the size for one giant buffer to hold all of the texture data.
+  size_t buffer_size = texture_data_size * layers;
+
+  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffer_info.size = buffer_size;
+  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+  VmaAllocationCreateInfo alloc_create_info = {};
+  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+  alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &result.buffer, &result.alloc, &result.alloc_info) !=
+      VK_SUCCESS) {
+    printf("Failed to create staging buffer for texture push.\n");
+    result = {};
+    return result;
   }
 
   // Transition image to copy-destination optimal, then copy, then transition to shader-read optimal.
   TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (u32)index);
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, layers);
+
+  BeginOneShotCommandBuffer();
+
+  result.layers = layers;
+
+  return result;
+}
+
+void VulkanRenderer::CommitTexturePush(TexturePushState& state) {
+  EndOneShotCommandBuffer();
+  vmaDestroyBuffer(allocator, state.buffer, state.alloc);
+
+  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, state.layers);
+}
+
+void VulkanRenderer::PushTexture(MemoryArena& temp_arena, TexturePushState& state, u8* texture, size_t index) {
+  if (texture == nullptr) return;
 
   u32 dim = 16;
 
@@ -374,66 +417,43 @@ void VulkanRenderer::PushTexture(MemoryArena& temp_arena, u8* texture, size_t in
   memcpy(previous_data, texture, dim * dim * 4);
   memcpy(buffer_data, texture, dim * dim * 4);
 
+  size_t destination = state.texture_data_size * index;
+
   for (size_t i = 0; i < texture_mips; ++i) {
-    BeginOneShotCommandBuffer();
+    if (state.alloc_info.pMappedData) {
+      size_t size = dim * dim * 4;
 
-    VkBuffer staging_buffer = VK_NULL_HANDLE;
-    VmaAllocation staging_alloc = VK_NULL_HANDLE;
-    VmaAllocationInfo staging_alloc_info = {};
-
-    VkBufferCreateInfo buffer_info = {};
-
-    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buffer_info.size = dim * dim * 4;
-    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VmaAllocationCreateInfo alloc_create_info = {};
-    alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-    alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-    if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &staging_buffer, &staging_alloc,
-                        &staging_alloc_info) != VK_SUCCESS) {
-      printf("Failed to create staging buffer for texture push.\n");
-      return;
-    }
-
-    if (staging_alloc_info.pMappedData) {
       if (i > 0) {
-        BoxFilterMipmap(previous_data, buffer_data, buffer_info.size, dim);
+        BoxFilterMipmap(previous_data, buffer_data, size, dim);
       }
 
-      memcpy(staging_alloc_info.pMappedData, buffer_data, buffer_info.size);
-      memcpy(previous_data, buffer_data, buffer_info.size);
+      memcpy((u8*)state.alloc_info.pMappedData + destination, buffer_data, size);
+      memcpy(previous_data, buffer_data, size);
+
+      VkBufferImageCopy region = {};
+
+      region.bufferOffset = destination;
+      region.bufferRowLength = 0;
+      region.bufferImageHeight = 0;
+
+      region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      region.imageSubresource.mipLevel = (u32)i;
+      region.imageSubresource.baseArrayLayer = (u32)index;
+      region.imageSubresource.layerCount = 1;
+
+      region.imageOffset = {0, 0, 0};
+      region.imageExtent = {dim, dim, 1};
+
+      vkCmdCopyBufferToImage(oneshot_command_buffer, state.buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                             1, &region);
+
+      destination += size;
     }
 
-    VkBufferImageCopy region = {};
-
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = (u32)i;
-    region.imageSubresource.baseArrayLayer = (u32)index;
-    region.imageSubresource.layerCount = 1;
-
-    region.imageOffset = {0, 0, 0};
-    region.imageExtent = {dim, dim, 1};
-
-    vkCmdCopyBufferToImage(oneshot_command_buffer, staging_buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1, &region);
-
     dim /= 2;
-
-    EndOneShotCommandBuffer();
-    vmaDestroyBuffer(allocator, staging_buffer, staging_alloc);
   }
 
   temp_arena.Revert(snapshot);
-
-  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, (u32)index);
 }
 
 void VulkanRenderer::GenerateMipmaps(u32 index) {

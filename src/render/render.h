@@ -70,6 +70,16 @@ struct RenderMesh {
   u32 vertex_count;
 };
 
+struct TexturePushState {
+  VkBuffer buffer;
+  VmaAllocation alloc;
+  VmaAllocationInfo alloc_info;
+
+  // Size of one texture with its mips.
+  size_t texture_data_size;
+  size_t layers;
+};
+
 void CreateRenderPassType(VkDevice device, VkFormat swap_format, VkRenderPass* render_pass,
                           VkAttachmentDescription color_attachment, VkAttachmentDescription depth_attachment);
 
@@ -132,6 +142,8 @@ struct VulkanRenderer {
   VmaAllocation staging_allocs[2048];
   size_t staging_buffer_count = 0;
 
+  TexturePushState texture_push_state;
+
   bool Initialize(HWND hwnd);
   void RecreateSwapchain();
   bool BeginFrame();
@@ -145,8 +157,11 @@ struct VulkanRenderer {
   RenderMesh AllocateMesh(u8* data, size_t size, size_t count);
   void FreeMesh(RenderMesh* mesh);
 
+  TexturePushState BeginTexturePush(size_t dimensions, size_t layers);
+  void CommitTexturePush(TexturePushState& state);
+
   void CreateTexture(size_t width, size_t height, size_t layers);
-  void PushTexture(MemoryArena& temp_arena, u8* texture, size_t index);
+  void PushTexture(MemoryArena& temp_arena, TexturePushState& state, u8* texture, size_t index);
 
   void BeginMeshAllocation();
   void EndMeshAllocation();
@@ -158,7 +173,7 @@ private:
 
   void GenerateMipmaps(u32 index);
   void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout,
-                             u32 layer);
+                             u32 base_layer, u32 layer_count);
   void CreateDepthBuffer();
   void CreateUniformBuffers();
   void BeginOneShotCommandBuffer();
