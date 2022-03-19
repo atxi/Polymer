@@ -343,7 +343,7 @@ bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t cu
     return false;
   }
 
-  VkClearValue clears[] = {{0.0f, 0.2f, 0.4f, 1.0f}, {1.0f, 0}};
+  VkClearValue clears[] = {{0.71f, 0.816f, 1.0f, 1.0f}, {1.0f, 0}};
 
   render_pass_info.renderPass = block_renderer.render_pass;
   render_pass_info.clearValueCount = polymer_array_count(clears);

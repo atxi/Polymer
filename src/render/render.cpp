@@ -241,7 +241,7 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
   image_info.extent.depth = 1;
   image_info.mipLevels = texture_mips;
   image_info.arrayLayers = (u32)layers;
-  image_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+  image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
   image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
   image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -268,7 +268,7 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
   view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
   view_create_info.image = texture_image;
   view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-  view_create_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+  view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
   view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   view_create_info.subresourceRange.baseMipLevel = 0;
   view_create_info.subresourceRange.levelCount = image_info.mipLevels;
@@ -285,10 +285,10 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
   VkSamplerCreateInfo sampler_info = {};
   sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
   sampler_info.magFilter = VK_FILTER_NEAREST;
-  sampler_info.minFilter = VK_FILTER_LINEAR;
-  sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  sampler_info.minFilter = VK_FILTER_NEAREST;
+  sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
   sampler_info.anisotropyEnable = VK_TRUE;
   sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
   sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
@@ -385,8 +385,8 @@ TexturePushState VulkanRenderer::BeginTexturePush(size_t dimensions, size_t laye
   }
 
   // Transition image to copy-destination optimal, then copy, then transition to shader-read optimal.
-  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, layers);
+  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, (u32)layers);
 
   BeginOneShotCommandBuffer();
 
@@ -399,8 +399,8 @@ void VulkanRenderer::CommitTexturePush(TexturePushState& state) {
   EndOneShotCommandBuffer();
   vmaDestroyBuffer(allocator, state.buffer, state.alloc);
 
-  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, state.layers);
+  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, (u32)state.layers);
 }
 
 void VulkanRenderer::PushTexture(MemoryArena& temp_arena, TexturePushState& state, u8* texture, size_t index) {
@@ -1200,9 +1200,14 @@ VkSurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(VkSurfaceFormatKHR* f
   for (u32 i = 0; i < format_count; ++i) {
     VkSurfaceFormatKHR* format = formats + i;
 
+    if (format->format == VK_FORMAT_B8G8R8A8_UNORM) {
+      return *format;
+    }
+#if 0
     if (format->format == VK_FORMAT_B8G8R8A8_SRGB && format->colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
       return *format;
     }
+#endif
   }
 
   return formats[0];

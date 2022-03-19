@@ -68,7 +68,7 @@ inline String poly_strstr(const String& str, const char* substring) {
     return String();
   }
 
-  for (size_t i = 0; i < str.size - sublen; ++i) {
+  for (size_t i = 0; i <= str.size - sublen; ++i) {
     bool found = true;
 
     for (size_t j = 0; j < sublen; ++j) {

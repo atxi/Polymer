@@ -624,6 +624,8 @@ BlockModel AssetParser::LoadModel(String path, FaceTextureMap* texture_face_map,
     root_element = root_element->next;
   }
 
+  bool is_leaves = poly_strstr(path, "leaves").data != nullptr;
+
   for (size_t i = 0; i < result.element_count; ++i) {
     BlockElement* element = result.elements + i;
 
@@ -631,6 +633,9 @@ BlockModel AssetParser::LoadModel(String path, FaceTextureMap* texture_face_map,
 
     for (size_t j = 0; j < 6; ++j) {
       element->faces[j].transparency = IsTransparentTexture(element->faces[j].texture_id);
+      if (is_leaves) {
+        element->faces[j].tintindex = 1;
+      }
     }
   }
 
