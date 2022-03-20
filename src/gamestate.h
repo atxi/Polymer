@@ -5,6 +5,7 @@
 #include "block.h"
 #include "camera.h"
 #include "connection.h"
+#include "dimension.h"
 #include "types.h"
 #include "world.h"
 
@@ -31,6 +32,8 @@ struct GameState {
   MemoryArena* trans_arena;
   render::VulkanRenderer* renderer;
   AssetSystem assets;
+  DimensionCodec dimension_codec;
+  DimensionType dimension;
 
   Connection connection;
   Camera camera;

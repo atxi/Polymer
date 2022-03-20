@@ -259,6 +259,7 @@ void GameState::OnDimensionChange() {
       ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
 
       section_info->loaded = false;
+      section_info->bitmask = 0;
 
       for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
         ChunkMesh* mesh = meshes + chunk_y;

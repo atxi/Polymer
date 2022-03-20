@@ -2,7 +2,9 @@
 
 #include "gamestate.h"
 #include "miniz.h"
+#include "nbt.h"
 #include "protocol.h"
+
 #include <cassert>
 #include <cstdio>
 
@@ -124,7 +126,64 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     game->OnBlockChange(x, y, z, (u32)new_bid);
   } break;
+  case PlayProtocol::JoinGame: {
+    u32 entity_id = rb->ReadU32();
+    bool is_hardcore = rb->ReadU8();
+    u8 gamemode = rb->ReadU8();
+    u8 previous_gamemode = rb->ReadU8();
+
+    u64 world_count = 0;
+    rb->ReadVarInt(&world_count);
+
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
+    sstr.size = 32767;
+
+    // Read all of the dimensions
+    for (size_t i = 0; i < world_count; ++i) {
+      size_t length = rb->ReadString(&sstr);
+    }
+
+    nbt::TagCompound dimension_codec_nbt;
+
+    if (!nbt::Parse(*rb, *trans_arena, &dimension_codec_nbt)) {
+      fprintf(stderr, "Failed to parse dimension codec nbt.\n");
+    }
+
+    game->dimension_codec.Parse(*game->perm_arena, dimension_codec_nbt);
+
+    nbt::TagCompound dimension_nbt;
+
+    if (!nbt::Parse(*rb, *trans_arena, &dimension_nbt)) {
+      fprintf(stderr, "Failed to parse dimension nbt.\n");
+    }
+
+    game->dimension_codec.ParseType(*game->trans_arena, dimension_nbt, &game->dimension);
+
+    String dimension_identifier;
+    dimension_identifier.data = memory_arena_push_type_count(trans_arena, char, 32767);
+    dimension_identifier.size = 32767;
+
+    rb->ReadString(&dimension_identifier);
+
+    if (dimension_identifier.size > 0) {
+      printf("Dimension: %.*s\n", (u32)dimension_identifier.size, dimension_identifier.data);
+    }
+
+    printf("Entered dimension with height range of %d to %d\n", game->dimension.min_y,
+           (game->dimension.height + game->dimension.min_y));
+  } break;
   case PlayProtocol::Respawn: {
+    nbt::TagCompound dimension_nbt;
+
+    if (!nbt::Parse(*rb, *trans_arena, &dimension_nbt)) {
+      fprintf(stderr, "Failed to parse dimension nbt.\n");
+    }
+
+    game->dimension_codec.ParseType(*game->trans_arena, dimension_nbt, &game->dimension);
+    printf("Entered dimension with height range of %d to %d\n", game->dimension.min_y,
+           (game->dimension.height + game->dimension.min_y));
+
     game->OnDimensionChange();
   } break;
   case PlayProtocol::MultiBlockChange: {
@@ -171,32 +230,12 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
 
-    // TODO: Implement simple NBT parsing api
-    // Tag Compound
-    u8 nbt_type = rb->ReadU8();
-    assert(nbt_type == 10);
+    nbt::TagCompound nbt;
 
-    u16 length = rb->ReadU16();
-
-    // Root compound name - empty
-    rb->ReadRawString(&sstr, length);
-
-    for (int i = 0; i < 2; ++i) {
-      // Tag Long Array
-      nbt_type = rb->ReadU8();
-      assert(nbt_type == 12);
-
-      length = rb->ReadU16();
-      // LongArray tag name
-      rb->ReadRawString(&sstr, length);
-
-      u32 count = rb->ReadU32();
-      for (u32 j = 0; j < count; ++j) {
-        u64 data = rb->ReadU64();
-      }
+    if (!nbt::Parse(*rb, *trans_arena, &nbt)) {
+      fprintf(stderr, "Failed to parse chunk nbt.\n");
+      fflush(stderr);
     }
-    u8 end_tag = rb->ReadU8();
-    assert(end_tag == 0);
 
     u64 data_size;
     rb->ReadVarInt(&data_size);
@@ -214,7 +253,15 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     section_info->bitmask = 0;
 
     if (data_size > 0) {
-      for (u64 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
+      u32 end_y = kChunkColumnCount;
+      u64 start_y = 0;
+
+      if (game->dimension.height > 0) {
+        end_y = game->dimension.height / 16;
+        start_y = (game->dimension.min_y / 16) + (64 / 16);
+      }
+
+      for (u64 chunk_y = start_y; chunk_y < end_y; ++chunk_y) {
         // Read Chunk data here
         u16 block_count = rb->ReadU16();
         u8 bpb = rb->ReadU8();
@@ -251,6 +298,13 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
         u64 id_mask = (1LL << bpb) - 1;
         u64 block_index = 0;
+
+        // Fill out entire chunk with the one block palette
+        if (data_array_length == 0 && bpb == 0) {
+          for (int i = 0; i < 16 * 16 * 16; ++i) {
+            chunk[i] = (u32)single_palette;
+          }
+        }
 
         for (u64 i = 0; i < data_array_length; ++i) {
           u64 data_value = rb->ReadU64();
