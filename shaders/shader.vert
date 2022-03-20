@@ -17,6 +17,8 @@ layout(location = 2) out vec4 fragColorMod;
 
 #define GRASS_TINTINDEX 0
 #define LEAF_TINTINDEX 1
+#define SPRUCE_LEAF_TINTINDEX 2
+#define BIRCH_LEAF_TINTINDEX 3
 #define WATER_TINTINDEX 50
 
 #define WATER_TINT vec4(0.247, 0.463, 0.894, 1.0)
@@ -29,6 +31,10 @@ layout(location = 2) out vec4 fragColorMod;
 
 #define PLAINS_GRASS_TINT vec4(0.569, 0.741, 0.349, 1.0)
 #define PLAINS_LEAF_TINT vec4(0.467, 0.671, 0.184, 1.0)
+
+// Spruce and birch seem to be not affected by biome coloring
+#define SPRUCE_LEAF_TINT vec4(0.380, 0.600, 0.380, 1.0)
+#define BIRCH_LEAF_TINT vec4(0.502, 0.655, 0.333, 1.0)
 
 void main() {
   uint animCount = (inTintIndex >> 8) & 0x7F;
@@ -59,8 +65,11 @@ void main() {
     fragColorMod = PLAINS_GRASS_TINT;
   } else if (tintindex == LEAF_TINTINDEX) {
     fragColorMod = PLAINS_LEAF_TINT;
+  } else if (tintindex == SPRUCE_LEAF_TINTINDEX) {
+    fragColorMod = SPRUCE_LEAF_TINT;
+  } else if (tintindex == BIRCH_LEAF_TINTINDEX) {
+    fragColorMod = BIRCH_LEAF_TINT;
   } else if (tintindex == WATER_TINTINDEX) {
-    // Water
     fragColorMod = WATER_TINT;
   }
 

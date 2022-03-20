@@ -624,7 +624,18 @@ BlockModel AssetParser::LoadModel(String path, FaceTextureMap* texture_face_map,
     root_element = root_element->next;
   }
 
+  // TODO: This should be removed once the meta files are processed
+  bool is_prismarine = poly_strstr(path, "prismarine").data != nullptr;
+
   bool is_leaves = poly_strstr(path, "leaves").data != nullptr;
+  bool is_spruce = false;
+  bool is_birch = false;
+
+  if (is_leaves) {
+    // Spruce and birch have hardcoded coloring so they go into their own tintindex.
+    is_spruce = poly_strstr(path, "spruce").data != nullptr;
+    is_birch = poly_strstr(path, "birch").data != nullptr;
+  }
 
   for (size_t i = 0; i < result.element_count; ++i) {
     BlockElement* element = result.elements + i;
@@ -633,8 +644,19 @@ BlockModel AssetParser::LoadModel(String path, FaceTextureMap* texture_face_map,
 
     for (size_t j = 0; j < 6; ++j) {
       element->faces[j].transparency = IsTransparentTexture(element->faces[j].texture_id);
+
+      if (is_prismarine) {
+        element->faces[j].frame_count = 1;
+      }
+
       if (is_leaves) {
         element->faces[j].tintindex = 1;
+
+        if (is_spruce) {
+          element->faces[j].tintindex = 2;
+        } else if (is_birch) {
+          element->faces[j].tintindex = 3;
+        }
       }
     }
   }
