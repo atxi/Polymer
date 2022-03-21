@@ -61,8 +61,8 @@ inline String poly_string(const char* strz) {
   return poly_string(strz, strlen(strz));
 }
 
-inline String poly_strstr(const String& str, const char* substring) {
-  size_t sublen = strlen(substring);
+inline String poly_strstr(const String& str, const String& find) {
+  size_t sublen = find.size;
 
   if (sublen > str.size) {
     return String();
@@ -72,7 +72,7 @@ inline String poly_strstr(const String& str, const char* substring) {
     bool found = true;
 
     for (size_t j = 0; j < sublen; ++j) {
-      if (str.data[i + j] != substring[j]) {
+      if (str.data[i + j] != find.data[j]) {
         found = false;
         break;
       }
@@ -84,6 +84,14 @@ inline String poly_strstr(const String& str, const char* substring) {
   }
 
   return String();
+}
+
+inline String poly_strstr(const String& str, const char* substring) {
+  return poly_strstr(str, String((char*)substring));
+}
+
+inline bool poly_contains(const String& str, const String& find) {
+  return poly_strstr(str, find).data != nullptr;
 }
 
 inline bool poly_contains(const String& str, char c) {

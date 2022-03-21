@@ -118,7 +118,15 @@ struct Mipmap {
   int Sample(size_t x, size_t y, size_t color_offset) {
     return data[(y * dimension + x) * 4 + color_offset];
   }
+
+  u32 SampleFull(size_t x, size_t y) {
+    return *(u32*)&data[(y * dimension + x) * 4];
+  }
 };
+
+inline float GetColorGamma(int color) {
+  return powf((color & 0xFF) / 255.0f, 2.2f);
+}
 
 inline float GetColorGamma(int a, int b, int c, int d) {
   float an = a / 255.0f;
@@ -142,6 +150,15 @@ void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim) {
   size_t count = data_size / size_per_tex;
   size_t prev_dim = dim * 2;
 
+  bool has_transparent = false;
+
+  for (size_t i = 0; i < data_size; i += 4) {
+    if (data[i + 3] == 0) {
+      has_transparent = true;
+      break;
+    }
+  }
+
   unsigned int* pixel = (unsigned int*)data;
   for (size_t i = 0; i < count; ++i) {
     unsigned char* prev_tex = previous + i * (prev_dim * prev_dim * 4);
@@ -157,19 +174,50 @@ void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim) {
         const size_t blue_index = 2;
         const size_t alpha_index = 3;
 
-        red = GammaBlend(source.Sample(x * 2, y * 2, red_index), source.Sample(x * 2 + 1, y * 2, red_index),
-                         source.Sample(x * 2, y * 2 + 1, red_index), source.Sample(x * 2 + 1, y * 2 + 1, red_index));
+        if (has_transparent) {
+          u32 full_samples[4] = {source.SampleFull(x * 2, y * 2), source.SampleFull(x * 2 + 1, y * 2),
+                                 source.SampleFull(x * 2, y * 2 + 1), source.SampleFull(x * 2 + 1, y * 2 + 1)};
 
-        green =
-            GammaBlend(source.Sample(x * 2, y * 2, green_index), source.Sample(x * 2 + 1, y * 2, green_index),
-                       source.Sample(x * 2, y * 2 + 1, green_index), source.Sample(x * 2 + 1, y * 2 + 1, green_index));
+          float red_accumulator = 0.0f;
+          float green_accumulator = 0.0f;
+          float blue_accumulator = 0.0f;
+          float alpha_accumulator = 0.0f;
 
-        blue = GammaBlend(source.Sample(x * 2, y * 2, blue_index), source.Sample(x * 2 + 1, y * 2, blue_index),
-                          source.Sample(x * 2, y * 2 + 1, blue_index), source.Sample(x * 2 + 1, y * 2 + 1, blue_index));
+          // Perform channel accumulations in non-transparent pixels.
+          for (size_t j = 0; j < 4; ++j) {
+            if ((full_samples[j] >> 24) != 0) {
+              alpha_accumulator += GetColorGamma(full_samples[j] >> 24);
+              blue_accumulator += GetColorGamma(full_samples[j] >> 16);
+              green_accumulator += GetColorGamma(full_samples[j] >> 8);
+              red_accumulator += GetColorGamma(full_samples[j] >> 0);
+            }
+          }
 
-        alpha =
-            GammaBlend(source.Sample(x * 2, y * 2, alpha_index), source.Sample(x * 2 + 1, y * 2, alpha_index),
-                       source.Sample(x * 2, y * 2 + 1, alpha_index), source.Sample(x * 2 + 1, y * 2 + 1, alpha_index));
+          red = (int)(powf(red_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
+          green = (int)(powf(green_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
+          blue = (int)(powf(blue_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
+          alpha = (int)(powf(alpha_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
+
+          // Discard anything with low enough alpha.
+          if (alpha < 96) {
+            alpha = 0;
+          }
+        } else {
+          red = GammaBlend(source.Sample(x * 2, y * 2, red_index), source.Sample(x * 2 + 1, y * 2, red_index),
+                           source.Sample(x * 2, y * 2 + 1, red_index), source.Sample(x * 2 + 1, y * 2 + 1, red_index));
+
+          green = GammaBlend(source.Sample(x * 2, y * 2, green_index), source.Sample(x * 2 + 1, y * 2, green_index),
+                             source.Sample(x * 2, y * 2 + 1, green_index),
+                             source.Sample(x * 2 + 1, y * 2 + 1, green_index));
+
+          blue =
+              GammaBlend(source.Sample(x * 2, y * 2, blue_index), source.Sample(x * 2 + 1, y * 2, blue_index),
+                         source.Sample(x * 2, y * 2 + 1, blue_index), source.Sample(x * 2 + 1, y * 2 + 1, blue_index));
+
+          alpha = GammaBlend(source.Sample(x * 2, y * 2, alpha_index), source.Sample(x * 2 + 1, y * 2, alpha_index),
+                             source.Sample(x * 2, y * 2 + 1, alpha_index),
+                             source.Sample(x * 2 + 1, y * 2 + 1, alpha_index));
+        }
 
         // AA BB GG RR
         *pixel = ((alpha & 0xFF) << 24) | ((blue & 0xFF) << 16) | ((green & 0xFF) << 8) | (red & 0xFF);
@@ -806,14 +854,14 @@ void VulkanRenderer::CreateDescriptorPool() {
   pool_sizes[0].descriptorCount = swap_image_count;
 
   pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  pool_sizes[1].descriptorCount = swap_image_count;
+  pool_sizes[1].descriptorCount = 30;
 
   VkDescriptorPoolCreateInfo pool_info = {};
 
   pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   pool_info.poolSizeCount = polymer_array_count(pool_sizes);
   pool_info.pPoolSizes = pool_sizes;
-  pool_info.maxSets = swap_image_count;
+  pool_info.maxSets = 30;
 
   if (vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create descriptor pool.\n");
@@ -873,6 +921,8 @@ void VulkanRenderer::CreateDescriptorSets() {
 
     vkUpdateDescriptorSets(device, polymer_array_count(descriptor_writes), descriptor_writes, 0, nullptr);
   }
+
+  chunk_renderer.CreateDescriptors(device, descriptor_pool, layouts, texture_image_view, uniform_buffers);
 }
 
 void VulkanRenderer::CleanupSwapchain() {

@@ -74,6 +74,22 @@ struct AssetParser {
   }
 };
 
+void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
+  if (poly_contains(texture, POLY_STR("water_still"))) {
+    face->render_layer = (int)RenderLayer::Alpha;
+  } else if (poly_contains(texture, POLY_STR("grass.png"))) {
+    face->render_layer = (int)RenderLayer::NoMip;
+  } else if (poly_contains(texture, POLY_STR("sugar_cane.png"))) {
+    face->render_layer = (int)RenderLayer::NoMip;
+  } else if (poly_contains(texture, POLY_STR("grass_bottom.png"))) {
+    face->render_layer = (int)RenderLayer::NoMip;
+  } else if (poly_contains(texture, POLY_STR("grass_top.png"))) {
+    face->render_layer = (int)RenderLayer::NoMip;
+  } else if (poly_contains(texture, POLY_STR("grass_block_top.png"))) {
+    face->random_flip = 1;
+  }
+}
+
 AssetSystem::AssetSystem() {
   block_registry.info_count = 0;
   block_registry.state_count = 0;
@@ -160,6 +176,19 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
 
   asset_parser.archive.Close();
   trans_arena.Destroy();
+
+  for (size_t i = 0; i < block_registry.state_count; ++i) {
+    BlockState* state = block_registry.states + i;
+
+    for (size_t j = 0; j < state->model.element_count; ++j) {
+      BlockElement* element = state->model.elements + j;
+
+      // This is wrong, just being done to make grass look better for now.
+      if (element->rescale && i == 1398) {
+        element->to.y = 0.75f;
+      }
+    }
+  }
 
   return true;
 }
@@ -773,6 +802,21 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
             }
           } else if (strcmp(property_name, "shade") == 0) {
             model->elements[model->element_count].shade = json_value_is_true(element_property->value);
+          } else if (strcmp(property_name, "rotation") == 0) {
+            json_object_element_s* rotation_obj_element = json_value_as_object(element_property->value)->start;
+
+            while (rotation_obj_element) {
+              if (strcmp(rotation_obj_element->name->string, "rescale") == 0) {
+                bool rescale = json_value_is_true(rotation_obj_element->value);
+
+                if (rescale) {
+                  model->elements[model->element_count].rescale = 1;
+                }
+              }
+
+              rotation_obj_element = rotation_obj_element->next;
+            }
+
           } else if (strcmp(property_name, "faces") == 0) {
             json_object_element_s* face_obj_element = json_value_as_object(element_property->value)->start;
             while (face_obj_element) {
@@ -788,6 +832,7 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
               face->render = true;
               face->tintindex = 0xFFFF;
               face->cullface = 6;
+              face->render_layer = 0;
 
               while (face_element) {
                 const char* face_property = face_element->name->string;
@@ -812,7 +857,11 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
                   char lookup[1024];
                   sprintf(lookup, "%.*s.png", (u32)(texture_name.size - prefix_size), texture_name.data + prefix_size);
 
-                  TextureIdRange* texture_id_range = texture_id_map->Find(poly_string(lookup));
+                  String texture_search(lookup);
+
+                  AssignFaceRenderSettings(face, texture_search);
+
+                  TextureIdRange* texture_id_range = texture_id_map->Find(texture_search);
 
                   if (texture_id_range) {
                     face->texture_id = texture_id_range->base;

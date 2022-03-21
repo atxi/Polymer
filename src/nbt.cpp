@@ -290,7 +290,7 @@ bool ParseTag(RingBuffer& rb, Tag& tag, MemoryArena& arena) {
     tag.tag = long_array_tag;
   } break;
   default: {
-    fprintf(stderr, "Unknown NBT type: %d\n", tag.type);
+    fprintf(stderr, "Unknown NBT type: %d\n", (int)tag.type);
     return 0;
   }
   }

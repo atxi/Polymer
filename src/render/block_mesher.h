@@ -124,11 +124,21 @@ struct ChunkVertexData {
 // TODO: This could be a standalone function, but I wanted to create a struct in preparation for each mesher creating
 // their own arena to make multithreaded meshing easier.
 struct BlockMesher {
-  BlockMesher(MemoryArena& arena) : arena(arena) {}
+  BlockMesher(MemoryArena& arena) : arena(arena) {
+    // TODO: Don't do this because it allocates for each chunk being meshed
+    alpha_arena = CreateArena(Megabytes(32));
+    nomip_arena = CreateArena(Megabytes(32));
+  }
+
+  ~BlockMesher() {
+    alpha_arena.Destroy();
+    nomip_arena.Destroy();
+  }
 
   TextureIdRange water_texture;
   MemoryArena& arena;
   MemoryArena alpha_arena;
+  MemoryArena nomip_arena;
 
   ChunkVertexData CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx, s32 chunk_y);
 };

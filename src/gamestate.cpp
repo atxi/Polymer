@@ -142,6 +142,7 @@ void GameState::Update(float dt, InputState* input) {
 
           if (frustum.Intersects(chunk_min, chunk_max)) {
             render::RenderMesh* standard_mesh = &mesh->meshes[(size_t)RenderLayer::Standard];
+            render::RenderMesh* nomip_mesh = &mesh->meshes[(size_t)RenderLayer::NoMip];
             render::RenderMesh* alpha_mesh = &mesh->meshes[(size_t)RenderLayer::Alpha];
 
             if (standard_mesh->vertex_count > 0) {
@@ -150,6 +151,14 @@ void GameState::Update(float dt, InputState* input) {
 
               vkCmdBindVertexBuffers(block_buffer, 0, 1, &standard_mesh->vertex_buffer, offsets);
               vkCmdDraw(block_buffer, standard_mesh->vertex_count, 1, 0, 0);
+            }
+
+            if (nomip_mesh->vertex_count > 0) {
+              VkCommandBuffer nomip_buffer =
+                  renderer->chunk_renderer.nomip_renderer.command_buffers[renderer->current_frame];
+
+              vkCmdBindVertexBuffers(nomip_buffer, 0, 1, &nomip_mesh->vertex_buffer, offsets);
+              vkCmdDraw(nomip_buffer, nomip_mesh->vertex_count, 1, 0, 0);
             }
 
             if (alpha_mesh->vertex_count > 0) {
@@ -212,9 +221,6 @@ void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 
           renderer->AllocateMesh(vertex_data.vertices[i], data_size, vertex_data.vertex_count[i]);
     }
   }
-
-  // TODO: Get rid of this since creating and destroying an arena every chunk build is expensive
-  mesher.alpha_arena.Destroy();
 
   // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
   // useful.

@@ -38,7 +38,9 @@ struct RenderableFace {
     u32 render : 1;
     u32 transparency : 1;
     u32 cullface : 3;
-    u32 padding : 11;
+    u32 render_layer : 3;
+    u32 random_flip : 1;
+    u32 padding : 7;
     u32 tintindex : 16;
   };
 };
@@ -51,7 +53,8 @@ struct BlockElement {
   struct {
     u32 occluding : 1;
     u32 shade : 1;
-    u32 padding : 30;
+    u32 rescale : 1;
+    u32 padding : 29;
   };
 };
 

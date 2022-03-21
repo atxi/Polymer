@@ -7,6 +7,17 @@
 #include "vulkan/vulkan.h"
 
 namespace polymer {
+
+enum class RenderLayer {
+  Standard,
+  NoMip, // Plants
+  Alpha, // Water
+
+  Count,
+};
+
+constexpr size_t kRenderLayerCount = (size_t)RenderLayer::Count;
+
 namespace render {
 
 struct UniformBufferObject {
@@ -29,6 +40,17 @@ struct BlockRenderer {
   void CreateRenderPass(VkDevice device, VkFormat swap_format);
 };
 
+struct NoMipRenderer {
+  VkRenderPass render_pass;
+  VkPipeline pipeline;
+
+  VkCommandBuffer command_buffers[2];
+  VkDescriptorSet descriptors[2];
+  VkSampler sampler;
+
+  void CreateRenderPass(VkDevice device, VkFormat swap_format);
+};
+
 struct AlphaRenderer {
   VkRenderPass render_pass;
   VkPipeline pipeline;
@@ -39,6 +61,7 @@ struct AlphaRenderer {
 
 struct ChunkRenderer {
   BlockRenderer block_renderer;
+  NoMipRenderer nomip_renderer;
   AlphaRenderer alpha_renderer;
 
   VkSemaphore block_finished_semaphores[2];
@@ -53,6 +76,9 @@ struct ChunkRenderer {
   void CreatePipeline(VkDevice device, VkShaderModule vertex_shader, VkShaderModule frag_shader, VkExtent2D swap_extent,
                       VkPipelineLayout pipeline_layout);
   void CreateCommandBuffers(VkDevice device, VkCommandPool command_pool);
+
+  void CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool, VkDescriptorSetLayout* layouts,
+                         VkImageView texture_image_view, VkBuffer* uniform_buffers);
 
   void Destroy(VkDevice device, VkCommandPool command_pool);
 

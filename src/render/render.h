@@ -27,17 +27,6 @@
 // used for block rendering.
 
 namespace polymer {
-
-enum class RenderLayer {
-  Standard,
-  Alpha, // Water
-  // NoMip, // Plants
-
-  Count,
-};
-
-constexpr size_t kRenderLayerCount = (size_t)RenderLayer::Count;
-
 namespace render {
 
 constexpr size_t kMaxFramesInFlight = 2;
@@ -128,6 +117,7 @@ struct VulkanRenderer {
   VkImage texture_image;
   VkImageView texture_image_view;
   VkSampler texture_sampler;
+  VkSampler nomip_sampler;
   u32 texture_mips;
 
   size_t current_frame = 0;

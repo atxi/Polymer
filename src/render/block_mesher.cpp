@@ -7,29 +7,34 @@ namespace render {
 
 u32* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s32 chunk_y);
 
-struct PushContext {
-  MemoryArena& arena;
+struct LayerData {
   render::ChunkVertex* vertices;
   u32* count;
-  bool anim_repeat;
-
-  PushContext(MemoryArena& arena, render::ChunkVertex* vertices, u32* count, bool anim_repeat)
-      : arena(arena), vertices(vertices), count(count), anim_repeat(anim_repeat) {}
 };
 
-inline void PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, u32 texture_id, u32 tintindex,
-                       u32 ao, u32 anim_count) {
-  ctx.arena.Allocate(sizeof(render::ChunkVertex), 1);
+struct PushContext {
+  MemoryArena* arenas[(size_t)RenderLayer::Count];
+  bool anim_repeat;
 
-  ctx.vertices[*ctx.count].position = position;
-  ctx.vertices[*ctx.count].texcoord = uv;
-  ctx.vertices[*ctx.count].texture_id = texture_id;
+  PushContext(MemoryArena& arena, bool anim_repeat) : anim_repeat(anim_repeat) {}
 
+  void SetLayerData(RenderLayer layer, MemoryArena* arena) {
+    arenas[(size_t)layer] = arena;
+  }
+};
+
+inline void PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u32 ao) {
+  render::ChunkVertex* vertex =
+      (render::ChunkVertex*)ctx.arenas[face->render_layer]->Allocate(sizeof(render::ChunkVertex), 1);
+
+  vertex->position = position;
+  vertex->texcoord = uv;
+  vertex->texture_id = face->texture_id;
+
+  u32 anim_count = face->frame_count;
   anim_count |= ((u32)ctx.anim_repeat << 7);
 
-  ctx.vertices[*ctx.count].tint_index = (tintindex & 0xFF) | ((anim_count & 0xFF) << 8) | (ao << 16);
-
-  ++*ctx.count;
+  vertex->tint_index = (face->tintindex & 0xFF) | ((anim_count & 0xFF) << 8) | (ao << 16);
 }
 
 inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
@@ -71,9 +76,15 @@ inline MaterialDescription GetMaterialDescription(u32 bid) {
   return result;
 }
 
-static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk, u32 bid,
-                      size_t relative_x, size_t relative_y, size_t relative_z, render::ChunkVertex* vertices,
-                      u32* vertex_count, const Vector3f& chunk_base) {
+inline u32 xorshift(u32 seed) {
+  seed ^= seed << 13;
+  seed ^= seed >> 17;
+  seed ^= seed << 5;
+  return seed;
+}
+
+static void MeshBlock(PushContext& context, BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk,
+                      u32 bid, size_t relative_x, size_t relative_y, size_t relative_z, const Vector3f& chunk_base) {
   BlockModel* model = &block_registry.states[bid].model;
 
   if (model->element_count == 0) {
@@ -132,8 +143,6 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
   BlockModel* east_model = &block_registry.states[east_id].model;
   BlockModel* west_model = &block_registry.states[west_id].model;
 
-  PushContext context(arena, vertices, vertex_count, false);
-
   if (!IsOccluding(model, above_model, BlockFace::Up)) {
     int ao_bl = 3;
     int ao_br = 3;
@@ -179,6 +188,51 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
       Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
       Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
 
+      if (face->random_flip) {
+        u32 world_x = (u32)(chunk_base.x + x);
+        u32 world_z = (u32)(chunk_base.z + z);
+
+        // TODO: Do this better. This is just some simple randomness
+        u32 xr = xorshift(world_x * 3917 + world_z * 181) % 16;
+        u32 zr = xorshift(world_x * 10191 + world_z * 831) % 16;
+        u32 perm = xorshift(world_x * 171 + world_z * 131) % 2;
+
+        float du = xr / 16.0f;
+        float dv = zr / 16.0f;
+
+        Vector2f delta(du, dv);
+
+        bl_uv += delta;
+        br_uv += delta;
+        tr_uv += delta;
+        tl_uv += delta;
+
+        switch (perm) {
+        case 0: {
+          // Flip horizontal
+          Vector2f bt = br_uv;
+          Vector2f tt = tr_uv;
+
+          br_uv = bl_uv;
+          bl_uv = bt;
+
+          tr_uv = tl_uv;
+          tl_uv = tt;
+        } break;
+        case 1: {
+          // Flip vertical
+          Vector2f rt = tr_uv;
+          Vector2f lt = tl_uv;
+
+          tr_uv = br_uv;
+          br_uv = rt;
+
+          tl_uv = bl_uv;
+          bl_uv = lt;
+        } break;
+        }
+      }
+
       int ele_ao_bl = 3;
       int ele_ao_br = 3;
       int ele_ao_tl = 3;
@@ -191,13 +245,13 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
-      PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, face->frame_count);
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
-      PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, face->frame_count);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
     }
   }
 
@@ -258,13 +312,13 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
-      PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, face->frame_count);
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
-      PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, face->frame_count);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
     }
   }
 
@@ -325,13 +379,13 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
-      PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, face->frame_count);
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
-      PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, face->frame_count);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
     }
   }
 
@@ -394,13 +448,13 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
-      PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, face->frame_count);
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
-      PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, face->frame_count);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
     }
   }
 
@@ -461,13 +515,13 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
-      PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, face->frame_count);
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
-      PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, face->frame_count);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
     }
   }
 
@@ -528,28 +582,25 @@ static void MeshBlock(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
-      PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, face->frame_count);
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, face->frame_count);
-      PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, face->frame_count);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, face->frame_count);
+      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
     }
   }
 }
 
 // TODO: Real implementation.
-static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk, u32 bid,
-                      size_t relative_x, size_t relative_y, size_t relative_z, render::ChunkVertex* vertices,
-                      u32* vertex_count, const Vector3f& chunk_base, TextureIdRange texture_range, u32 tintindex) {
+static void MeshFluid(PushContext& context, BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk,
+                      u32 bid, size_t relative_x, size_t relative_y, size_t relative_z, const Vector3f& chunk_base,
+                      TextureIdRange texture_range, u32 tintindex, RenderLayer layer) {
   float x = (float)relative_x;
   float y = (float)relative_y;
   float z = (float)relative_z;
   Vector3f position = chunk_base + Vector3f(x, y, z);
-
-  u32 texture_id = texture_range.base;
-  u32 texture_count = texture_range.count;
 
   size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
   size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
@@ -610,11 +661,13 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
   RenderableFace face_;
   face_.uv_from = Vector2f(0, 0);
   face_.uv_to = Vector2f(1, 1);
+  face_.frame_count = texture_range.count;
+  face_.texture_id = texture_range.base;
+  face_.tintindex = tintindex;
+  face_.render_layer = (int)layer;
   RenderableFace* face = &face_;
 
   bool fluid_below = GetMaterialDescription(below_id).fluid;
-
-  PushContext context(arena, vertices, vertex_count, true);
 
   if (above_id == 0 || above_id == 5215) {
     Vector3f to(1, 0.9f, 1);
@@ -628,21 +681,21 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
     Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
   }
 
   if (below_id == 0) {
@@ -656,21 +709,21 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
   }
 
   if (fluid_below) {
@@ -690,21 +743,21 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
   }
 
   if (south_id == 0) {
@@ -718,21 +771,21 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
   }
 
   if (east_id == 0) {
@@ -746,21 +799,21 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
   }
 
   if (west_id == 0) {
@@ -774,21 +827,21 @@ static void MeshFluid(BlockRegistry& block_registry, MemoryArena& arena, u32* bo
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_right + chunk_base, br_uv, texture_id, tintindex, ele_ao_br, texture_count);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, texture_id, tintindex, ele_ao_tr, texture_count);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, texture_id, tintindex, ele_ao_bl, texture_count);
-    PushVertex(context, top_left + chunk_base, tl_uv, texture_id, tintindex, ele_ao_tl, texture_count);
+    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
   }
 }
 
@@ -805,16 +858,19 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
   water_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_still.png"));
   TextureIdRange lava_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/lava_still.png"));
 
-  alpha_arena = CreateArena(Megabytes(32));
-
   // Create an initial pointer to transient memory with zero vertices allocated.
   // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
   render::ChunkVertex* vertices = (render::ChunkVertex*)arena.Allocate(0);
   render::ChunkVertex* alpha_vertices = (render::ChunkVertex*)alpha_arena.Allocate(0);
-  u32 vertex_count = 0;
-  u32 alpha_vertex_count = 0;
+  render::ChunkVertex* nomip_vertices = (render::ChunkVertex*)nomip_arena.Allocate(0);
 
   Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
+
+  PushContext context(arena, false); 
+
+  context.SetLayerData(RenderLayer::Standard, &arena);
+  context.SetLayerData(RenderLayer::Alpha, &alpha_arena);
+  context.SetLayerData(RenderLayer::NoMip, &nomip_arena);
 
   for (size_t relative_y = 0; relative_y < 16; ++relative_y) {
     for (size_t relative_z = 0; relative_z < 16; ++relative_z) {
@@ -826,31 +882,35 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
         MaterialDescription desc = GetMaterialDescription(bid);
 
         if (desc.fluid) {
-          ChunkVertex* output = vertices;
-          u32* count_out = &vertex_count;
+          RenderLayer layer = RenderLayer::Standard;
           TextureIdRange texture_range = lava_texture;
           u32 tintindex = 0xFF;
 
           if (desc.water) {
-            output = alpha_vertices;
-            count_out = &alpha_vertex_count;
             texture_range = water_texture;
             tintindex = 50;
+            layer = RenderLayer::Alpha;
           }
 
-          MeshFluid(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, output, count_out,
-                    chunk_base, texture_range, tintindex);
+          context.anim_repeat = true;
+          MeshFluid(context, block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base,
+                    texture_range, tintindex, layer);
         }
 
+        context.anim_repeat = false;
         // Always mesh block even if it's a fluid because the plants have both
-        MeshBlock(block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, vertices,
-                  &vertex_count, chunk_base);
+        MeshBlock(context, block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base);
       }
     }
   }
 
+  u32 vertex_count = (u32)(((ptrdiff_t)arena.current - (ptrdiff_t)vertices) / sizeof(ChunkVertex));
+  u32 alpha_vertex_count = (u32)(((ptrdiff_t)alpha_arena.current - (ptrdiff_t)alpha_vertices) / sizeof(ChunkVertex));
+  u32 nomip_vertex_count = (u32)(((ptrdiff_t)nomip_arena.current - (ptrdiff_t)nomip_vertices) / sizeof(ChunkVertex));
+
   vertex_data.SetVertices(RenderLayer::Standard, (u8*)vertices, vertex_count);
   vertex_data.SetVertices(RenderLayer::Alpha, (u8*)alpha_vertices, alpha_vertex_count);
+  vertex_data.SetVertices(RenderLayer::NoMip, (u8*)nomip_vertices, nomip_vertex_count);
 
   return vertex_data;
 }
