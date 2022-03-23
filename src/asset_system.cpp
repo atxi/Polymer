@@ -78,13 +78,15 @@ void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
   if (poly_contains(texture, POLY_STR("water_still"))) {
     face->render_layer = (int)RenderLayer::Alpha;
   } else if (poly_contains(texture, POLY_STR("grass.png"))) {
-    face->render_layer = (int)RenderLayer::NoMip;
+    face->render_layer = (int)RenderLayer::Flora;
   } else if (poly_contains(texture, POLY_STR("sugar_cane.png"))) {
-    face->render_layer = (int)RenderLayer::NoMip;
+    face->render_layer = (int)RenderLayer::Flora;
   } else if (poly_contains(texture, POLY_STR("grass_bottom.png"))) {
-    face->render_layer = (int)RenderLayer::NoMip;
+    face->render_layer = (int)RenderLayer::Flora;
   } else if (poly_contains(texture, POLY_STR("grass_top.png"))) {
-    face->render_layer = (int)RenderLayer::NoMip;
+    face->render_layer = (int)RenderLayer::Flora;
+  } else if (poly_contains(texture, POLY_STR("fern.png"))) {
+    face->render_layer = (int)RenderLayer::Flora;
   } else if (poly_contains(texture, POLY_STR("grass_block_top.png"))) {
     face->random_flip = 1;
   }

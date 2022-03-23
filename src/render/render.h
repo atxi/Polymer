@@ -117,7 +117,6 @@ struct VulkanRenderer {
   VkImage texture_image;
   VkImageView texture_image_view;
   VkSampler texture_sampler;
-  VkSampler nomip_sampler;
   u32 texture_mips;
 
   size_t current_frame = 0;

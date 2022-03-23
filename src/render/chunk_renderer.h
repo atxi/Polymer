@@ -10,7 +10,7 @@ namespace polymer {
 
 enum class RenderLayer {
   Standard,
-  NoMip, // Plants
+  Flora,
   Alpha, // Water
 
   Count,
@@ -40,7 +40,7 @@ struct BlockRenderer {
   void CreateRenderPass(VkDevice device, VkFormat swap_format);
 };
 
-struct NoMipRenderer {
+struct FloraRenderer {
   VkRenderPass render_pass;
   VkPipeline pipeline;
 
@@ -61,7 +61,7 @@ struct AlphaRenderer {
 
 struct ChunkRenderer {
   BlockRenderer block_renderer;
-  NoMipRenderer nomip_renderer;
+  FloraRenderer flora_renderer;
   AlphaRenderer alpha_renderer;
 
   VkSemaphore block_finished_semaphores[2];

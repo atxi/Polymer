@@ -142,7 +142,7 @@ void GameState::Update(float dt, InputState* input) {
 
           if (frustum.Intersects(chunk_min, chunk_max)) {
             render::RenderMesh* standard_mesh = &mesh->meshes[(size_t)RenderLayer::Standard];
-            render::RenderMesh* nomip_mesh = &mesh->meshes[(size_t)RenderLayer::NoMip];
+            render::RenderMesh* flora_mesh = &mesh->meshes[(size_t)RenderLayer::Flora];
             render::RenderMesh* alpha_mesh = &mesh->meshes[(size_t)RenderLayer::Alpha];
 
             if (standard_mesh->vertex_count > 0) {
@@ -153,12 +153,12 @@ void GameState::Update(float dt, InputState* input) {
               vkCmdDraw(block_buffer, standard_mesh->vertex_count, 1, 0, 0);
             }
 
-            if (nomip_mesh->vertex_count > 0) {
-              VkCommandBuffer nomip_buffer =
-                  renderer->chunk_renderer.nomip_renderer.command_buffers[renderer->current_frame];
+            if (flora_mesh->vertex_count > 0) {
+              VkCommandBuffer flora_buffer =
+                  renderer->chunk_renderer.flora_renderer.command_buffers[renderer->current_frame];
 
-              vkCmdBindVertexBuffers(nomip_buffer, 0, 1, &nomip_mesh->vertex_buffer, offsets);
-              vkCmdDraw(nomip_buffer, nomip_mesh->vertex_count, 1, 0, 0);
+              vkCmdBindVertexBuffers(flora_buffer, 0, 1, &flora_mesh->vertex_buffer, offsets);
+              vkCmdDraw(flora_buffer, flora_mesh->vertex_count, 1, 0, 0);
             }
 
             if (alpha_mesh->vertex_count > 0) {

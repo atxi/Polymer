@@ -862,15 +862,15 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
   // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
   render::ChunkVertex* vertices = (render::ChunkVertex*)arena.Allocate(0);
   render::ChunkVertex* alpha_vertices = (render::ChunkVertex*)alpha_arena.Allocate(0);
-  render::ChunkVertex* nomip_vertices = (render::ChunkVertex*)nomip_arena.Allocate(0);
+  render::ChunkVertex* flora_vertices = (render::ChunkVertex*)flora_arena.Allocate(0);
 
   Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
 
-  PushContext context(arena, false); 
+  PushContext context(arena, false);
 
   context.SetLayerData(RenderLayer::Standard, &arena);
   context.SetLayerData(RenderLayer::Alpha, &alpha_arena);
-  context.SetLayerData(RenderLayer::NoMip, &nomip_arena);
+  context.SetLayerData(RenderLayer::Flora, &flora_arena);
 
   for (size_t relative_y = 0; relative_y < 16; ++relative_y) {
     for (size_t relative_z = 0; relative_z < 16; ++relative_z) {
@@ -906,11 +906,11 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
 
   u32 vertex_count = (u32)(((ptrdiff_t)arena.current - (ptrdiff_t)vertices) / sizeof(ChunkVertex));
   u32 alpha_vertex_count = (u32)(((ptrdiff_t)alpha_arena.current - (ptrdiff_t)alpha_vertices) / sizeof(ChunkVertex));
-  u32 nomip_vertex_count = (u32)(((ptrdiff_t)nomip_arena.current - (ptrdiff_t)nomip_vertices) / sizeof(ChunkVertex));
+  u32 flora_vertex_count = (u32)(((ptrdiff_t)flora_arena.current - (ptrdiff_t)flora_vertices) / sizeof(ChunkVertex));
 
   vertex_data.SetVertices(RenderLayer::Standard, (u8*)vertices, vertex_count);
   vertex_data.SetVertices(RenderLayer::Alpha, (u8*)alpha_vertices, alpha_vertex_count);
-  vertex_data.SetVertices(RenderLayer::NoMip, (u8*)nomip_vertices, nomip_vertex_count);
+  vertex_data.SetVertices(RenderLayer::Flora, (u8*)flora_vertices, flora_vertex_count);
 
   return vertex_data;
 }

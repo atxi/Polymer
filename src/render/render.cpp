@@ -144,6 +144,22 @@ inline int GammaBlend(int a, int b, int c, int d) {
   return static_cast<int>(255.0f * result);
 }
 
+inline u32 GetLinearColor(u32 c) {
+  int a = (int)(powf(((c >> 24) & 0xFF) / 255.0f, 2.2f) * 255.0f);
+  int b = (int)(powf(((c >> 16) & 0xFF) / 255.0f, 2.2f) * 255.0f);
+  int g = (int)(powf(((c >> 8) & 0xFF) / 255.0f, 2.2f) * 255.0f);
+  int r = (int)(powf(((c >> 0) & 0xFF) / 255.0f, 2.2f) * 255.0f);
+
+  return a << 24 | b << 16 | g << 8 | r << 0;
+}
+
+// Perform blend in linear space by multiplying the samples by their alpha and dividing by the accumulated alpha.
+inline int AlphaBlend(int c0, int c1, int c2, int c3, int a0, int a1, int a2, int a3, int f, int d, int shift) {
+  int t = ((c0 >> shift & 0xFF) * a0 + (c1 >> shift & 0xFF) * a1 + (c2 >> shift & 0xFF) * a2 +
+           (c3 >> shift & 0xFF) * a3 + f);
+  return (t / d);
+}
+
 // Performs basic pixel averaging filter for generating mipmap.
 void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim) {
   size_t size_per_tex = dim * dim * 4;
@@ -177,31 +193,41 @@ void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim) {
         if (has_transparent) {
           u32 full_samples[4] = {source.SampleFull(x * 2, y * 2), source.SampleFull(x * 2 + 1, y * 2),
                                  source.SampleFull(x * 2, y * 2 + 1), source.SampleFull(x * 2 + 1, y * 2 + 1)};
+          // Convert the fetched samples into linear space
+          u32 c[4] = {
+              GetLinearColor(full_samples[0]),
+              GetLinearColor(full_samples[1]),
+              GetLinearColor(full_samples[2]),
+              GetLinearColor(full_samples[3]),
+          };
 
-          float red_accumulator = 0.0f;
-          float green_accumulator = 0.0f;
-          float blue_accumulator = 0.0f;
-          float alpha_accumulator = 0.0f;
+          int a0 = (c[0] >> 24) & 0xFF;
+          int a1 = (c[1] >> 24) & 0xFF;
+          int a2 = (c[2] >> 24) & 0xFF;
+          int a3 = (c[3] >> 24) & 0xFF;
 
-          // Perform channel accumulations in non-transparent pixels.
-          for (size_t j = 0; j < 4; ++j) {
-            if ((full_samples[j] >> 24) != 0) {
-              alpha_accumulator += GetColorGamma(full_samples[j] >> 24);
-              blue_accumulator += GetColorGamma(full_samples[j] >> 16);
-              green_accumulator += GetColorGamma(full_samples[j] >> 8);
-              red_accumulator += GetColorGamma(full_samples[j] >> 0);
-            }
+          int alpha_sum = a0 + a1 + a2 + a3;
+
+          int d;
+          if (alpha_sum != 0) {
+            d = alpha_sum;
+          } else {
+            d = 4;
+            a3 = a2 = a1 = a0 = 1;
           }
 
-          red = (int)(powf(red_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
-          green = (int)(powf(green_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
-          blue = (int)(powf(blue_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
-          alpha = (int)(powf(alpha_accumulator / 4.0f, 1.0f / 2.2f) * 255.0f);
+          int f = (d + 1) / 2;
 
-          // Discard anything with low enough alpha.
-          if (alpha < 96) {
-            alpha = 0;
-          }
+          u32 la = (alpha_sum + 2) / 4;
+          u32 lb = AlphaBlend(c[0], c[1], c[2], c[3], a0, a1, a2, a3, f, d, 16);
+          u32 lg = AlphaBlend(c[0], c[1], c[2], c[3], a0, a1, a2, a3, f, d, 8);
+          u32 lr = AlphaBlend(c[0], c[1], c[2], c[3], a0, a1, a2, a3, f, d, 0);
+
+          // Convert back into gamma space
+          alpha = (u32)(powf(la  / 255.0f, 1.0f / 2.2f) * 255.0f);
+          red = (u32)(powf(lr / 255.0f, 1.0f / 2.2f) * 255.0f);
+          green = (u32)(powf(lg / 255.0f, 1.0f / 2.2f) * 255.0f);
+          blue = (u32)(powf(lb / 255.0f, 1.0f / 2.2f) * 255.0f);
         } else {
           red = GammaBlend(source.Sample(x * 2, y * 2, red_index), source.Sample(x * 2 + 1, y * 2, red_index),
                            source.Sample(x * 2, y * 2 + 1, red_index), source.Sample(x * 2 + 1, y * 2 + 1, red_index));

@@ -127,18 +127,18 @@ struct BlockMesher {
   BlockMesher(MemoryArena& arena) : arena(arena) {
     // TODO: Don't do this because it allocates for each chunk being meshed
     alpha_arena = CreateArena(Megabytes(32));
-    nomip_arena = CreateArena(Megabytes(32));
+    flora_arena = CreateArena(Megabytes(32));
   }
 
   ~BlockMesher() {
     alpha_arena.Destroy();
-    nomip_arena.Destroy();
+    flora_arena.Destroy();
   }
 
   TextureIdRange water_texture;
   MemoryArena& arena;
   MemoryArena alpha_arena;
-  MemoryArena nomip_arena;
+  MemoryArena flora_arena;
 
   ChunkVertexData CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx, s32 chunk_y);
 };

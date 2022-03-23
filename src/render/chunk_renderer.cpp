@@ -34,7 +34,7 @@ void BlockRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
   CreateRenderPassType(device, swap_format, &render_pass, color_attachment, depth_attachment);
 }
 
-void NoMipRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
+void FloraRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
   VkAttachmentDescription color_attachment = {};
 
   color_attachment.format = swap_format;
@@ -86,7 +86,7 @@ void AlphaRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
 
 void ChunkRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
   block_renderer.CreateRenderPass(device, swap_format);
-  nomip_renderer.CreateRenderPass(device, swap_format);
+  flora_renderer.CreateRenderPass(device, swap_format);
   alpha_renderer.CreateRenderPass(device, swap_format);
 
   VkSamplerCreateInfo sampler_info = {};
@@ -102,12 +102,12 @@ void ChunkRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
   sampler_info.unnormalizedCoordinates = VK_FALSE;
   sampler_info.compareEnable = VK_FALSE;
   sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
-  sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-  sampler_info.mipLodBias = 0.0f;
+  sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  sampler_info.mipLodBias = 0.5f;
   sampler_info.minLod = 0.0f;
-  sampler_info.maxLod = 0.0f;
+  sampler_info.maxLod = 1.0f;
 
-  if (vkCreateSampler(device, &sampler_info, nullptr, &nomip_renderer.sampler) != VK_SUCCESS) {
+  if (vkCreateSampler(device, &sampler_info, nullptr, &flora_renderer.sampler) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture sampler.\n");
   }
 }
@@ -116,7 +116,7 @@ void ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size
                                    VkSemaphore image_available_semaphore, VkSemaphore render_finished_semaphore,
                                    VkFence frame_fence) {
   VkCommandBuffer block_buffer = block_renderer.command_buffers[current_frame];
-  VkCommandBuffer nomip_buffer = nomip_renderer.command_buffers[current_frame];
+  VkCommandBuffer flora_buffer = flora_renderer.command_buffers[current_frame];
   VkCommandBuffer alpha_buffer = alpha_renderer.command_buffers[current_frame];
 
   vkCmdEndRenderPass(block_buffer);
@@ -125,8 +125,8 @@ void ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size
     fprintf(stderr, "Failed to record command buffer.\n");
   }
 
-  vkCmdEndRenderPass(nomip_buffer);
-  if (vkEndCommandBuffer(nomip_buffer) != VK_SUCCESS) {
+  vkCmdEndRenderPass(flora_buffer);
+  if (vkEndCommandBuffer(flora_buffer) != VK_SUCCESS) {
     fprintf(stderr, "Failed to record command buffer.\n");
   }
 
@@ -147,7 +147,7 @@ void ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size
     submit_info.pWaitSemaphores = waitSemaphores;
     submit_info.pWaitDstStageMask = waitStages;
 
-    VkCommandBuffer buffers[2] = {block_buffer, nomip_buffer};
+    VkCommandBuffer buffers[2] = {block_buffer, flora_buffer};
 
     submit_info.commandBufferCount = polymer_array_count(buffers);
     submit_info.pCommandBuffers = buffers;
@@ -350,9 +350,9 @@ void ChunkRenderer::CreatePipeline(VkDevice device, VkShaderModule vertex_shader
     fprintf(stderr, "Failed to create graphics pipeline.\n");
   }
 
-  pipeline_info.renderPass = nomip_renderer.render_pass;
+  pipeline_info.renderPass = flora_renderer.render_pass;
 
-  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &nomip_renderer.pipeline) !=
+  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &flora_renderer.pipeline) !=
       VK_SUCCESS) {
     fprintf(stderr, "Failed to create graphics pipeline.\n");
   }
@@ -380,7 +380,7 @@ void ChunkRenderer::CreateCommandBuffers(VkDevice device, VkCommandPool command_
     fprintf(stderr, "Failed to allocate command buffers.\n");
   }
 
-  if (vkAllocateCommandBuffers(device, &alloc_info, nomip_renderer.command_buffers) != VK_SUCCESS) {
+  if (vkAllocateCommandBuffers(device, &alloc_info, flora_renderer.command_buffers) != VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate command buffers.\n");
   }
 
@@ -398,7 +398,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
   alloc_info.descriptorSetCount = kMaxFramesInFlight;
   alloc_info.pSetLayouts = layouts;
 
-  if (vkAllocateDescriptorSets(device, &alloc_info, nomip_renderer.descriptors) != VK_SUCCESS) {
+  if (vkAllocateDescriptorSets(device, &alloc_info, flora_renderer.descriptors) != VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate descriptor sets.");
   }
 
@@ -412,11 +412,11 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     VkDescriptorImageInfo image_info = {};
     image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     image_info.imageView = texture_image_view;
-    image_info.sampler = nomip_renderer.sampler;
+    image_info.sampler = flora_renderer.sampler;
 
     VkWriteDescriptorSet descriptor_writes[2] = {};
     descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[0].dstSet = nomip_renderer.descriptors[i];
+    descriptor_writes[0].dstSet = flora_renderer.descriptors[i];
     descriptor_writes[0].dstBinding = 0;
     descriptor_writes[0].dstArrayElement = 0;
     descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -426,7 +426,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     descriptor_writes[0].pTexelBufferView = nullptr;
 
     descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[1].dstSet = nomip_renderer.descriptors[i];
+    descriptor_writes[1].dstSet = flora_renderer.descriptors[i];
     descriptor_writes[1].dstBinding = 1;
     descriptor_writes[1].dstArrayElement = 0;
     descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -442,7 +442,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
 bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t current_frame, VkPipelineLayout layout,
                                VkDescriptorSet descriptor) {
   VkCommandBuffer block_buffer = block_renderer.command_buffers[current_frame];
-  VkCommandBuffer nomip_buffer = nomip_renderer.command_buffers[current_frame];
+  VkCommandBuffer flora_buffer = flora_renderer.command_buffers[current_frame];
   VkCommandBuffer alpha_buffer = alpha_renderer.command_buffers[current_frame];
 
   VkCommandBufferBeginInfo begin_info = {};
@@ -456,7 +456,7 @@ bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t cu
     return false;
   }
 
-  if (vkBeginCommandBuffer(nomip_buffer, &begin_info) != VK_SUCCESS) {
+  if (vkBeginCommandBuffer(flora_buffer, &begin_info) != VK_SUCCESS) {
     fprintf(stderr, "Failed to begin recording command buffer.\n");
     return false;
   }
@@ -478,14 +478,14 @@ bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t cu
     vkCmdBindDescriptorSets(block_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &descriptor, 0, nullptr);
   }
 
-  render_pass_info.renderPass = nomip_renderer.render_pass;
+  render_pass_info.renderPass = flora_renderer.render_pass;
   render_pass_info.clearValueCount = 0;
 
-  vkCmdBeginRenderPass(nomip_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+  vkCmdBeginRenderPass(flora_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
   {
-    vkCmdBindPipeline(nomip_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, block_renderer.pipeline);
-    vkCmdBindDescriptorSets(nomip_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
-                            nomip_renderer.descriptors + current_frame, 0, nullptr);
+    vkCmdBindPipeline(flora_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, block_renderer.pipeline);
+    vkCmdBindDescriptorSets(flora_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
+                            flora_renderer.descriptors + current_frame, 0, nullptr);
   }
 
   render_pass_info.renderPass = alpha_renderer.render_pass;
@@ -502,15 +502,15 @@ bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t cu
 
 void ChunkRenderer::Destroy(VkDevice device, VkCommandPool command_pool) {
   vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, block_renderer.command_buffers);
-  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, nomip_renderer.command_buffers);
+  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, flora_renderer.command_buffers);
   vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, alpha_renderer.command_buffers);
 
-  vkDestroySampler(device, nomip_renderer.sampler, nullptr);
+  vkDestroySampler(device, flora_renderer.sampler, nullptr);
   vkDestroyPipeline(device, block_renderer.pipeline, nullptr);
-  vkDestroyPipeline(device, nomip_renderer.pipeline, nullptr);
+  vkDestroyPipeline(device, flora_renderer.pipeline, nullptr);
   vkDestroyPipeline(device, alpha_renderer.pipeline, nullptr);
   vkDestroyRenderPass(device, block_renderer.render_pass, nullptr);
-  vkDestroyRenderPass(device, nomip_renderer.render_pass, nullptr);
+  vkDestroyRenderPass(device, flora_renderer.render_pass, nullptr);
   vkDestroyRenderPass(device, alpha_renderer.render_pass, nullptr);
 }
 
