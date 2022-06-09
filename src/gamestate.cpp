@@ -355,7 +355,7 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
 void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   s32 chunk_x = (s32)std::floor(x / 16.0f);
   s32 chunk_z = (s32)std::floor(z / 16.0f);
-  s32 chunk_y = (y / 16) + 4;
+  s32 chunk_y = (s32)std::floor(y / 16.0f) + 4;
 
   ChunkSection* section = &world.chunks[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
 
@@ -365,6 +365,10 @@ void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
 
   if (relative_x < 0) {
     relative_x += 16;
+  }
+
+  if (relative_y < 0) {
+    relative_y += 16;
   }
 
   if (relative_z < 0) {

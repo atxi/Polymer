@@ -8,6 +8,8 @@
 #include <cassert>
 #include <cstdio>
 
+#define LOG_PACKET_ID 0
+
 namespace polymer {
 
 PacketInterpreter::PacketInterpreter(GameState* game)
@@ -21,8 +23,25 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
   assert(type < PlayProtocol::Count);
 
+#if LOG_PACKET_ID
+  printf("InterpetPlay: %lld\n", pkt_id);
+#endif
+
   switch (type) {
-  case PlayProtocol::ChatMessage: {
+  case PlayProtocol::SystemChatMessage: {
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
+    sstr.size = 32767;
+
+    size_t length = rb->ReadString(&sstr);
+
+    printf("System: %.*s\n", (int)length, sstr.data);
+
+    u64 type = 0;
+    rb->ReadVarInt(&type);
+    printf("Type: %lld\n", type);
+  } break;
+  case PlayProtocol::PlayerChatMessage: {
     String sstr;
     sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
@@ -30,9 +49,18 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     size_t length = rb->ReadString(&sstr);
 
     if (length > 0) {
-      printf("%.*s\n", (int)length, sstr.data);
+      printf("Signed chat: %.*s\n", (int)length, sstr.data);
       fflush(stdout);
     }
+
+    length = rb->ReadString(&sstr);
+
+    if (length > 0) {
+      printf("Unsigned chat: %.*s\n", (int)length, sstr.data);
+      fflush(stdout);
+    }
+
+    // TODO: Read more
   } break;
   case PlayProtocol::Disconnect: {
     String sstr;
@@ -152,13 +180,19 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     game->dimension_codec.Parse(*game->perm_arena, dimension_codec_nbt);
 
-    nbt::TagCompound dimension_nbt;
+    String dimension_type_string;
+    dimension_type_string.data = memory_arena_push_type_count(trans_arena, char, 32767);
+    dimension_type_string.size = 32767;
 
-    if (!nbt::Parse(*rb, *trans_arena, &dimension_nbt)) {
-      fprintf(stderr, "Failed to parse dimension nbt.\n");
+    dimension_type_string.size = rb->ReadString(&dimension_type_string);
+
+    DimensionType* dimension_type = game->dimension_codec.GetDimensionType(dimension_type_string);
+
+    if (dimension_type) {
+      game->dimension = *dimension_type;
+    } else {
+      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size, dimension_type_string.data);
     }
-
-    game->dimension_codec.ParseType(*game->trans_arena, dimension_nbt, &game->dimension);
 
     String dimension_identifier;
     dimension_identifier.data = memory_arena_push_type_count(trans_arena, char, 32767);
@@ -174,13 +208,21 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
            (game->dimension.height + game->dimension.min_y));
   } break;
   case PlayProtocol::Respawn: {
-    nbt::TagCompound dimension_nbt;
+    String dimension_type_string;
 
-    if (!nbt::Parse(*rb, *trans_arena, &dimension_nbt)) {
-      fprintf(stderr, "Failed to parse dimension nbt.\n");
+    dimension_type_string.data = memory_arena_push_type_count(trans_arena, char, 32767);
+    dimension_type_string.size = 32767;
+
+    dimension_type_string.size = rb->ReadString(&dimension_type_string);
+
+    DimensionType* dimension_type = game->dimension_codec.GetDimensionType(dimension_type_string);
+
+    if (dimension_type) {
+      game->dimension = *dimension_type;
+    } else {
+      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size, dimension_type_string.data);
     }
 
-    game->dimension_codec.ParseType(*game->trans_arena, dimension_nbt, &game->dimension);
     printf("Entered dimension with height range of %d to %d\n", game->dimension.min_y,
            (game->dimension.height + game->dimension.min_y));
 
@@ -387,6 +429,10 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
 
   assert(type < LoginProtocol::Count);
 
+#if LOG_PACKET_ID
+  printf("InterpetLogin: %lld\n", pkt_id);
+#endif
+
   switch (type) {
   case LoginProtocol::Disconnect: {
     String sstr;
@@ -425,6 +471,10 @@ void PacketInterpreter::InterpretStatus(RingBuffer* rb, u64 pkt_id, size_t pkt_s
   StatusProtocol type = (StatusProtocol)pkt_id;
 
   assert(type < StatusProtocol::Count);
+
+#if LOG_PACKET_ID
+  printf("InterpetStatus: %lld\n", pkt_id);
+#endif
 }
 
 void PacketInterpreter::Interpret() {
@@ -460,9 +510,16 @@ void PacketInterpreter::Interpret() {
         int result = mz_uncompress((u8*)inflate_buffer.data, (mz_ulong*)&mz_size, (u8*)rb->data + rb->read_offset,
                                    (mz_ulong)payload_size);
 
-        assert(result == MZ_OK);
-        rb->read_offset = target_offset;
-        rb = &inflate_buffer;
+        if (result == MZ_OK) {
+          rb = &inflate_buffer;
+        } else {
+          // Decompression failed. Was compression disabled in the stream?
+          // TODO: This seems to happen once during login sequence. Don't know if bug with this implementation or server.
+          fprintf(stderr, "Failed to decompress packet. Skipping.\n");
+          fflush(stderr);
+          rb->read_offset = target_offset;
+          continue;
+        }
       }
     }
 
@@ -483,10 +540,10 @@ void PacketInterpreter::Interpret() {
       break;
     }
 
+    rb = &connection->read_buffer;
+
     // Always skip to the next packet in case some data wasn't read.
     rb->read_offset = target_offset;
-
-    rb = &connection->read_buffer;
   } while (rb->read_offset != rb->write_offset);
 }
 

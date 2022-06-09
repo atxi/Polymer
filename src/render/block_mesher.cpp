@@ -66,12 +66,29 @@ struct MaterialDescription {
   bool water;
 };
 
+#define TEMP_LILY_PAD_ID 5601
+#define TEMP_VOID_AIR_ID 10546
+#define TEMP_CAVE_AIR_ID 10547
+#define TEMP_WATER_START_ID 75
+#define TEMP_WATER_START_END 90
+
+#define TEMP_LAVA_START_ID 91
+#define TEMP_LAVA_END_ID 106
+
+#define TEMP_KELP_START_ID 10351
+#define TEMP_KELP_END_ID 10376
+#define TEMP_SEAGRASS_ID 1599
+#define TEMP_TALL_SEAGRASS_START_ID 1600
+#define TEMP_TALL_SEAGRASS_END_ID 1601
+
 inline MaterialDescription GetMaterialDescription(u32 bid) {
   MaterialDescription result = {};
 
   // TODO: Pull these from the asset system
-  result.water = (bid >= 34 && bid <= 49) || (bid >= 9720 && bid <= 9746) || (bid >= 1401 && bid <= 1403);
-  result.fluid = result.water || (bid >= 50 && bid <= 65);
+  result.water = (bid >= TEMP_WATER_START_ID && bid <= TEMP_WATER_START_END) ||
+                 (bid >= TEMP_KELP_START_ID && bid <= TEMP_KELP_END_ID) || (bid == TEMP_SEAGRASS_ID) ||
+                 (bid >= TEMP_TALL_SEAGRASS_START_ID && bid <= TEMP_TALL_SEAGRASS_END_ID);
+  result.fluid = result.water || (bid >= TEMP_LAVA_START_ID && bid <= TEMP_LAVA_END_ID);
 
   return result;
 }
@@ -669,7 +686,7 @@ static void MeshFluid(PushContext& context, BlockRegistry& block_registry, Memor
 
   bool fluid_below = GetMaterialDescription(below_id).fluid;
 
-  if (above_id == 0 || above_id == 5215) {
+  if (above_id == 0 || above_id == TEMP_LILY_PAD_ID || above_id == TEMP_VOID_AIR_ID || above_id == TEMP_CAVE_AIR_ID) {
     Vector3f to(1, 0.9f, 1);
     Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
     Vector3f bottom_right(x + from.x, y + to.y, z + to.z);

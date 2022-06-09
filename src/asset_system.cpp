@@ -52,8 +52,6 @@ struct AssetParser {
   size_t texture_count;
   u8* texture_images;
 
-  char** properties = nullptr;
-
   AssetParser(MemoryArena* arena, BlockRegistry* registry)
       : arena(arena), registry(registry), model_count(0), parsed_block_map(*arena), texture_id_map(*arena) {}
 
@@ -332,42 +330,50 @@ size_t AssetParser::LoadTextures() {
   return current_texture_id;
 }
 
-static u32 GetLastStateId(json_object_s* root) {
-  json_object_element_s* last_root_ele = root->start;
+static u32 GetHighestStateId(json_object_s* root) {
+  u32 highest_id = 0;
 
-  for (size_t i = 0; i < root->length - 1; ++i) {
-    last_root_ele = last_root_ele->next;
-  }
+  json_object_element_s* root_child = root->start;
 
-  json_object_s* block_obj = json_value_as_object(last_root_ele->value);
-  json_object_element_s* block_element = block_obj->start;
+  while (root_child) {
+    json_object_s* type_element = json_value_as_object(root_child->value);
+    json_object_element_s* type_element_child = type_element->start;
 
-  while (block_element) {
-    if (strncmp(block_element->name->string, "states", block_element->name->string_size) == 0) {
-      json_array_s* states = json_value_as_array(block_element->value);
-      json_array_element_s* state_array_element = states->start;
+    while (type_element_child) {
+      if (strncmp(type_element_child->name->string, "states", type_element_child->name->string_size) == 0) {
+        json_array_s* states = json_value_as_array(type_element_child->value);
+        json_array_element_s* state_array_child = states->start;
 
-      assert(states->length > 0);
+        while (state_array_child) {
+          json_object_s* state_obj = json_value_as_object(state_array_child->value);
+          json_object_element_s* state_child = state_obj->start;
 
-      for (size_t i = 0; i < states->length - 1; ++i) {
-        state_array_element = state_array_element->next;
-      }
+          while (state_child) {
+            if (strncmp(state_child->name->string, "id", state_child->name->string_size) == 0) {
+              u32 id = (u32)strtol(json_value_as_number(state_child->value)->number, nullptr, 10);
 
-      json_object_s* state_obj = json_value_as_object(state_array_element->value);
-      json_object_element_s* state_element = state_obj->start;
+              if (id > highest_id) {
+                highest_id = id;
+              }
+              break;
+            }
 
-      while (state_element) {
-        if (strncmp(state_element->name->string, "id", state_element->name->string_size) == 0) {
-          return (u32)strtol(json_value_as_number(state_element->value)->number, nullptr, 10);
+            state_child = state_child->next;
+          }
+
+          state_array_child = state_array_child->next;
         }
 
-        state_element = state_element->next;
+        break;
       }
+
+      type_element_child = type_element_child->next;
     }
-    block_element = block_element->next;
+
+    root_child = root_child->next;
   }
 
-  return 0;
+  return highest_id;
 }
 
 bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filename) {
@@ -388,17 +394,15 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
   assert(root_obj);
   assert(root_obj->length > 0);
 
-  registry->state_count = (size_t)GetLastStateId(root_obj) + 1;
+  registry->state_count = (size_t)GetHighestStateId(root_obj) + 1;
   assert(registry->state_count > 1);
 
   // Create a list of pointers to property strings stored in the transient arena
-  properties = (char**)arena->Allocate(sizeof(char*) * registry->state_count);
   registry->states = memory_arena_push_type_count(perm_arena, BlockState, registry->state_count);
+  registry->properties = memory_arena_push_type_count(perm_arena, String, registry->state_count);
   registry->infos = (BlockStateInfo*)memory_arena_push_type_count(perm_arena, BlockStateInfo, root_obj->length);
 
   json_object_element_s* element = root_obj->start;
-
-  size_t block_state_index = 0;
 
   while (element) {
     json_object_s* block_obj = json_value_as_object(element->value);
@@ -418,25 +422,20 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
         while (state_array_element) {
           json_object_s* state_obj = json_value_as_object(state_array_element->value);
 
-          properties[block_state_index] = nullptr;
-
           json_object_element_s* state_element = state_obj->start;
 
           u32 id = 0;
-          size_t index = 0;
 
           while (state_element) {
             if (strncmp(state_element->name->string, "id", state_element->name->string_size) == 0) {
-              registry->states[block_state_index].info = info;
-
               long block_id = strtol(json_value_as_number(state_element->value)->number, nullptr, 10);
 
-              registry->states[block_state_index].id = block_id;
+              registry->states[block_id].info = info;
+              registry->states[block_id].id = block_id;
+              registry->properties[block_id].data = 0;
+              registry->properties[block_id].size = 0;
 
               id = (u32)block_id;
-              index = block_state_index;
-
-              ++block_state_index;
             }
             state_element = state_element->next;
           }
@@ -449,8 +448,7 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
               json_object_element_s* property_element = property_object->start;
 
               // Realign the arena for the property pointer to be 32-bit aligned.
-              char* property = (char*)arena->Allocate(0, 4);
-              properties[index] = property;
+              char* property = (char*)perm_arena->Allocate(0, 4);
               size_t property_length = 0;
 
               while (property_element) {
@@ -466,11 +464,11 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
 
                 property_length += alloc_size;
 
-                char* p = (char*)arena->Allocate(alloc_size, 1);
+                char* p = (char*)perm_arena->Allocate(alloc_size, 1);
 
                 // Allocate space for a comma to separate the properties
                 if (property_element != property_object->start) {
-                  arena->Allocate(1, 1);
+                  perm_arena->Allocate(1, 1);
                   p[0] = ',';
                   ++p;
                   ++property_length;
@@ -485,8 +483,8 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
                 property_element = property_element->next;
               }
 
-              arena->Allocate(1, 1);
-              properties[index][property_length] = 0;
+              registry->properties[id].data = property;
+              registry->properties[id].size = property_length;;
             }
             state_element = state_element->next;
           }
@@ -535,9 +533,12 @@ void AssetParser::LoadModels() {
 
           while (variant_element) {
             const char* variant_name = variant_element->name->string;
+            String variant_string(variant_name, strlen(variant_name));
 
-            if ((variant_element->name->string_size == 0 && properties[bid] == nullptr) ||
-                (properties[bid] != nullptr && strcmp(variant_name, properties[bid]) == 0) ||
+            String* properties = &registry->properties[bid];
+
+            if ((variant_element->name->string_size == 0 && properties->size == 0) ||
+                (properties->size > 0 && poly_strcmp(variant_string, *properties) == 0) ||
                 variant_element->next == nullptr) {
               json_object_s* state_details = nullptr;
 
@@ -565,15 +566,16 @@ void AssetParser::LoadModels() {
 
                   registry->states[bid].model = LoadModel(model_name, &texture_face_map, &texture_id_map);
 
-                  char* props = properties[bid];
+                  if (properties->size > 0) {
+                    String level_str = poly_strstr(*properties, "level=");
 
-                  if (props) {
-                    char* level_str = strstr(props, "level=");
+                    if (level_str.data != nullptr) {
+                      char convert[16];
 
-                    if (level_str) {
-                      level_str += 6;
+                      memcpy(convert, level_str.data + 6, level_str.size - 6);
+                      convert[level_str.size - 6] = 0;
 
-                      int level = atoi(level_str);
+                      int level = atoi(convert);
 
                       assert(level >= 0 && level <= 15);
 

@@ -111,6 +111,9 @@ struct BlockRegistry {
 
   size_t info_count;
   BlockStateInfo* infos;
+
+  size_t property_count;
+  String* properties;
 };
 
 } // namespace polymer
