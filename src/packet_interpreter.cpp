@@ -191,7 +191,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     if (dimension_type) {
       game->dimension = *dimension_type;
     } else {
-      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size, dimension_type_string.data);
+      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size,
+              dimension_type_string.data);
     }
 
     String dimension_identifier;
@@ -220,7 +221,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     if (dimension_type) {
       game->dimension = *dimension_type;
     } else {
-      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size, dimension_type_string.data);
+      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size,
+              dimension_type_string.data);
     }
 
     printf("Entered dimension with height range of %d to %d\n", game->dimension.min_y,
@@ -416,6 +418,137 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u64 block_entity_count;
     rb->ReadVarInt(&block_entity_count);
   } break;
+  case PlayProtocol::PlayerInfo: {
+    u64 action_value, player_count;
+
+    if (!rb->ReadVarInt(&action_value)) {
+      fprintf(stderr, "Failed to read PlayerInfo action varint.\n");
+      break;
+    }
+
+    if (!rb->ReadVarInt(&player_count)) {
+      fprintf(stderr, "Failed to read PlayerInfo player count varint.\n");
+      break;
+    }
+
+    for (u64 i = 0; i < player_count; ++i) {
+      ArenaSnapshot snapshot = trans_arena->GetSnapshot();
+
+      String uuid_string;
+
+      uuid_string.data = memory_arena_push_type_count(trans_arena, char, 16);
+      uuid_string.size = 16;
+
+      rb->ReadRawString(&uuid_string, 16);
+
+      enum class PlayerInfoAction { Add, UpdateGamemode, UpdateLatency, UpdateDisplayName, Remove, Count };
+
+      if (action_value >= (u64)PlayerInfoAction::Count) {
+        fprintf(stderr, "Failed to read valid PlayerInfo action.\n");
+        break;
+      }
+      PlayerInfoAction action = (PlayerInfoAction)action_value;
+
+      switch (action) {
+        case PlayerInfoAction::Add: {
+          String name;
+
+          name.data = memory_arena_push_type_count(trans_arena, char, 16);
+          name.size = 16;
+
+          name.size = rb->ReadString(&name);
+
+          String property_name;
+          property_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
+          property_name.size = 32767;
+
+          String property_value;
+          property_value.data = memory_arena_push_type_count(trans_arena, char, 32767);
+          property_value.size = 32767;
+
+          String signature;
+          signature.data = memory_arena_push_type_count(trans_arena, char, 32767);
+          signature.size = 32767;
+
+          u64 property_count;
+          rb->ReadVarInt(&property_count);
+
+          for (size_t i = 0; i < property_count; ++i) {
+            property_name.size = rb->ReadString(&property_name);
+            property_value.size = rb->ReadString(&property_value);
+
+            u8 is_signed = rb->ReadU8();
+
+            if (is_signed) {
+              signature.size = rb->ReadString(&signature);
+            }
+          }
+
+          u64 gamemode, ping;
+          rb->ReadVarInt(&gamemode);
+          rb->ReadVarInt(&ping);
+
+          u8 has_display_name = rb->ReadU8();
+          if (has_display_name) {
+            String display_name;
+
+            display_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
+            display_name.size = 32767;
+            display_name.size = rb->ReadString(&display_name);
+          }
+
+          u8 has_sig_data = rb->ReadU8();
+
+          if (has_sig_data) {
+            u64 timestamp = rb->ReadU64();
+            u64 public_key_size;
+
+            rb->ReadVarInt(&public_key_size);
+
+            String public_key;
+            public_key.data = memory_arena_push_type_count(trans_arena, char, public_key_size);
+            public_key.size = public_key_size;
+
+            rb->ReadRawString(&public_key, public_key_size);
+
+            u64 signature_size;
+
+            rb->ReadVarInt(&signature_size);
+
+            String signature;
+            signature.data = memory_arena_push_type_count(trans_arena, char, signature_size);
+            signature.size = signature_size;
+
+            rb->ReadRawString(&signature, signature_size);
+          }
+
+          printf("PlayerInfo add: %.*s\n", (u32)name.size, name.data);
+        } break;
+        case PlayerInfoAction::UpdateGamemode: {
+          u64 gamemode;
+
+          rb->ReadVarInt(&gamemode);
+          // TODO: Update player's gamemode for the provided UUID.
+        } break;
+        case PlayerInfoAction::UpdateLatency: {
+          u64 latency;
+
+          rb->ReadVarInt(&latency);
+          // TODO: Update player's latency for the provided UUID.
+        } break;
+        case PlayerInfoAction::UpdateDisplayName: {
+          // TODO: Update display name
+        } break;
+        case PlayerInfoAction::Remove: {
+          // TODO: Remove player from player list
+        } break;
+        default: {
+        } break;
+      }
+
+      trans_arena->Revert(snapshot);
+    }
+  } break;
   default:
     break;
   }
@@ -507,14 +640,20 @@ void PacketInterpreter::Interpret() {
         inflate_buffer.write_offset = inflate_buffer.read_offset = 0;
 
         mz_ulong mz_size = (mz_ulong)inflate_buffer.size;
-        int result = mz_uncompress((u8*)inflate_buffer.data, (mz_ulong*)&mz_size, (u8*)rb->data + rb->read_offset,
-                                   (mz_ulong)payload_size);
+        // Use the entire remaining packet as source length
+        mz_ulong source_len = (mz_ulong)(pkt_size - GetVarIntSize(payload_size));
+
+        // The connection read buffer is mirrored in virtual memory, so it is free to read off the end of the buffer for
+        // uncompressing.
+        int result =
+            mz_uncompress((u8*)inflate_buffer.data, (mz_ulong*)&mz_size, (u8*)rb->data + rb->read_offset, source_len);
 
         if (result == MZ_OK) {
+          // Swap to inflate buffer and set pkt_size to new decompressed size.
           rb = &inflate_buffer;
+          pkt_size = mz_size;
         } else {
-          // Decompression failed. Was compression disabled in the stream?
-          // TODO: This seems to happen once during login sequence. Don't know if bug with this implementation or server.
+          // Decompression failed.
           fprintf(stderr, "Failed to decompress packet. Skipping.\n");
           fflush(stderr);
           rb->read_offset = target_offset;
