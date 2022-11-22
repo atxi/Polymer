@@ -42,25 +42,47 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     printf("Type: %lld\n", type);
   } break;
   case PlayProtocol::PlayerChatMessage: {
+    u64 mesg_signature_size = 0;
+    bool has_mesg_signature = rb->ReadU8();
+
+    if (has_mesg_signature) {
+      rb->ReadVarInt(&mesg_signature_size);
+
+      String mesg_signature;
+      mesg_signature.data = memory_arena_push_type_count(trans_arena, char, mesg_signature_size);
+      mesg_signature.size = mesg_signature_size;
+
+      rb->ReadRawString(&mesg_signature, mesg_signature_size);
+    }
+
     String sstr;
     sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
 
-    size_t length = rb->ReadString(&sstr);
+    // Read and discard Sender UUID
+    rb->ReadRawString(&sstr, 16);
 
-    if (length > 0) {
-      printf("Signed chat: %.*s\n", (int)length, sstr.data);
-      fflush(stdout);
+    // Read and discard header signature
+    u64 header_sig_size = 0;
+    rb->ReadVarInt(&header_sig_size);
+    assert(header_sig_size <= sstr.size);
+    rb->ReadRawString(&sstr, header_sig_size);
+
+    // Read plain message
+    size_t mesg_length = rb->ReadString(&sstr);
+
+    bool has_formatted_mesg = rb->ReadU8();
+
+    if (has_formatted_mesg) {
+      mesg_length = rb->ReadString(&sstr);
     }
 
-    length = rb->ReadString(&sstr);
-
-    if (length > 0) {
-      printf("Unsigned chat: %.*s\n", (int)length, sstr.data);
-      fflush(stdout);
+    if (mesg_length > 0) {
+      printf("%.*s\n", (int)mesg_length, sstr.data);
     }
 
-    // TODO: Read more
+    u64 timestamp = rb->ReadU64();
+    u64 salt = rb->ReadU64();
   } break;
   case PlayProtocol::Disconnect: {
     String sstr;
@@ -132,7 +154,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       printf("Sending respawn packet.\n");
     }
   } break;
-  case PlayProtocol::BlockChange: {
+  case PlayProtocol::BlockUpdate: {
     u64 position_data = rb->ReadU64();
 
     u64 new_bid;
@@ -154,7 +176,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     game->OnBlockChange(x, y, z, (u32)new_bid);
   } break;
-  case PlayProtocol::JoinGame: {
+  case PlayProtocol::Login: {
     u32 entity_id = rb->ReadU32();
     bool is_hardcore = rb->ReadU8();
     u8 gamemode = rb->ReadU8();
@@ -230,7 +252,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     game->OnDimensionChange();
   } break;
-  case PlayProtocol::MultiBlockChange: {
+  case PlayProtocol::UpdateSectionBlocks: {
     u64 xzy = rb->ReadU64();
     bool inverse = rb->ReadU8();
 

@@ -255,7 +255,7 @@ int run() {
 
   connection->SetBlocking(false);
 
-  constexpr u32 kProtocolVersion = 759;
+  constexpr u32 kProtocolVersion = 760;
 
   connection->SendHandshake(kProtocolVersion, kServerIp, kServerPort, ProtocolState::Login);
   connection->SendLoginStart("polymer");
