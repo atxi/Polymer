@@ -87,6 +87,22 @@ void CreateRenderPassType(VkDevice device, VkFormat swap_format, VkRenderPass* r
   }
 }
 
+VkShaderModule CreateShaderModule(VkDevice device, String code) {
+  VkShaderModuleCreateInfo create_info{};
+
+  create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  create_info.codeSize = code.size;
+  create_info.pCode = (u32*)code.data;
+
+  VkShaderModule shader;
+
+  if (vkCreateShaderModule(device, &create_info, nullptr, &shader) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to create shader module.\n");
+  }
+
+  return shader;
+}
+
 String ReadEntireFile(const char* filename, MemoryArena* arena) {
   String result = {};
   FILE* f = fopen(filename, "rb");
@@ -224,7 +240,7 @@ void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim) {
           u32 lr = AlphaBlend(c[0], c[1], c[2], c[3], a0, a1, a2, a3, f, d, 0);
 
           // Convert back into gamma space
-          alpha = (u32)(powf(la  / 255.0f, 1.0f / 2.2f) * 255.0f);
+          alpha = (u32)(powf(la / 255.0f, 1.0f / 2.2f) * 255.0f);
           red = (u32)(powf(lr / 255.0f, 1.0f / 2.2f) * 255.0f);
           green = (u32)(powf(lg / 255.0f, 1.0f / 2.2f) * 255.0f);
           blue = (u32)(powf(lb / 255.0f, 1.0f / 2.2f) * 255.0f);
@@ -303,17 +319,28 @@ bool VulkanRenderer::Initialize(HWND hwnd) {
   return true;
 }
 
-void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
-  VkImageCreateInfo image_info = {};
+TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, size_t layers) {
+  TextureArray* new_texture = texture_array_manager.CreateTexture(*perm_arena);
 
-  texture_mips = (u32)std::floor(std::log2(width)) + 1;
+  if (new_texture == nullptr) {
+    fprintf(stderr, "Failed to allocate TextureArray.\n");
+    return nullptr;
+  }
+
+  TextureArray& result = *new_texture;
+
+  result.dimensions = (u16)width;
+  result.depth = (u16)layers;
+  result.mips = (u16)std::floor(std::log2(width)) + 1;
+
+  VkImageCreateInfo image_info = {};
 
   image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   image_info.imageType = VK_IMAGE_TYPE_2D;
   image_info.extent.width = (u32)width;
   image_info.extent.height = (u32)height;
   image_info.extent.depth = 1;
-  image_info.mipLevels = texture_mips;
+  image_info.mipLevels = result.mips;
   image_info.arrayLayers = (u32)layers;
   image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
   image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -323,24 +350,28 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
   image_info.samples = VK_SAMPLE_COUNT_1_BIT;
   image_info.flags = 0;
 
-  if (vkCreateImage(device, &image_info, nullptr, &texture_image) != VK_SUCCESS) {
+  if (vkCreateImage(device, &image_info, nullptr, &result.image) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture image.\n");
+    texture_array_manager.ReleaseTexture(result);
+    return nullptr;
   }
 
   VmaAllocationCreateInfo alloc_create_info = {};
   alloc_create_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
   alloc_create_info.flags = 0;
 
-  if (vmaAllocateMemoryForImage(allocator, texture_image, &alloc_create_info, &texture_allocation, nullptr) !=
+  if (vmaAllocateMemoryForImage(allocator, result.image, &alloc_create_info, &result.allocation, nullptr) !=
       VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate memory for texture image.\n");
+    texture_array_manager.ReleaseTexture(result);
+    return nullptr;
   }
 
-  vmaBindImageMemory(allocator, texture_allocation, texture_image);
+  vmaBindImageMemory(allocator, result.allocation, result.image);
 
   VkImageViewCreateInfo view_create_info = {};
   view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  view_create_info.image = texture_image;
+  view_create_info.image = result.image;
   view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
   view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
   view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -349,8 +380,10 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
   view_create_info.subresourceRange.baseArrayLayer = 0;
   view_create_info.subresourceRange.layerCount = (u32)layers;
 
-  if (vkCreateImageView(device, &view_create_info, nullptr, &texture_image_view) != VK_SUCCESS) {
+  if (vkCreateImageView(device, &view_create_info, nullptr, &result.image_view) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture image view.\n");
+    texture_array_manager.ReleaseTexture(result);
+    return nullptr;
   }
 
   VkPhysicalDeviceProperties properties = {};
@@ -372,15 +405,19 @@ void VulkanRenderer::CreateTexture(size_t width, size_t height, size_t layers) {
   sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
   sampler_info.mipLodBias = 0.0f;
   sampler_info.minLod = 0.0f;
-  sampler_info.maxLod = (float)texture_mips;
+  sampler_info.maxLod = (float)result.mips;
 
-  if (vkCreateSampler(device, &sampler_info, nullptr, &texture_sampler) != VK_SUCCESS) {
+  if (vkCreateSampler(device, &sampler_info, nullptr, &result.sampler) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture sampler.\n");
+    texture_array_manager.ReleaseTexture(result);
+    return nullptr;
   }
+
+  return new_texture;
 }
 
 void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout,
-                                           VkImageLayout new_layout, u32 base_layer, u32 layer_count) {
+                                           VkImageLayout new_layout, u32 base_layer, u32 layer_count, u32 mips) {
 
   VkImageMemoryBarrier barrier = {};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -391,7 +428,7 @@ void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkIma
   barrier.image = image;
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   barrier.subresourceRange.baseMipLevel = 0;
-  barrier.subresourceRange.levelCount = texture_mips;
+  barrier.subresourceRange.levelCount = mips;
   barrier.subresourceRange.baseArrayLayer = base_layer;
   barrier.subresourceRange.layerCount = layer_count;
   barrier.srcAccessMask = 0;
@@ -424,15 +461,13 @@ void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkIma
   EndOneShotCommandBuffer();
 }
 
-TexturePushState VulkanRenderer::BeginTexturePush(size_t dimensions, size_t layers) {
-  TexturePushState result = {};
-
-  VkBufferCreateInfo buffer_info = {};
+TextureArrayPushState VulkanRenderer::BeginTexturePush(TextureArray& texture) {
+  TextureArrayPushState result(texture);
 
   // Calculate the size of one texture with all of its mips.
   size_t texture_data_size = 0;
-  size_t current_dim = dimensions;
-  for (size_t i = 0; i < texture_mips; ++i) {
+  size_t current_dim = texture.dimensions;
+  for (size_t i = 0; i < texture.mips; ++i) {
     texture_data_size += current_dim * current_dim * 4;
     current_dim /= 2;
   }
@@ -440,7 +475,9 @@ TexturePushState VulkanRenderer::BeginTexturePush(size_t dimensions, size_t laye
   result.texture_data_size = texture_data_size;
 
   // Calculate the size for one giant buffer to hold all of the texture data.
-  size_t buffer_size = texture_data_size * layers;
+  size_t buffer_size = texture_data_size * texture.depth;
+
+  VkBufferCreateInfo buffer_info = {};
 
   buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   buffer_info.size = buffer_size;
@@ -454,30 +491,28 @@ TexturePushState VulkanRenderer::BeginTexturePush(size_t dimensions, size_t laye
   if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &result.buffer, &result.alloc, &result.alloc_info) !=
       VK_SUCCESS) {
     printf("Failed to create staging buffer for texture push.\n");
-    result = {};
     return result;
   }
 
   // Transition image to copy-destination optimal, then copy, then transition to shader-read optimal.
-  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, (u32)layers);
+  TransitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, (u32)texture.depth, texture.mips);
 
   BeginOneShotCommandBuffer();
-
-  result.layers = layers;
 
   return result;
 }
 
-void VulkanRenderer::CommitTexturePush(TexturePushState& state) {
+void VulkanRenderer::CommitTexturePush(TextureArrayPushState& state) {
   EndOneShotCommandBuffer();
   vmaDestroyBuffer(allocator, state.buffer, state.alloc);
 
-  TransitionImageLayout(texture_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, (u32)state.layers);
+  TransitionImageLayout(state.texture.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, (u32)state.texture.depth, state.texture.mips);
 }
 
-void VulkanRenderer::PushTexture(MemoryArena& temp_arena, TexturePushState& state, u8* texture, size_t index) {
+void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture,
+                                      size_t index) {
   if (texture == nullptr) return;
 
   u32 dim = 16;
@@ -493,7 +528,7 @@ void VulkanRenderer::PushTexture(MemoryArena& temp_arena, TexturePushState& stat
 
   size_t destination = state.texture_data_size * index;
 
-  for (size_t i = 0; i < texture_mips; ++i) {
+  for (size_t i = 0; i < state.texture.mips; ++i) {
     if (state.alloc_info.pMappedData) {
       size_t size = dim * dim * 4;
 
@@ -518,8 +553,8 @@ void VulkanRenderer::PushTexture(MemoryArena& temp_arena, TexturePushState& stat
       region.imageOffset = {0, 0, 0};
       region.imageExtent = {dim, dim, 1};
 
-      vkCmdCopyBufferToImage(oneshot_command_buffer, state.buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             1, &region);
+      vkCmdCopyBufferToImage(oneshot_command_buffer, state.buffer, state.texture.image,
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
       destination += size;
     }
@@ -530,11 +565,19 @@ void VulkanRenderer::PushTexture(MemoryArena& temp_arena, TexturePushState& stat
   temp_arena.Revert(snapshot);
 }
 
-void VulkanRenderer::GenerateMipmaps(u32 index) {
+void VulkanRenderer::FreeTextureArray(TextureArray& texture) {
+  vkDestroySampler(device, texture.sampler, nullptr);
+  vkDestroyImageView(device, texture.image_view, nullptr);
+  vmaDestroyImage(allocator, texture.image, texture.allocation);
+
+  texture_array_manager.ReleaseTexture(texture);
+}
+
+void VulkanRenderer::GenerateArrayMipmaps(TextureArray& texture, u32 index) {
   VkImageMemoryBarrier barrier = {};
 
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier.image = texture_image;
+  barrier.image = texture.image;
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -547,7 +590,7 @@ void VulkanRenderer::GenerateMipmaps(u32 index) {
   s32 width = 16;
   s32 height = 16;
 
-  for (u32 i = 1; i < texture_mips; ++i) {
+  for (u32 i = 1; i < texture.mips; ++i) {
     barrier.subresourceRange.baseMipLevel = i - 1;
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -571,7 +614,7 @@ void VulkanRenderer::GenerateMipmaps(u32 index) {
     blit.dstSubresource.baseArrayLayer = index;
     blit.dstSubresource.layerCount = 1;
 
-    vkCmdBlitImage(oneshot_command_buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture_image,
+    vkCmdBlitImage(oneshot_command_buffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture.image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
 
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -591,7 +634,7 @@ void VulkanRenderer::GenerateMipmaps(u32 index) {
     }
   }
 
-  barrier.subresourceRange.baseMipLevel = texture_mips - 1;
+  barrier.subresourceRange.baseMipLevel = texture.mips - 1;
   barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -684,7 +727,7 @@ bool VulkanRenderer::BeginFrame() {
   render_pass_info.renderArea.offset = {0, 0};
   render_pass_info.renderArea.extent = swap_extent;
 
-  chunk_renderer.BeginFrame(render_pass_info, current_frame, pipeline_layout, descriptor_sets[current_frame]);
+  chunk_renderer.BeginFrame(render_pass_info, current_frame);
 
   return true;
 }
@@ -895,64 +938,13 @@ void VulkanRenderer::CreateDescriptorPool() {
 }
 
 void VulkanRenderer::CreateDescriptorSets() {
-  VkDescriptorSetLayout layouts[kMaxFramesInFlight];
-
-  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
-    layouts[i] = descriptor_layout;
-  }
-
-  VkDescriptorSetAllocateInfo alloc_info = {};
-
-  alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  alloc_info.descriptorPool = descriptor_pool;
-  alloc_info.descriptorSetCount = kMaxFramesInFlight;
-  alloc_info.pSetLayouts = layouts;
-
-  if (vkAllocateDescriptorSets(device, &alloc_info, descriptor_sets) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate descriptor sets.");
-  }
-
-  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
-    VkDescriptorBufferInfo buffer_info = {};
-
-    buffer_info.buffer = uniform_buffers[i];
-    buffer_info.offset = 0;
-    buffer_info.range = sizeof(UniformBufferObject);
-
-    VkDescriptorImageInfo image_info = {};
-    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    image_info.imageView = texture_image_view;
-    image_info.sampler = texture_sampler;
-
-    VkWriteDescriptorSet descriptor_writes[2] = {};
-    descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[0].dstSet = descriptor_sets[i];
-    descriptor_writes[0].dstBinding = 0;
-    descriptor_writes[0].dstArrayElement = 0;
-    descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptor_writes[0].descriptorCount = 1;
-    descriptor_writes[0].pBufferInfo = &buffer_info;
-    descriptor_writes[0].pImageInfo = nullptr;
-    descriptor_writes[0].pTexelBufferView = nullptr;
-
-    descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[1].dstSet = descriptor_sets[i];
-    descriptor_writes[1].dstBinding = 1;
-    descriptor_writes[1].dstArrayElement = 0;
-    descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptor_writes[1].descriptorCount = 1;
-    descriptor_writes[1].pImageInfo = &image_info;
-    descriptor_writes[1].pBufferInfo = nullptr;
-    descriptor_writes[1].pTexelBufferView = nullptr;
-
-    vkUpdateDescriptorSets(device, polymer_array_count(descriptor_writes), descriptor_writes, 0, nullptr);
-  }
-
-  chunk_renderer.CreateDescriptors(device, descriptor_pool, layouts, texture_image_view, uniform_buffers);
+  chunk_renderer.CreateDescriptors(device, descriptor_pool, uniform_buffers);
 }
 
 void VulkanRenderer::CleanupSwapchain() {
   if (swapchain == VK_NULL_HANDLE || swap_image_count == 0) return;
+
+  vkDestroySampler(device, swap_sampler, nullptr);
 
   vmaFreeMemory(allocator, depth_allocation);
   vkDestroyImageView(device, depth_image_view, nullptr);
@@ -977,7 +969,6 @@ void VulkanRenderer::CleanupSwapchain() {
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
   chunk_renderer.Destroy(device, command_pool);
-  vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
 
   for (u32 i = 0; i < swap_image_count; i++) {
     vkDestroyImageView(device, swap_image_views[i], nullptr);
@@ -1083,84 +1074,33 @@ void VulkanRenderer::CreateRenderPass() {
   chunk_renderer.CreateRenderPass(device, swap_format);
 }
 
-void VulkanRenderer::CreateDescriptorSetLayout() {
-  VkDescriptorSetLayoutBinding ubo_binding = {};
-
-  ubo_binding.binding = 0;
-  ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  ubo_binding.descriptorCount = 1;
-  ubo_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-  VkDescriptorSetLayoutBinding sampler_binding{};
-  sampler_binding.binding = 1;
-  sampler_binding.descriptorCount = 1;
-  sampler_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  sampler_binding.pImmutableSamplers = nullptr;
-  sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-  VkDescriptorSetLayoutBinding layout_bindings[] = {ubo_binding, sampler_binding};
-
-  VkDescriptorSetLayoutCreateInfo layout_create_info = {};
-  layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  layout_create_info.bindingCount = polymer_array_count(layout_bindings);
-  layout_create_info.pBindings = layout_bindings;
-
-  if (vkCreateDescriptorSetLayout(device, &layout_create_info, nullptr, &descriptor_layout) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to create descriptor set layout.\n");
-  }
-}
-
 void VulkanRenderer::CreateGraphicsPipeline() {
-  String vert_code = ReadEntireFile("shaders/vert.spv", trans_arena);
-  String frag_code = ReadEntireFile("shaders/frag.spv", trans_arena);
-
-  if (vert_code.size == 0) {
-    fprintf(stderr, "Failed to read vertex shader file.\n");
-    return;
-  }
-
-  if (frag_code.size == 0) {
-    fprintf(stderr, "Failed to read fragment shader file.\n");
-    return;
-  }
-
-  VkPipelineLayoutCreateInfo pipeline_layout_create_info = {};
-  pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipeline_layout_create_info.setLayoutCount = 1;
-  pipeline_layout_create_info.pSetLayouts = &descriptor_layout;
-  pipeline_layout_create_info.pushConstantRangeCount = 0;
-  pipeline_layout_create_info.pPushConstantRanges = nullptr;
-
-  if (vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &pipeline_layout) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to create pipeline layout.\n");
-  }
-
-  VkShaderModule vertex_shader = CreateShaderModule(vert_code);
-  VkShaderModule frag_shader = CreateShaderModule(frag_code);
-
-  chunk_renderer.CreatePipeline(device, vertex_shader, frag_shader, swap_extent, pipeline_layout);
-
-  vkDestroyShaderModule(device, vertex_shader, nullptr);
-  vkDestroyShaderModule(device, frag_shader, nullptr);
-}
-
-VkShaderModule VulkanRenderer::CreateShaderModule(String code) {
-  VkShaderModuleCreateInfo create_info{};
-
-  create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  create_info.codeSize = code.size;
-  create_info.pCode = (u32*)code.data;
-
-  VkShaderModule shader;
-
-  if (vkCreateShaderModule(device, &create_info, nullptr, &shader) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to create shader module.\n");
-  }
-
-  return shader;
+  chunk_renderer.CreatePipeline(*trans_arena, device, swap_extent);
 }
 
 void VulkanRenderer::CreateImageViews() {
+  VkSamplerCreateInfo sampler_info = {};
+  sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  sampler_info.magFilter = VK_FILTER_NEAREST;
+  sampler_info.minFilter = VK_FILTER_NEAREST;
+  sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sampler_info.anisotropyEnable = VK_FALSE;
+  sampler_info.maxAnisotropy = 0;
+  sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+  sampler_info.unnormalizedCoordinates = VK_FALSE;
+  sampler_info.compareEnable = VK_FALSE;
+  sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
+  sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  sampler_info.mipLodBias = 0.0f;
+  sampler_info.minLod = 0.0f;
+  sampler_info.maxLod = 0.0f;
+
+  if (vkCreateSampler(device, &sampler_info, nullptr, &swap_sampler) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to create swap sampler.\n");
+  }
+
   for (u32 i = 0; i < swap_image_count; ++i) {
     VkImageViewCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1585,12 +1525,18 @@ bool VulkanRenderer::CreateInstance() {
 void VulkanRenderer::Cleanup() {
   vkDeviceWaitIdle(device);
 
-  vkDestroySampler(device, texture_sampler, nullptr);
-  vkDestroyImageView(device, texture_image_view, nullptr);
-  vmaDestroyImage(allocator, texture_image, texture_allocation);
-  CleanupSwapchain();
+  chunk_renderer.Cleanup(device);
 
-  vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
+  TextureArray* current = texture_array_manager.textures;
+  while (current) {
+    vkDestroySampler(device, current->sampler, nullptr);
+    vkDestroyImageView(device, current->image_view, nullptr);
+    vmaDestroyImage(allocator, current->image, current->allocation);
+    current = current->next;
+  }
+  texture_array_manager.Clear();
+
+  CleanupSwapchain();
 
   vmaDestroyAllocator(allocator);
 

@@ -137,6 +137,7 @@ int run() {
 
   g_trans_arena = &trans_arena;
 
+  vk_render.perm_arena = &perm_arena;
   vk_render.trans_arena = &trans_arena;
 
   printf("Polymer\n");
@@ -206,6 +207,7 @@ int run() {
     printf("Asset time: %f\n", frame_time);
     fflush(stdout);
 
+    vk_render.chunk_renderer.block_textures = g_game->assets.block_textures;
     game->block_registry = g_game->assets.block_registry;
   }
 
@@ -229,7 +231,7 @@ int run() {
 
   float frame_time = 0.0f;
 
-  vk_render.CreateDescriptorSetLayout();
+  vk_render.chunk_renderer.CreateLayoutSet(vk_render.device);
   vk_render.RecreateSwapchain();
 
   ConnectResult connect_result = connection->Connect(kServerIp, kServerPort);

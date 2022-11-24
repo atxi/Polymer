@@ -160,12 +160,20 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
 
   size_t texture_count = asset_parser.texture_count;
 
-  renderer.CreateTexture(16, 16, texture_count);
+  block_textures = renderer.CreateTextureArray(16, 16, texture_count);
 
-  render::TexturePushState push_state = renderer.BeginTexturePush(16, texture_count);
+  if (!block_textures) {
+    asset_parser.archive.Close();
+    trans_arena.Destroy();
+    texture_id_map = nullptr;
+    arena.Destroy();
+    return false;
+  }
+
+  render::TextureArrayPushState push_state = renderer.BeginTexturePush(*block_textures);
 
   for (size_t i = 0; i < texture_count; ++i) {
-    renderer.PushTexture(trans_arena, push_state, asset_parser.GetTexture(i), i);
+    renderer.PushArrayTexture(trans_arena, push_state, asset_parser.GetTexture(i), i);
   }
 
   renderer.CommitTexturePush(push_state);

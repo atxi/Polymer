@@ -10,6 +10,7 @@ namespace polymer {
 namespace render {
 
 struct VulkanRenderer;
+struct TextureArray;
 
 } // namespace render
 
@@ -28,6 +29,7 @@ typedef HashMap<MapStringKey, TextureIdRange, MapStringHasher> TextureIdMap;
 // fluid id.
 struct AssetSystem {
   TextureIdMap* texture_id_map = nullptr;
+  render::TextureArray* block_textures = nullptr;
   BlockRegistry block_registry;
 
   MemoryArena arena;

@@ -29,6 +29,12 @@
 namespace polymer {
 namespace render {
 
+void CreateRenderPassType(VkDevice device, VkFormat swap_format, VkRenderPass* render_pass,
+                          VkAttachmentDescription color_attachment, VkAttachmentDescription depth_attachment);
+
+VkShaderModule CreateShaderModule(VkDevice device, String code);
+String ReadEntireFile(const char* filename, MemoryArena* arena);
+
 constexpr size_t kMaxFramesInFlight = 2;
 
 struct QueueFamilyIndices {
@@ -59,21 +65,105 @@ struct RenderMesh {
   u32 vertex_count;
 };
 
-struct TexturePushState {
+struct TextureArray {
+  VmaAllocation allocation;
+  VkImage image;
+  VkImageView image_view;
+  VkSampler sampler;
+
+  u16 mips;
+  u16 depth;
+
+  // Width and height must be the same
+  // TODO: This shouldn't be required, but the mip generator might need updated.
+  u32 dimensions;
+
+  TextureArray* next;
+  TextureArray* prev;
+};
+
+// Stores state for creating a data push command to fill the texture array.
+// This allows it to push all of the textures at once for improved performance.
+struct TextureArrayPushState {
+  enum class Status { Success, ErrorBuffer, Initial };
+
+  TextureArray& texture;
+
   VkBuffer buffer;
   VmaAllocation alloc;
   VmaAllocationInfo alloc_info;
+  Status status;
 
   // Size of one texture with its mips.
   size_t texture_data_size;
-  size_t layers;
+
+  TextureArrayPushState(TextureArray& texture)
+      : texture(texture), buffer(), alloc(), alloc_info(), status(Status::Initial), texture_data_size(0) {}
 };
 
-void CreateRenderPassType(VkDevice device, VkFormat swap_format, VkRenderPass* render_pass,
-                          VkAttachmentDescription color_attachment, VkAttachmentDescription depth_attachment);
+struct TextureArrayManager {
+  TextureArray* textures = nullptr;
+  TextureArray* last = nullptr;
+  TextureArray* free = nullptr;
+
+  TextureArray* CreateTexture(MemoryArena& arena) {
+    TextureArray* result = nullptr;
+
+    if (free) {
+      result = free;
+      free = free->next;
+    } else {
+      result = memory_arena_push_type(&arena, TextureArray);
+    }
+
+    result->next = textures;
+    result->prev = nullptr;
+
+    if (textures) {
+      textures->prev = result;
+    }
+    textures = result;
+
+    if (last == nullptr) {
+      last = result;
+    }
+
+    return result;
+  }
+
+  void ReleaseTexture(TextureArray& texture) {
+    if (texture.prev) {
+      texture.prev->next = texture.next;
+    }
+
+    if (texture.next) {
+      texture.next->prev = texture.prev;
+    }
+
+    if (&texture == last) {
+      last = last->prev;
+    }
+  }
+
+  void Clear() {
+    TextureArray* current = textures;
+
+    while (current) {
+      TextureArray* texture = current;
+      current = current->next;
+
+      texture->next = free;
+      free = texture;
+    }
+
+    last = nullptr;
+    textures = nullptr;
+  }
+};
 
 struct VulkanRenderer {
   MemoryArena* trans_arena;
+  MemoryArena* perm_arena;
   HWND hwnd;
 
   VkInstance instance;
@@ -90,14 +180,12 @@ struct VulkanRenderer {
   VkImageView swap_image_views[6];
   VkFramebuffer swap_framebuffers[6];
   VkFormat swap_format;
+  VkSampler swap_sampler;
   VkExtent2D swap_extent;
-  VkPipelineLayout pipeline_layout;
 
   VmaAllocator allocator;
 
   VkDescriptorPool descriptor_pool;
-  VkDescriptorSetLayout descriptor_layout;
-  VkDescriptorSet descriptor_sets[kMaxFramesInFlight];
   VkBuffer uniform_buffers[kMaxFramesInFlight];
   VmaAllocation uniform_allocations[kMaxFramesInFlight];
 
@@ -113,11 +201,7 @@ struct VulkanRenderer {
   VmaAllocation depth_allocation;
   VkImageView depth_image_view;
 
-  VmaAllocation texture_allocation;
-  VkImage texture_image;
-  VkImageView texture_image_view;
-  VkSampler texture_sampler;
-  u32 texture_mips;
+  TextureArrayManager texture_array_manager;
 
   size_t current_frame = 0;
   u32 current_image = 0;
@@ -131,8 +215,6 @@ struct VulkanRenderer {
   VmaAllocation staging_allocs[2048];
   size_t staging_buffer_count = 0;
 
-  TexturePushState texture_push_state;
-
   bool Initialize(HWND hwnd);
   void RecreateSwapchain();
   bool BeginFrame();
@@ -140,17 +222,16 @@ struct VulkanRenderer {
   void Render();
   void Cleanup();
 
-  void CreateDescriptorSetLayout();
-
   // Uses staging buffer to push data to the gpu and returns the allocation buffers.
   RenderMesh AllocateMesh(u8* data, size_t size, size_t count);
   void FreeMesh(RenderMesh* mesh);
 
-  TexturePushState BeginTexturePush(size_t dimensions, size_t layers);
-  void CommitTexturePush(TexturePushState& state);
+  TextureArrayPushState BeginTexturePush(TextureArray& texture);
+  void CommitTexturePush(TextureArrayPushState& state);
 
-  void CreateTexture(size_t width, size_t height, size_t layers);
-  void PushTexture(MemoryArena& temp_arena, TexturePushState& state, u8* texture, size_t index);
+  TextureArray* CreateTextureArray(size_t width, size_t height, size_t layers);
+  void PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture, size_t index);
+  void FreeTextureArray(TextureArray& texture);
 
   void BeginMeshAllocation();
   void EndMeshAllocation();
@@ -160,9 +241,9 @@ struct VulkanRenderer {
 private:
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
 
-  void GenerateMipmaps(u32 index);
+  void GenerateArrayMipmaps(TextureArray& texture, u32 index);
   void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout,
-                             u32 base_layer, u32 layer_count);
+                             u32 base_layer, u32 layer_count, u32 mips);
   void CreateDepthBuffer();
   void CreateUniformBuffers();
   void BeginOneShotCommandBuffer();
@@ -176,7 +257,6 @@ private:
   void CreateDescriptorPool();
   void CreateDescriptorSets();
   void CreateGraphicsPipeline();
-  VkShaderModule CreateShaderModule(String code);
   void CreateImageViews();
   void CreateSwapchain();
   VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
