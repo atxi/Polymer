@@ -4,17 +4,21 @@
 #include "../asset_system.h"
 #include "../memory.h"
 #include "../types.h"
-#include "../world.h"
+#include "../world/world.h"
 
 namespace polymer {
 
+namespace world {
+
 struct BlockRegistry;
+
+} // namespace world
 
 namespace render {
 
 struct ChunkBuildQueue {
   size_t count;
-  ChunkCoord data[1024];
+  world::ChunkCoord data[1024];
 
   inline void Enqueue(s32 chunk_x, s32 chunk_z) {
     data[count++] = {chunk_x, chunk_z};
@@ -51,15 +55,15 @@ struct ChunkBuildContext {
   u32 x_index = 0;
   u32 z_index = 0;
 
-  ChunkSection* section = nullptr;
-  ChunkSection* east_section = nullptr;
-  ChunkSection* west_section = nullptr;
-  ChunkSection* north_section = nullptr;
-  ChunkSection* south_section = nullptr;
-  ChunkSection* south_east_section = nullptr;
-  ChunkSection* south_west_section = nullptr;
-  ChunkSection* north_east_section = nullptr;
-  ChunkSection* north_west_section = nullptr;
+  world::ChunkSection* section = nullptr;
+  world::ChunkSection* east_section = nullptr;
+  world::ChunkSection* west_section = nullptr;
+  world::ChunkSection* north_section = nullptr;
+  world::ChunkSection* south_section = nullptr;
+  world::ChunkSection* south_east_section = nullptr;
+  world::ChunkSection* south_west_section = nullptr;
+  world::ChunkSection* north_east_section = nullptr;
+  world::ChunkSection* north_west_section = nullptr;
 
   ChunkBuildContext(s32 chunk_x, s32 chunk_z) : chunk_x(chunk_x), chunk_z(chunk_z) {}
 
@@ -80,7 +84,7 @@ struct ChunkBuildContext {
             north_west_section->info->x == chunk_x - 1);
   }
 
-  bool GetNeighbors(World* world) {
+  bool GetNeighbors(world::World* world) {
     x_index = world->GetChunkCacheIndex(chunk_x);
     z_index = world->GetChunkCacheIndex(chunk_z);
 
@@ -105,17 +109,17 @@ struct ChunkBuildContext {
 
 // TODO: This should support any number of draw layers
 struct ChunkVertexData {
-  u8* vertices[kRenderLayerCount];
-  size_t vertex_count[kRenderLayerCount];
+  u8* vertices[render::kRenderLayerCount];
+  size_t vertex_count[render::kRenderLayerCount];
 
   ChunkVertexData() {
-    for (size_t i = 0; i < kRenderLayerCount; ++i) {
+    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
       vertices[i] = nullptr;
       vertex_count[i] = 0;
     }
   }
 
-  inline void SetVertices(RenderLayer layer, u8* new_vertices, size_t new_vertex_count) {
+  inline void SetVertices(render::RenderLayer layer, u8* new_vertices, size_t new_vertex_count) {
     vertices[(size_t)layer] = new_vertices;
     vertex_count[(size_t)layer] = new_vertex_count;
   }
@@ -140,7 +144,8 @@ struct BlockMesher {
   MemoryArena alpha_arena;
   MemoryArena flora_arena;
 
-  ChunkVertexData CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx, s32 chunk_y);
+  ChunkVertexData CreateMesh(AssetSystem& assets, world::BlockRegistry& block_registry, ChunkBuildContext* ctx,
+                             s32 chunk_y);
 };
 
 } // namespace render

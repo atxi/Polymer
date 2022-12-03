@@ -1,7 +1,7 @@
 #ifndef POLYMER_DIMENSION_H_
 #define POLYMER_DIMENSION_H_
 
-#include "types.h"
+#include "../types.h"
 
 namespace polymer {
 
@@ -12,6 +12,8 @@ namespace nbt {
 struct TagCompound;
 
 } // namespace nbt
+
+namespace world {
 
 enum DimensionFlags {
   DimensionFlag_PiglinSafe = (1 << 0),
@@ -53,6 +55,7 @@ struct DimensionCodec {
   DimensionType* GetDimensionType(const String& identifier);
 };
 
+} // namespace world
 } // namespace polymer
 
 #endif

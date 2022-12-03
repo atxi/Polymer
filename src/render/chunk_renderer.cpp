@@ -9,6 +9,9 @@
 namespace polymer {
 namespace render {
 
+static const char* kChunkVertShader = "shaders/chunk_vert.spv";
+static const char* kChunkFragShader = "shaders/chunk_frag.spv";
+
 void BlockRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
   VkAttachmentDescription color_attachment = {};
 
@@ -234,8 +237,8 @@ void ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size
 }
 
 void ChunkRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkExtent2D swap_extent) {
-  String vert_code = ReadEntireFile("shaders/vert.spv", &trans_arena);
-  String frag_code = ReadEntireFile("shaders/frag.spv", &trans_arena);
+  String vert_code = ReadEntireFile(kChunkVertShader, &trans_arena);
+  String frag_code = ReadEntireFile(kChunkFragShader, &trans_arena);
 
   if (vert_code.size == 0) {
     fprintf(stderr, "Failed to read ChunkRenderer vertex shader file.\n");

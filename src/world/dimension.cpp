@@ -1,8 +1,9 @@
 #include "dimension.h"
-#include "memory.h"
-#include "nbt.h"
+#include "../memory.h"
+#include "../nbt.h"
 
 namespace polymer {
+namespace world {
 
 inline void ProcessDimensionFlag(DimensionType* type, nbt::TagCompound& element_compound, String name, u32 flag) {
   nbt::Tag* flag_tag = element_compound.GetNamedTag(name);
@@ -133,4 +134,5 @@ DimensionType* DimensionCodec::GetDimensionType(const String& identifier) {
   return nullptr;
 }
 
+} // namespace world
 } // namespace polymer

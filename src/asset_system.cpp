@@ -7,6 +7,15 @@
 
 #include "stb_image.h"
 
+using polymer::render::RenderLayer;
+using polymer::world::BlockElement;
+using polymer::world::BlockFace;
+using polymer::world::BlockModel;
+using polymer::world::BlockRegistry;
+using polymer::world::BlockState;
+using polymer::world::BlockStateInfo;
+using polymer::world::RenderableFace;
+
 namespace polymer {
 
 constexpr size_t kTextureSize = 16 * 16 * 4;
@@ -492,7 +501,7 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
               }
 
               registry->properties[id].data = property;
-              registry->properties[id].size = property_length;;
+              registry->properties[id].size = property_length;
             }
             state_element = state_element->next;
           }

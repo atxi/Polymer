@@ -10,6 +10,12 @@
 
 #define LOG_PACKET_ID 0
 
+using polymer::world::DimensionCodec;
+using polymer::world::DimensionType;
+using polymer::world::ChunkSection;
+using polymer::world::ChunkSectionInfo;
+using polymer::world::kChunkColumnCount;
+
 namespace polymer {
 
 PacketInterpreter::PacketInterpreter(GameState* game)

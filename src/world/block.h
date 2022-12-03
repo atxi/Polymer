@@ -1,10 +1,11 @@
 #ifndef POLYMER_BLOCK_H_
 #define POLYMER_BLOCK_H_
 
-#include "math.h"
-#include "types.h"
+#include "../math.h"
+#include "../types.h"
 
 namespace polymer {
+namespace world {
 
 enum class BlockFace { Down, Up, North, South, West, East };
 
@@ -116,6 +117,7 @@ struct BlockRegistry {
   String* properties;
 };
 
+} // namespace world
 } // namespace polymer
 
 #endif

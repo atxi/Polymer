@@ -10,6 +10,8 @@ namespace polymer {
 
 struct MemoryArena;
 
+namespace render {
+
 enum class RenderLayer {
   Standard,
   Flora,
@@ -19,8 +21,6 @@ enum class RenderLayer {
 };
 
 constexpr size_t kRenderLayerCount = (size_t)RenderLayer::Count;
-
-namespace render {
 
 struct TextureArray;
 

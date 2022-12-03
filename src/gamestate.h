@@ -2,15 +2,14 @@
 #define POLYMER_GAMESTATE_H_
 
 #include "asset_system.h"
-#include "block.h"
 #include "camera.h"
 #include "connection.h"
-#include "dimension.h"
-#include "types.h"
-#include "world.h"
-
 #include "render/block_mesher.h"
 #include "render/render.h"
+#include "types.h"
+#include "world/block.h"
+#include "world/dimension.h"
+#include "world/world.h"
 
 namespace polymer {
 
@@ -32,16 +31,16 @@ struct GameState {
   MemoryArena* trans_arena;
   render::VulkanRenderer* renderer;
   AssetSystem assets;
-  DimensionCodec dimension_codec;
-  DimensionType dimension;
+  world::DimensionCodec dimension_codec;
+  world::DimensionType dimension;
 
   Connection connection;
   Camera camera;
-  World world;
+  world::World world;
 
   render::ChunkBuildQueue build_queue;
 
-  BlockRegistry block_registry;
+  world::BlockRegistry block_registry;
 
   GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena);
 

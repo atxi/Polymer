@@ -1,10 +1,10 @@
 #ifndef POLYMER_ASSET_SYSTEM_H_
 #define POLYMER_ASSET_SYSTEM_H_
 
-#include "block.h"
 #include "hash_map.h"
 #include "memory.h"
 #include "types.h"
+#include "world/block.h"
 
 namespace polymer {
 namespace render {
@@ -30,7 +30,7 @@ typedef HashMap<MapStringKey, TextureIdRange, MapStringHasher> TextureIdMap;
 struct AssetSystem {
   TextureIdMap* texture_id_map = nullptr;
   render::TextureArray* block_textures = nullptr;
-  BlockRegistry block_registry;
+  world::BlockRegistry block_registry;
 
   MemoryArena arena;
 

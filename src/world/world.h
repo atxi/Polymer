@@ -1,11 +1,12 @@
 #ifndef POLYMER_WORLD_H_
 #define POLYMER_WORLD_H_
 
-#include "types.h"
+#include "../types.h"
 
-#include "render/render.h"
+#include "../render/render.h"
 
 namespace polymer {
+namespace world {
 
 constexpr size_t kChunkColumnCount = 24;
 
@@ -31,7 +32,7 @@ struct ChunkSection {
 };
 
 struct ChunkMesh {
-  render::RenderMesh meshes[kRenderLayerCount];
+  render::RenderMesh meshes[render::kRenderLayerCount];
 };
 
 constexpr size_t kChunkCacheSize = 32;
@@ -46,6 +47,7 @@ struct World {
   }
 };
 
+} // namespace world
 } // namespace polymer
 
 #endif

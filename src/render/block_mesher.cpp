@@ -1,6 +1,16 @@
 #include "block_mesher.h"
 
-#include "../block.h"
+#include "../world/block.h"
+
+using polymer::world::BlockElement;
+using polymer::world::BlockFace;
+using polymer::world::BlockModel;
+using polymer::world::BlockRegistry;
+using polymer::world::BlockState;
+using polymer::world::BlockStateInfo;
+using polymer::world::ChunkSection;
+using polymer::world::kChunkColumnCount;
+using polymer::world::RenderableFace;
 
 namespace polymer {
 namespace render {

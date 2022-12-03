@@ -14,6 +14,14 @@
 
 #include <unordered_map>
 
+using polymer::render::kRenderLayerCount;
+using polymer::render::RenderLayer;
+using polymer::world::ChunkMesh;
+using polymer::world::ChunkSection;
+using polymer::world::ChunkSectionInfo;
+using polymer::world::kChunkCacheSize;
+using polymer::world::kChunkColumnCount;
+
 namespace polymer {
 
 GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
