@@ -1,11 +1,15 @@
+#include "block_assets.h"
+
+#include "../memory.h"
+#include "../render/chunk_renderer.h"
+#include "../render/render.h"
+#include "../world/block.h"
 #include "asset_system.h"
-#include "hash_map.h"
-#include "json.h"
-#include "render/render.h"
 
-#include "zip_archive.h"
+#include "../json.h"
+#include "../zip_archive.h"
 
-#include "stb_image.h"
+#include "../stb_image.h"
 
 using polymer::render::RenderLayer;
 using polymer::world::BlockElement;
@@ -17,6 +21,7 @@ using polymer::world::BlockStateInfo;
 using polymer::world::RenderableFace;
 
 namespace polymer {
+namespace asset {
 
 constexpr size_t kTextureSize = 16 * 16 * 4;
 constexpr size_t kNamespaceSize = 10; // "minecraft:"
@@ -46,7 +51,7 @@ struct AssetParser {
   MemoryArena* arena;
   BlockRegistry* registry;
 
-  ZipArchive archive;
+  ZipArchive& archive;
 
   TextureIdMap texture_id_map;
   TextureIdMap* full_texture_id_map = nullptr;
@@ -61,8 +66,9 @@ struct AssetParser {
   size_t texture_count;
   u8* texture_images;
 
-  AssetParser(MemoryArena* arena, BlockRegistry* registry)
-      : arena(arena), registry(registry), model_count(0), parsed_block_map(*arena), texture_id_map(*arena) {}
+  AssetParser(MemoryArena* arena, BlockRegistry* registry, ZipArchive& archive)
+      : arena(arena), registry(registry), archive(archive), model_count(0), parsed_block_map(*arena),
+        texture_id_map(*arena) {}
 
   size_t ParseBlockModels();
   size_t ParseBlockStates();
@@ -81,7 +87,72 @@ struct AssetParser {
   }
 };
 
-void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
+bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archive, const char* blocks_path) {
+  assets = memory_arena_push_type(&perm_arena, BlockAssets);
+
+  assets->block_registry.info_count = 0;
+  assets->block_registry.state_count = 0;
+  assets->texture_id_map = memory_arena_construct_type(&perm_arena, TextureIdMap, perm_arena);
+
+  AssetParser parser(&trans_arena, &assets->block_registry, archive);
+
+  parser.full_texture_id_map = assets->texture_id_map;
+
+  if (!parser.ParseBlockModels()) {
+    return false;
+  }
+
+  if (!parser.ParseBlockStates()) {
+    return false;
+  }
+
+  if (parser.LoadTextures() == 0) {
+    return false;
+  }
+
+  if (!parser.ParseBlocks(&perm_arena, blocks_path)) {
+    return false;
+  }
+
+  parser.LoadModels();
+
+  size_t texture_count = parser.texture_count;
+
+  assets->block_textures = renderer.CreateTextureArray(16, 16, texture_count);
+
+  if (!assets->block_textures) {
+    return false;
+  }
+
+  render::TextureArrayPushState push_state = renderer.BeginTexturePush(*assets->block_textures);
+
+  for (size_t i = 0; i < texture_count; ++i) {
+    renderer.PushArrayTexture(trans_arena, push_state, parser.GetTexture(i), i);
+  }
+
+  renderer.CommitTexturePush(push_state);
+
+  for (size_t i = 0; i < parser.model_count; ++i) {
+    free(parser.models[i].root_value);
+  }
+
+  for (size_t i = 0; i < assets->block_registry.state_count; ++i) {
+    world::BlockState* state = assets->block_registry.states + i;
+
+    for (size_t j = 0; j < state->model.element_count; ++j) {
+      world::BlockElement* element = state->model.elements + j;
+
+      // This is wrong, just being done to make grass look better for now.
+      if (element->rescale && i == 1398) {
+        element->to.y = 0.75f;
+      }
+    }
+  }
+
+  return true;
+}
+
+static void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
   if (poly_contains(texture, POLY_STR("water_still"))) {
     face->render_layer = (int)RenderLayer::Alpha;
   } else if (poly_contains(texture, POLY_STR("grass.png"))) {
@@ -97,117 +168,6 @@ void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
   } else if (poly_contains(texture, POLY_STR("grass_block_top.png"))) {
     face->random_flip = 1;
   }
-}
-
-AssetSystem::AssetSystem() {
-  block_registry.info_count = 0;
-  block_registry.state_count = 0;
-}
-
-TextureIdRange AssetSystem::GetTextureRange(const String& texture_path) {
-  if (texture_id_map) {
-    TextureIdRange* find = texture_id_map->Find(MapStringKey(texture_path));
-
-    if (find) {
-      return *find;
-    }
-  }
-
-  TextureIdRange empty = {};
-
-  return empty;
-}
-
-bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path) {
-  MemoryArena trans_arena = CreateArena(Megabytes(128));
-  AssetParser asset_parser(&trans_arena, &block_registry);
-
-  arena = CreateArena(Megabytes(128));
-  texture_id_map = memory_arena_construct_type(&arena, TextureIdMap, arena);
-  asset_parser.full_texture_id_map = texture_id_map;
-
-  if (!asset_parser.archive.Open(jar_path)) {
-    trans_arena.Destroy();
-    texture_id_map = nullptr;
-    arena.Destroy();
-    return false;
-  }
-
-  if (!asset_parser.ParseBlockModels()) {
-    asset_parser.archive.Close();
-    trans_arena.Destroy();
-    texture_id_map = nullptr;
-    arena.Destroy();
-    return false;
-  }
-
-  if (!asset_parser.ParseBlockStates()) {
-    asset_parser.archive.Close();
-    trans_arena.Destroy();
-    texture_id_map = nullptr;
-    arena.Destroy();
-    return false;
-  }
-
-  if (asset_parser.LoadTextures() == 0) {
-    asset_parser.archive.Close();
-    trans_arena.Destroy();
-    texture_id_map = nullptr;
-    arena.Destroy();
-    return false;
-  }
-
-  if (!asset_parser.ParseBlocks(&this->arena, blocks_path)) {
-    asset_parser.archive.Close();
-    trans_arena.Destroy();
-    texture_id_map = nullptr;
-    arena.Destroy();
-    return false;
-  }
-
-  asset_parser.LoadModels();
-
-  size_t texture_count = asset_parser.texture_count;
-
-  block_textures = renderer.CreateTextureArray(16, 16, texture_count);
-
-  if (!block_textures) {
-    asset_parser.archive.Close();
-    trans_arena.Destroy();
-    texture_id_map = nullptr;
-    arena.Destroy();
-    return false;
-  }
-
-  render::TextureArrayPushState push_state = renderer.BeginTexturePush(*block_textures);
-
-  for (size_t i = 0; i < texture_count; ++i) {
-    renderer.PushArrayTexture(trans_arena, push_state, asset_parser.GetTexture(i), i);
-  }
-
-  renderer.CommitTexturePush(push_state);
-
-  for (size_t i = 0; i < asset_parser.model_count; ++i) {
-    free(asset_parser.models[i].root_value);
-  }
-
-  asset_parser.archive.Close();
-  trans_arena.Destroy();
-
-  for (size_t i = 0; i < block_registry.state_count; ++i) {
-    BlockState* state = block_registry.states + i;
-
-    for (size_t j = 0; j < state->model.element_count; ++j) {
-      BlockElement* element = state->model.elements + j;
-
-      // This is wrong, just being done to make grass look better for now.
-      if (element->rescale && i == 1398) {
-        element->to.y = 0.75f;
-      }
-    }
-  }
-
-  return true;
 }
 
 inline String GetFilenameBase(const char* filename) {
@@ -937,4 +897,5 @@ void ParsedBlockModel::InsertElements(BlockModel* model, FaceTextureMap* texture
   }
 }
 
+} // namespace asset
 } // namespace polymer

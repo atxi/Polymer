@@ -1,4 +1,4 @@
-#include "asset_system.h"
+#include "asset/asset_system.h"
 #include "connection.h"
 #include "gamestate.h"
 #include "memory.h"
@@ -207,8 +207,8 @@ int run() {
     printf("Asset time: %f\n", frame_time);
     fflush(stdout);
 
-    vk_render.chunk_renderer.block_textures = g_game->assets.block_textures;
-    game->block_registry = g_game->assets.block_registry;
+    vk_render.chunk_renderer.block_textures = g_game->assets.block_assets->block_textures;
+    game->block_registry = g_game->assets.block_assets->block_registry;
   }
 
   MSG msg = {};

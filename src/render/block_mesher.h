@@ -1,7 +1,7 @@
 #ifndef POLYMER_RENDER_BLOCKMESHER_H_
 #define POLYMER_RENDER_BLOCKMESHER_H_
 
-#include "../asset_system.h"
+#include "../asset/asset_system.h"
 #include "../memory.h"
 #include "../types.h"
 #include "../world/world.h"
@@ -139,12 +139,12 @@ struct BlockMesher {
     flora_arena.Destroy();
   }
 
-  TextureIdRange water_texture;
+  asset::TextureIdRange water_texture;
   MemoryArena& arena;
   MemoryArena alpha_arena;
   MemoryArena flora_arena;
 
-  ChunkVertexData CreateMesh(AssetSystem& assets, world::BlockRegistry& block_registry, ChunkBuildContext* ctx,
+  ChunkVertexData CreateMesh(asset::AssetSystem& assets, world::BlockRegistry& block_registry, ChunkBuildContext* ctx,
                              s32 chunk_y);
 };
 

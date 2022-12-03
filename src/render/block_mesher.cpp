@@ -623,7 +623,7 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
 // TODO: Real implementation.
 static void MeshFluid(PushContext& context, BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk,
                       u32 bid, size_t relative_x, size_t relative_y, size_t relative_z, const Vector3f& chunk_base,
-                      TextureIdRange texture_range, u32 tintindex, RenderLayer layer) {
+                      asset::TextureIdRange texture_range, u32 tintindex, RenderLayer layer) {
   float x = (float)relative_x;
   float y = (float)relative_y;
   float z = (float)relative_z;
@@ -872,8 +872,8 @@ static void MeshFluid(PushContext& context, BlockRegistry& block_registry, Memor
   }
 }
 
-ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& block_registry, ChunkBuildContext* ctx,
-                                        s32 chunk_y) {
+ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistry& block_registry,
+                                        ChunkBuildContext* ctx, s32 chunk_y) {
   ChunkVertexData vertex_data;
 
   s32 chunk_x = ctx->chunk_x;
@@ -883,7 +883,8 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
   if (!bordered_chunk) return vertex_data;
 
   water_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_still.png"));
-  TextureIdRange lava_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/lava_still.png"));
+  asset::TextureIdRange lava_texture =
+      assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/lava_still.png"));
 
   // Create an initial pointer to transient memory with zero vertices allocated.
   // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
@@ -910,7 +911,7 @@ ChunkVertexData BlockMesher::CreateMesh(AssetSystem& assets, BlockRegistry& bloc
 
         if (desc.fluid) {
           RenderLayer layer = RenderLayer::Standard;
-          TextureIdRange texture_range = lava_texture;
+          asset::TextureIdRange texture_range = lava_texture;
           u32 tintindex = 0xFF;
 
           if (desc.water) {

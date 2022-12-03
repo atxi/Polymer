@@ -1,7 +1,7 @@
 #ifndef POLYMER_GAMESTATE_H_
 #define POLYMER_GAMESTATE_H_
 
-#include "asset_system.h"
+#include "asset/asset_system.h"
 #include "camera.h"
 #include "connection.h"
 #include "render/block_mesher.h"
@@ -30,7 +30,7 @@ struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
   render::VulkanRenderer* renderer;
-  AssetSystem assets;
+  asset::AssetSystem assets;
   world::DimensionCodec dimension_codec;
   world::DimensionType dimension;
 
