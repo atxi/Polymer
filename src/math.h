@@ -531,6 +531,29 @@ inline mat4 Perspective(float fov, float aspect_ratio, float near, float far) {
   return mat4(values);
 }
 
+inline mat4 Orthographic(float left, float right, float bottom, float top, float near_plane, float far_plane) {
+  float values[] = {
+      2.0f / (right - left),
+      0,
+      0,
+      0,
+      0,
+      2 / (top - bottom),
+      0,
+      0,
+      0,
+      0,
+      -2.0f / (far_plane - near_plane),
+      0,
+      -(right + left) / (right - left),
+      -(top + bottom) / (top - bottom),
+      -(far_plane + near_plane) / (far_plane - near_plane),
+      1,
+  };
+
+  return mat4(values);
+}
+
 inline mat4 Rotate(const mat4& M, float angle, const Vector3f& rotate_axis) {
   float c = std::cos(angle);
   float s = std::sin(angle);

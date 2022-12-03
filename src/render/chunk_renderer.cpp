@@ -72,7 +72,7 @@ void AlphaRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
   color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
   color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
   color_attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
   VkAttachmentDescription depth_attachment = {};
   depth_attachment.format = VK_FORMAT_D32_SFLOAT;
@@ -158,81 +158,6 @@ void ChunkRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
 
   if (vkCreateSampler(device, &sampler_info, nullptr, &flora_renderer.sampler) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture sampler.\n");
-  }
-}
-
-void ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size_t current_frame,
-                                   VkSemaphore image_available_semaphore, VkSemaphore render_finished_semaphore,
-                                   VkFence frame_fence) {
-  VkCommandBuffer block_buffer = block_renderer.command_buffers[current_frame];
-  VkCommandBuffer flora_buffer = flora_renderer.command_buffers[current_frame];
-  VkCommandBuffer alpha_buffer = alpha_renderer.command_buffers[current_frame];
-
-  vkCmdEndRenderPass(block_buffer);
-
-  if (vkEndCommandBuffer(block_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record command buffer.\n");
-  }
-
-  vkCmdEndRenderPass(flora_buffer);
-  if (vkEndCommandBuffer(flora_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record command buffer.\n");
-  }
-
-  vkCmdEndRenderPass(alpha_buffer);
-
-  if (vkEndCommandBuffer(alpha_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record alpha command buffer.\n");
-  }
-
-  {
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore waitSemaphores[] = {image_available_semaphore};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = waitSemaphores;
-    submit_info.pWaitDstStageMask = waitStages;
-
-    VkCommandBuffer buffers[2] = {block_buffer, flora_buffer};
-
-    submit_info.commandBufferCount = polymer_array_count(buffers);
-    submit_info.pCommandBuffers = buffers;
-
-    VkSemaphore signal_semaphores[] = {block_finished_semaphores[current_frame]};
-
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = signal_semaphores;
-
-    if (vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to submit draw command buffer.\n");
-    }
-  }
-
-  {
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore waitSemaphores[] = {block_finished_semaphores[current_frame]};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = waitSemaphores;
-    submit_info.pWaitDstStageMask = waitStages;
-
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &alpha_buffer;
-
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = &render_finished_semaphore;
-
-    vkResetFences(device, 1, &frame_fence);
-
-    if (vkQueueSubmit(graphics_queue, 1, &submit_info, frame_fence) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to submit draw command buffer.\n");
-    }
   }
 }
 
@@ -454,7 +379,25 @@ void ChunkRenderer::CreateCommandBuffers(VkDevice device, VkCommandPool command_
   }
 }
 
-void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool, VkBuffer* uniform_buffers) {
+void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool) {
+  VkBufferCreateInfo buffer_info = {};
+
+  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffer_info.size = sizeof(ChunkRenderUBO);
+  buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+  VmaAllocationCreateInfo alloc_create_info = {};
+  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+  alloc_create_info.flags = 0;
+
+  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
+    if (vmaCreateBuffer(renderer->allocator, &buffer_info, &alloc_create_info, uniform_buffers + i,
+                        uniform_allocations + i, nullptr) != VK_SUCCESS) {
+      printf("Failed to create ChunkRenderer uniform buffer.\n");
+    }
+  }
+
   VkDescriptorSetLayout layouts[kMaxFramesInFlight];
 
   for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
@@ -481,7 +424,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
 
     buffer_info.buffer = uniform_buffers[i];
     buffer_info.offset = 0;
-    buffer_info.range = sizeof(UniformBufferObject);
+    buffer_info.range = sizeof(ChunkRenderUBO);
 
     VkDescriptorImageInfo block_image_info = {};
     block_image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -601,6 +544,79 @@ bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t cu
   return true;
 }
 
+VkSemaphore ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size_t current_frame,
+                                          VkSemaphore image_available_semaphore, VkFence frame_fence) {
+  VkCommandBuffer block_buffer = block_renderer.command_buffers[current_frame];
+  VkCommandBuffer flora_buffer = flora_renderer.command_buffers[current_frame];
+  VkCommandBuffer alpha_buffer = alpha_renderer.command_buffers[current_frame];
+
+  vkCmdEndRenderPass(block_buffer);
+
+  if (vkEndCommandBuffer(block_buffer) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to record command buffer.\n");
+  }
+
+  vkCmdEndRenderPass(flora_buffer);
+  if (vkEndCommandBuffer(flora_buffer) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to record command buffer.\n");
+  }
+
+  vkCmdEndRenderPass(alpha_buffer);
+
+  if (vkEndCommandBuffer(alpha_buffer) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to record alpha command buffer.\n");
+  }
+
+  {
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &image_available_semaphore;
+    submit_info.pWaitDstStageMask = waitStages;
+
+    VkCommandBuffer buffers[2] = {block_buffer, flora_buffer};
+
+    submit_info.commandBufferCount = polymer_array_count(buffers);
+    submit_info.pCommandBuffers = buffers;
+
+    VkSemaphore signal_semaphores[] = {block_finished_semaphores[current_frame]};
+
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to submit draw command buffer.\n");
+    }
+  }
+
+  {
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    // Wait for the opaque rendering to finish before submitting alpha rendering.
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &block_finished_semaphores[current_frame];
+    submit_info.pWaitDstStageMask = waitStages;
+
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &alpha_buffer;
+
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = &block_finished_semaphores[current_frame];
+
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to submit draw command buffer.\n");
+    }
+  }
+
+  return block_finished_semaphores[current_frame];
+}
+
 void ChunkRenderer::Destroy(VkDevice device, VkCommandPool command_pool) {
   vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, block_renderer.command_buffers);
   vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, flora_renderer.command_buffers);
@@ -630,6 +646,10 @@ void ChunkRenderer::CreateSyncObjects(VkDevice device) {
 void ChunkRenderer::CleanupSwapchain(VkDevice device) {
   for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
     vkDestroySemaphore(device, block_finished_semaphores[i], nullptr);
+  }
+
+  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
+    vmaDestroyBuffer(renderer->allocator, uniform_buffers[i], uniform_allocations[i]);
   }
 }
 

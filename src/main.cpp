@@ -208,6 +208,7 @@ int run() {
     fflush(stdout);
 
     vk_render.chunk_renderer.block_textures = g_game->assets.block_assets->block_textures;
+    vk_render.font_renderer.glyph_page_texture = g_game->assets.glyph_page_texture;
     game->block_registry = g_game->assets.block_assets->block_registry;
   }
 
@@ -231,7 +232,8 @@ int run() {
 
   float frame_time = 0.0f;
 
-  vk_render.chunk_renderer.CreateLayoutSet(vk_render.device);
+  vk_render.chunk_renderer.CreateLayoutSet(vk_render, vk_render.device);
+  vk_render.font_renderer.CreateLayoutSet(vk_render, vk_render.device);
   vk_render.RecreateSwapchain();
 
   ConnectResult connect_result = connection->Connect(kServerIp, kServerPort);
@@ -277,6 +279,16 @@ int run() {
 
     if (vk_render.BeginFrame()) {
       game->Update(frame_time / 1000.0f, &g_input);
+
+      if (average_frame_time > 0.0f) {
+        char fps_text[256] = {};
+        sprintf(fps_text, "FPS: %d", (u32)(1000.0f / average_frame_time));
+        vk_render.font_renderer.RenderText(Vector3f(8, 8, 0), String(fps_text));
+      }
+
+      vk_render.font_renderer.RenderText(Vector3f(8, 24, 0), POLY_STR("Test"));
+      vk_render.font_renderer.RenderText(Vector3f(8, 40, 0), POLY_STR("Output"));
+
       vk_render.Render();
     }
 

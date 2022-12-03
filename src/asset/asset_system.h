@@ -23,10 +23,14 @@ namespace asset {
 struct AssetSystem {
   MemoryArena perm_arena;
   BlockAssets* block_assets = nullptr;
+  render::TextureArray* glyph_page_texture = nullptr;
 
   AssetSystem();
 
   bool Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path);
+
+  bool LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_arena, MemoryArena& trans_arena,
+                ZipArchive& archive);
 
   TextureIdRange GetTextureRange(const String& texture_path);
 };

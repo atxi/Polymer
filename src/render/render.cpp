@@ -319,7 +319,7 @@ bool VulkanRenderer::Initialize(HWND hwnd) {
   return true;
 }
 
-TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, size_t layers) {
+TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, size_t layers, bool enable_mips) {
   TextureArray* new_texture = texture_array_manager.CreateTexture(*perm_arena);
 
   if (new_texture == nullptr) {
@@ -331,7 +331,11 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
 
   result.dimensions = (u16)width;
   result.depth = (u16)layers;
-  result.mips = (u16)std::floor(std::log2(width)) + 1;
+  if (enable_mips) {
+    result.mips = (u16)std::floor(std::log2(width)) + 1;
+  } else {
+    result.mips = 1;
+  }
 
   VkImageCreateInfo image_info = {};
 
@@ -402,7 +406,11 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
   sampler_info.unnormalizedCoordinates = VK_FALSE;
   sampler_info.compareEnable = VK_FALSE;
   sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
-  sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  if (enable_mips) {
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  } else {
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  }
   sampler_info.mipLodBias = 0.0f;
   sampler_info.minLod = 0.0f;
   sampler_info.maxLod = (float)result.mips;
@@ -515,7 +523,7 @@ void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushS
                                       size_t index) {
   if (texture == nullptr) return;
 
-  u32 dim = 16;
+  u32 dim = state.texture.dimensions;
 
   ArenaSnapshot snapshot = temp_arena.GetSnapshot();
 
@@ -728,6 +736,7 @@ bool VulkanRenderer::BeginFrame() {
   render_pass_info.renderArea.extent = swap_extent;
 
   chunk_renderer.BeginFrame(render_pass_info, current_frame);
+  font_renderer.BeginFrame(render_pass_info, current_frame);
 
   return true;
 }
@@ -741,13 +750,34 @@ void VulkanRenderer::Render() {
 
   image_fences[image_index] = frame_fences[current_frame];
 
-  VkSemaphore finished_signal_semaphores[] = {render_finished_semaphores[current_frame]};
-
   VkSemaphore image_sema = image_available_semaphores[current_frame];
-  VkSemaphore end_sema = render_finished_semaphores[current_frame];
 
-  chunk_renderer.SubmitCommands(device, graphics_queue, current_frame, image_sema, end_sema,
-                                frame_fences[current_frame]);
+  VkSemaphore chunk_semaphore =
+      chunk_renderer.SubmitCommands(device, graphics_queue, current_frame, image_sema, frame_fences[current_frame]);
+  VkSemaphore font_semaphore = font_renderer.SubmitCommands(device, graphics_queue, current_frame, chunk_semaphore);
+
+  // Wait on the last semaphore and perform a final empty submission to signal the fence.
+  {
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &font_semaphore;
+    submit_info.pWaitDstStageMask = waitStages;
+
+    submit_info.commandBufferCount = 0;
+    submit_info.pCommandBuffers = nullptr;
+
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = &font_semaphore;
+
+    vkResetFences(device, 1, &frame_fences[current_frame]);
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, frame_fences[current_frame]) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to submit final draw command buffer.\n");
+    }
+  }
 
   VkSwapchainKHR swapchains[] = {swapchain};
 
@@ -755,7 +785,7 @@ void VulkanRenderer::Render() {
 
   present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   present_info.waitSemaphoreCount = 1;
-  present_info.pWaitSemaphores = finished_signal_semaphores;
+  present_info.pWaitSemaphores = &font_semaphore;
   present_info.swapchainCount = 1;
   present_info.pSwapchains = swapchains;
   present_info.pImageIndices = &image_index;
@@ -896,26 +926,6 @@ void VulkanRenderer::FreeMesh(RenderMesh* mesh) {
   }
 }
 
-void VulkanRenderer::CreateUniformBuffers() {
-  VkBufferCreateInfo buffer_info = {};
-
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = sizeof(UniformBufferObject);
-  buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  VmaAllocationCreateInfo alloc_create_info = {};
-  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-  alloc_create_info.flags = 0;
-
-  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, uniform_buffers + i, uniform_allocations + i,
-                        nullptr) != VK_SUCCESS) {
-      printf("Failed to create uniform buffer.\n");
-    }
-  }
-}
-
 void VulkanRenderer::CreateDescriptorPool() {
   VkDescriptorPoolSize pool_sizes[2] = {};
 
@@ -938,7 +948,8 @@ void VulkanRenderer::CreateDescriptorPool() {
 }
 
 void VulkanRenderer::CreateDescriptorSets() {
-  chunk_renderer.CreateDescriptors(device, descriptor_pool, uniform_buffers);
+  chunk_renderer.CreateDescriptors(device, descriptor_pool);
+  font_renderer.CreateDescriptors(device, descriptor_pool);
 }
 
 void VulkanRenderer::CleanupSwapchain() {
@@ -951,10 +962,10 @@ void VulkanRenderer::CleanupSwapchain() {
   vkDestroyImage(device, depth_image, nullptr);
 
   chunk_renderer.CleanupSwapchain(device);
+  font_renderer.CleanupSwapchain(device);
 
   for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
     vkDestroySemaphore(device, image_available_semaphores[i], nullptr);
-    vkDestroySemaphore(device, render_finished_semaphores[i], nullptr);
     vkDestroyFence(device, frame_fences[i], nullptr);
   }
 
@@ -962,13 +973,10 @@ void VulkanRenderer::CleanupSwapchain() {
     vkDestroyFramebuffer(device, swap_framebuffers[i], nullptr);
   }
 
-  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
-    vmaDestroyBuffer(allocator, uniform_buffers[i], uniform_allocations[i]);
-  }
-
   vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
   chunk_renderer.Destroy(device, command_pool);
+  font_renderer.Destroy(device, command_pool);
 
   for (u32 i = 0; i < swap_image_count; i++) {
     vkDestroyImageView(device, swap_image_views[i], nullptr);
@@ -994,7 +1002,6 @@ void VulkanRenderer::RecreateSwapchain() {
   CreateDepthBuffer();
   CreateImageViews();
   CreateRenderPass();
-  CreateUniformBuffers();
   CreateDescriptorPool();
   CreateDescriptorSets();
   CreateGraphicsPipeline();
@@ -1016,11 +1023,10 @@ void VulkanRenderer::CreateSyncObjects() {
   fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
   chunk_renderer.CreateSyncObjects(device);
+  font_renderer.CreateSyncObjects(device);
 
   for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    if (vkCreateSemaphore(device, &semaphore_info, nullptr, image_available_semaphores + i) != VK_SUCCESS ||
-        vkCreateSemaphore(device, &semaphore_info, nullptr, render_finished_semaphores + i) != VK_SUCCESS) {
-
+    if (vkCreateSemaphore(device, &semaphore_info, nullptr, image_available_semaphores + i) != VK_SUCCESS) {
       fprintf(stderr, "Failed to create semaphores.\n");
     }
 
@@ -1036,6 +1042,7 @@ void VulkanRenderer::CreateSyncObjects() {
 
 void VulkanRenderer::CreateCommandBuffers() {
   chunk_renderer.CreateCommandBuffers(device, command_pool);
+  font_renderer.CreateCommandBuffers(*this, device, command_pool);
 }
 
 void VulkanRenderer::CreateCommandPool() {
@@ -1072,10 +1079,12 @@ void VulkanRenderer::CreateFramebuffers() {
 
 void VulkanRenderer::CreateRenderPass() {
   chunk_renderer.CreateRenderPass(device, swap_format);
+  font_renderer.CreateRenderPass(device, swap_format);
 }
 
 void VulkanRenderer::CreateGraphicsPipeline() {
   chunk_renderer.CreatePipeline(*trans_arena, device, swap_extent);
+  font_renderer.CreatePipeline(*trans_arena, device, swap_extent);
 }
 
 void VulkanRenderer::CreateImageViews() {
@@ -1526,6 +1535,7 @@ void VulkanRenderer::Cleanup() {
   vkDeviceWaitIdle(device);
 
   chunk_renderer.Cleanup(device);
+  font_renderer.Cleanup(device);
 
   TextureArray* current = texture_array_manager.textures;
   while (current) {

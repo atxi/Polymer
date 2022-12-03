@@ -17,6 +17,7 @@
 #endif
 
 #include "chunk_renderer.h"
+#include "font_renderer.h"
 
 #include "../buffer.h"
 #include "../math.h"
@@ -186,13 +187,10 @@ struct VulkanRenderer {
   VmaAllocator allocator;
 
   VkDescriptorPool descriptor_pool;
-  VkBuffer uniform_buffers[kMaxFramesInFlight];
-  VmaAllocation uniform_allocations[kMaxFramesInFlight];
 
   VkCommandPool command_pool;
   VkCommandBuffer oneshot_command_buffer;
   VkSemaphore image_available_semaphores[kMaxFramesInFlight];
-  VkSemaphore render_finished_semaphores[kMaxFramesInFlight];
 
   VkFence frame_fences[kMaxFramesInFlight];
   VkFence image_fences[6];
@@ -209,6 +207,7 @@ struct VulkanRenderer {
   bool invalid_swapchain;
 
   ChunkRenderer chunk_renderer;
+  FontRenderer font_renderer;
 
   // A list of staging buffers that need to be freed after pushing the oneshot allocation command buffer.
   VkBuffer staging_buffers[2048];
@@ -229,7 +228,7 @@ struct VulkanRenderer {
   TextureArrayPushState BeginTexturePush(TextureArray& texture);
   void CommitTexturePush(TextureArrayPushState& state);
 
-  TextureArray* CreateTextureArray(size_t width, size_t height, size_t layers);
+  TextureArray* CreateTextureArray(size_t width, size_t height, size_t layers, bool enable_mips = true);
   void PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture, size_t index);
   void FreeTextureArray(TextureArray& texture);
 
@@ -245,7 +244,6 @@ private:
   void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout,
                              u32 base_layer, u32 layer_count, u32 mips);
   void CreateDepthBuffer();
-  void CreateUniformBuffers();
   void BeginOneShotCommandBuffer();
   void EndOneShotCommandBuffer();
   void CleanupSwapchain();

@@ -117,15 +117,17 @@ void GameState::Update(float dt, InputState* input) {
   // Render game world
   camera.aspect_ratio = (float)renderer->swap_extent.width / renderer->swap_extent.height;
 
-  render::UniformBufferObject ubo;
+  render::ChunkRenderUBO ubo;
   void* data = nullptr;
 
   ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
   ubo.frame = (u32)(frame_acc * 8.0f);
 
-  vmaMapMemory(renderer->allocator, renderer->uniform_allocations[renderer->current_frame], &data);
-  memcpy(data, ubo.mvp.data, sizeof(render::UniformBufferObject));
-  vmaUnmapMemory(renderer->allocator, renderer->uniform_allocations[renderer->current_frame]);
+  render::ChunkRenderer& chunk_renderer = renderer->chunk_renderer;
+
+  vmaMapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame], &data);
+  memcpy(data, ubo.mvp.data, sizeof(ubo));
+  vmaUnmapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame]);
 
   Frustum frustum = camera.GetViewFrustum();
 

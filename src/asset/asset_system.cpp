@@ -8,6 +8,9 @@
 
 #include "../stb_image.h"
 
+#include <algorithm>
+#include <stdlib.h>
+
 namespace polymer {
 namespace asset {
 
@@ -53,8 +56,69 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
 
   this->block_assets = block_loader.assets;
 
+  if (!LoadFont(renderer, perm_arena, trans_arena, archive)) {
+    this->glyph_page_texture = nullptr;
+    fprintf(stderr, "Failed to load fonts.\n");
+  }
+
   archive.Close();
   trans_arena.Destroy();
+
+  return true;
+}
+
+bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_arena, MemoryArena& trans_arena,
+                           ZipArchive& archive) {
+  constexpr size_t kTexturePathPrefixSize = sizeof("assets/minecraft/textures/font/unicode_page_") - 1;
+  constexpr int kRequiredDimension = 256;
+  // Theres 0x00 through 0xFF different unicode pages.
+  constexpr int kPageCount = 256;
+
+  // TODO: The font data should be loaded from json instead of hardcoding the path here.
+  size_t unicode_page_count = 0;
+  ZipArchiveElement* files =
+      archive.ListFiles(&trans_arena, "assets/minecraft/textures/font/unicode_page", &unicode_page_count);
+
+  if (unicode_page_count == 0) {
+    return false;
+  }
+
+  glyph_page_texture = renderer.CreateTextureArray(kRequiredDimension, kRequiredDimension, kPageCount, false);
+
+  if (!glyph_page_texture) {
+    return false;
+  }
+
+  render::TextureArrayPushState glyph_page_push = renderer.BeginTexturePush(*glyph_page_texture);
+
+  for (size_t i = 0; i < unicode_page_count; ++i) {
+    size_t size = 0;
+    u8* raw_image = (u8*)archive.ReadFile(&trans_arena, files[i].name, &size);
+
+    assert(raw_image);
+
+    int width, height, channels;
+
+    // TODO: Could be loaded directly into the arena with a define
+    stbi_uc* image = stbi_load_from_memory(raw_image, (int)size, &width, &height, &channels, STBI_rgb_alpha);
+    if (image == nullptr) {
+      continue;
+    }
+
+    if (width != kRequiredDimension || height != kRequiredDimension) {
+      fprintf(stderr, "Error loading font sheet %s with bad dimensions %d, %d\n", files[i].name, width, height);
+      stbi_image_free(image);
+      continue;
+    }
+
+    // Grab the page index based on the filename
+    char* page_index_str = files[i].name + kTexturePathPrefixSize;
+    long page_index = strtol(page_index_str, nullptr, 16);
+
+    renderer.PushArrayTexture(trans_arena, glyph_page_push, image, page_index);
+  }
+
+  renderer.CommitTexturePush(glyph_page_push);
 
   return true;
 }
