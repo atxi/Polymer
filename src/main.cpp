@@ -281,14 +281,21 @@ int run() {
     if (vk_render.BeginFrame()) {
       game->Update(frame_time / 1000.0f, &g_input);
 
-      if (average_frame_time > 0.0f) {
-        char fps_text[256] = {};
-        sprintf(fps_text, "FPS: %d", (u32)(1000.0f / average_frame_time));
-        vk_render.font_renderer.RenderText(Vector3f(8, 8, 0), String(fps_text));
-      }
+      vk_render.font_renderer.RenderText(Vector3f(8, 8, 0), POLY_STR("Polymer"));
 
-      vk_render.font_renderer.RenderText(Vector3f(8, 24, 0), POLY_STR("Test"));
-      vk_render.font_renderer.RenderText(Vector3f(8, 40, 0), POLY_STR("Output"));
+      char text[256] = {};
+      int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
+      sprintf(text, "%d fps", fps);
+
+      vk_render.font_renderer.RenderText(Vector3f(8, 24, 0), String(text));
+
+      sprintf(text, "(%.02f, %.02f, %.02f)", g_game->camera.position.x, g_game->camera.position.y,
+              g_game->camera.position.z);
+
+      vk_render.font_renderer.RenderText(Vector3f(8, 40, 0), String(text));
+
+      sprintf(text, "%d chunks rendered", g_game->chunk_render_count);
+      vk_render.font_renderer.RenderText(Vector3f(8, 56, 0), String(text));
 
       vk_render.Render();
     }

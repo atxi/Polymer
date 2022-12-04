@@ -38,6 +38,8 @@ struct GameState {
   Camera camera;
   world::World world;
 
+  u32 chunk_render_count;
+
   render::ChunkBuildQueue build_queue;
 
   world::BlockRegistry block_registry;

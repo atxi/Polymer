@@ -133,6 +133,8 @@ void GameState::Update(float dt, InputState* input) {
 
   VkDeviceSize offsets[] = {0};
 
+  chunk_render_count = 0;
+
   for (s32 chunk_z = 0; chunk_z < (s32)kChunkCacheSize; ++chunk_z) {
     for (s32 chunk_x = 0; chunk_x < (s32)kChunkCacheSize; ++chunk_x) {
       ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
@@ -154,6 +156,8 @@ void GameState::Update(float dt, InputState* input) {
             render::RenderMesh* standard_mesh = &mesh->meshes[(size_t)RenderLayer::Standard];
             render::RenderMesh* flora_mesh = &mesh->meshes[(size_t)RenderLayer::Flora];
             render::RenderMesh* alpha_mesh = &mesh->meshes[(size_t)RenderLayer::Alpha];
+
+            ++chunk_render_count;
 
             if (standard_mesh->vertex_count > 0) {
               VkCommandBuffer block_buffer =
