@@ -26,22 +26,33 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
   Vector3f pos = screen_position;
   FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
 
-  constexpr float kSkip = 16;
-
   // TODO: Implement the rest such as scaling
   // TODO: Should probably use index buffer
   for (size_t i = 0; i < str.size; ++i) {
     if (str.data[i] != ' ') {
-      PushVertex(mapped_vertices, vertex_count, pos, Vector2f(0, 0), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(0, 1), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(16, 0, 0), Vector2f(1, 0), str.data[i]);
+      u32 glyph_id = str.data[i];
+      u8 size_entry = glyph_size_table[glyph_id];
 
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(16, 0, 0), Vector2f(1, 0), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(0, 1), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(16, 16, 0), Vector2f(1, 1), str.data[i]);
+      int start_raw = (size_entry >> 4);
+      int end_raw = (size_entry & 0x0F) + 1;
+
+      float start = (start_raw) / 16.0f;
+      float end = (end_raw) / 16.0f;
+      float width = (float)(end_raw - start_raw);
+
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), Vector2f(start, 0), str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(start, 1), str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), str.data[i]);
+
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(start, 1), str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 16, 0), Vector2f(end, 1), str.data[i]);
+
+      pos.x += width + 2;
+    } else {
+      constexpr float kSpaceSkip = 6;
+      pos.x += kSpaceSkip;
     }
-
-    pos.x += 8;
   }
 }
 
@@ -224,7 +235,7 @@ void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkE
   blend_attachment.colorWriteMask =
       VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-  blend_attachment.blendEnable = VK_FALSE;
+  blend_attachment.blendEnable = VK_TRUE;
   blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
   blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
   blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;

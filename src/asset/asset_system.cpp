@@ -120,6 +120,13 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
 
   renderer.CommitTexturePush(glyph_page_push);
 
+  size_t table_size = 0;
+  char* temp_glyph_size_table = archive.ReadFile(&trans_arena, "assets/minecraft/font/glyph_sizes.bin", &table_size);
+
+  glyph_size_table = memory_arena_push_type_count(&perm_arena, u8, table_size);
+
+  memcpy(glyph_size_table, temp_glyph_size_table, table_size);
+
   return true;
 }
 

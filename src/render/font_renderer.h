@@ -46,6 +46,7 @@ struct FontRenderer {
   size_t vertex_count = 0;
 
   TextureArray* glyph_page_texture;
+  u8* glyph_size_table;
 
   FontRenderPipeline pipeline;
 

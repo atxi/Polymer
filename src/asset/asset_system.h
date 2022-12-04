@@ -24,6 +24,7 @@ struct AssetSystem {
   MemoryArena perm_arena;
   BlockAssets* block_assets = nullptr;
   render::TextureArray* glyph_page_texture = nullptr;
+  u8* glyph_size_table = nullptr;
 
   AssetSystem();
 
