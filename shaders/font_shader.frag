@@ -14,7 +14,7 @@ void main() {
   
   outColor = diffuse * fragColorMod;
 
-  if (outColor.a <= 0.6) {
+  if (outColor.a <= 0.1) {
     discard;
   }
 }

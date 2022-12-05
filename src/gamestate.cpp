@@ -157,7 +157,7 @@ void GameState::Update(float dt, InputState* input) {
             render::RenderMesh* flora_mesh = &mesh->meshes[(size_t)RenderLayer::Flora];
             render::RenderMesh* alpha_mesh = &mesh->meshes[(size_t)RenderLayer::Alpha];
 
-            ++chunk_render_count;
+            bool rendered = false;
 
             if (standard_mesh->vertex_count > 0) {
               VkCommandBuffer block_buffer =
@@ -165,6 +165,7 @@ void GameState::Update(float dt, InputState* input) {
 
               vkCmdBindVertexBuffers(block_buffer, 0, 1, &standard_mesh->vertex_buffer, offsets);
               vkCmdDraw(block_buffer, standard_mesh->vertex_count, 1, 0, 0);
+              rendered = true;
             }
 
             if (flora_mesh->vertex_count > 0) {
@@ -173,6 +174,7 @@ void GameState::Update(float dt, InputState* input) {
 
               vkCmdBindVertexBuffers(flora_buffer, 0, 1, &flora_mesh->vertex_buffer, offsets);
               vkCmdDraw(flora_buffer, flora_mesh->vertex_count, 1, 0, 0);
+              rendered = true;
             }
 
             if (alpha_mesh->vertex_count > 0) {
@@ -181,6 +183,11 @@ void GameState::Update(float dt, InputState* input) {
 
               vkCmdBindVertexBuffers(alpha_buffer, 0, 1, &alpha_mesh->vertex_buffer, offsets);
               vkCmdDraw(alpha_buffer, alpha_mesh->vertex_count, 1, 0, 0);
+              rendered = true;
+            }
+
+            if (rendered) {
+              ++chunk_render_count;
             }
           }
         }

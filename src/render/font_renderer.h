@@ -24,6 +24,8 @@ struct FontRenderUBO {
 struct FontVertex {
   Vector3f position;
   Vector2f uv;
+
+  u32 rgba;
   u32 glyph_id;
 };
 
@@ -36,6 +38,13 @@ struct FontRenderPipeline {
 };
 
 constexpr size_t kFontRenderMaxCharacters = 2048;
+
+enum FontStyleFlag {
+  FontStyle_None = 0,
+  FontStyle_DropShadow = (1 << 0),
+  FontStyle_Background = (1 << 1),
+};
+using FontStyleFlags = u32;
 
 struct FontRenderer {
   VulkanRenderer* renderer;
@@ -75,7 +84,8 @@ struct FontRenderer {
   void CreateSyncObjects(VkDevice device);
   void CleanupSwapchain(VkDevice device);
 
-  void RenderText(const Vector3f& screen_position, const String& str);
+  void RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style = FontStyle_None,
+                  const Vector4f& color = Vector4f(1, 1, 1, 1));
 
   void CreateLayoutSet(VulkanRenderer& renderer, VkDevice device);
 

@@ -12,22 +12,65 @@ namespace render {
 static const char* kFontVertShader = "shaders/font_vert.spv";
 static const char* kFontFragShader = "shaders/font_frag.spv";
 
-void PushVertex(FontVertex* mapped_vertices, size_t& vertex_count, const Vector3f& pos, const Vector2f& uv,
-                u32 glyph_id) {
+static void PushVertex(FontVertex* mapped_vertices, size_t& vertex_count, const Vector3f& pos, const Vector2f& uv,
+                       u32 rgba, u32 glyph_id) {
   FontVertex* vertex = mapped_vertices + vertex_count++;
 
   // TODO: Probably need to do unicode conversion for everything
   vertex->position = pos;
   vertex->uv = uv;
+  vertex->rgba = rgba;
   vertex->glyph_id = glyph_id;
 }
 
-void FontRenderer::RenderText(const Vector3f& screen_position, const String& str) {
-  Vector3f pos = screen_position;
-  FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
+// Renders a background for the text by sampling from the first glyph in the first unicode page.
+// This glyph has a solid pixel at the top corner, so that uv is used and tinted.
+static void PushTextBackground(FontVertex* mapped_vertices, size_t& vertex_count, const Vector3f& pos, float width) {
+  float start = 0.0f;
+  float end = 0.0f;
 
+  u32 gray = 40;
+  u32 alpha = 127;
+
+  u32 rgba = (alpha << 24) | (gray << 16) | (gray << 8) | gray;
+
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), Vector2f(0, 0), rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(0, 0), rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(0, 0), rgba, 0);
+
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(0, 0), rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(0, 0), rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 16, 0), Vector2f(0, 0), rgba, 0);
+}
+
+static int GetTextWidth(u8* glyph_size_table, const String& str) {
+  int width = 0;
+
+  if (str.size == 0) return width;
+
+  for (size_t i = 0; i < str.size; ++i) {
+    if (str.data[i] != ' ') {
+      u32 glyph_id = str.data[i];
+      u8 size_entry = glyph_size_table[glyph_id];
+
+      int start_raw = (size_entry >> 4);
+      int end_raw = (size_entry & 0x0F) + 1;
+
+      width += end_raw - start_raw + 2;
+    } else {
+      width += 6;
+    }
+  }
+
+  // Cut off the trailing width
+  return width - 2;
+}
+
+static void TextOutput(FontVertex* mapped_vertices, u8* glyph_size_table, size_t& vertex_count, Vector3f pos,
+                       const String& str, u32 rgba) {
   // TODO: Implement the rest such as scaling
   // TODO: Should probably use index buffer
+  // TODO: Very inefficient
   for (size_t i = 0; i < str.size; ++i) {
     if (str.data[i] != ' ') {
       u32 glyph_id = str.data[i];
@@ -39,14 +82,15 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
       float start = (start_raw) / 16.0f;
       float end = (end_raw) / 16.0f;
       float width = (float)(end_raw - start_raw);
+      constexpr float height = 16;
 
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), Vector2f(start, 0), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(start, 1), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), Vector2f(start, 0), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), Vector2f(start, 1), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), rgba, str.data[i]);
 
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 16, 0), Vector2f(start, 1), str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 16, 0), Vector2f(end, 1), str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), Vector2f(start, 1), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), Vector2f(end, 1), rgba, str.data[i]);
 
       pos.x += width + 2;
     } else {
@@ -54,6 +98,40 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
       pos.x += kSpaceSkip;
     }
   }
+}
+
+// This font rendering doesn't match Minecraft's font rendering because it uses ascii.png font multiplied by gui scale.
+// This is using the unicode page bitmap font instead.
+void FontRenderer::RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style,
+                              const Vector4f& color) {
+  FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
+
+  u32 r = (u32)(color.x * 255);
+  u32 g = (u32)(color.y * 255);
+  u32 b = (u32)(color.z * 255);
+  u32 a = (u32)(color.w * 255);
+  u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
+
+  if (style & FontStyle_Background) {
+    // Calculate total width and render the background before the font so it blends correctly.
+    constexpr float kHorizontalPadding = 4.0f;
+    float width = (float)GetTextWidth(glyph_size_table, str) + (kHorizontalPadding * 2);
+
+    PushTextBackground(mapped_vertices, vertex_count, screen_position + Vector3f(-kHorizontalPadding, 0, 0), width);
+  }
+
+  if (style & FontStyle_DropShadow) {
+    // Use 30% of the total color for the drop shadow color and render it offset by (1, 1).
+    u32 r = (u32)(color.x * 76);
+    u32 g = (u32)(color.y * 76);
+    u32 b = (u32)(color.z * 76);
+
+    u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
+
+    TextOutput(mapped_vertices, glyph_size_table, vertex_count, screen_position + Vector3f(1, 1, 0), str, rgba);
+  }
+
+  TextOutput(mapped_vertices, glyph_size_table, vertex_count, screen_position, str, rgba);
 }
 
 bool FontRenderPipeline::Create(VkDevice device) {
@@ -162,7 +240,7 @@ void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkE
   binding_description.stride = sizeof(FontVertex);
   binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-  VkVertexInputAttributeDescription attribute_descriptions[3];
+  VkVertexInputAttributeDescription attribute_descriptions[4];
   attribute_descriptions[0].binding = 0;
   attribute_descriptions[0].location = 0;
   attribute_descriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -176,7 +254,12 @@ void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkE
   attribute_descriptions[2].binding = 0;
   attribute_descriptions[2].location = 2;
   attribute_descriptions[2].format = VK_FORMAT_R32_UINT;
-  attribute_descriptions[2].offset = offsetof(FontVertex, glyph_id);
+  attribute_descriptions[2].offset = offsetof(FontVertex, rgba);
+
+  attribute_descriptions[3].binding = 0;
+  attribute_descriptions[3].location = 3;
+  attribute_descriptions[3].format = VK_FORMAT_R32_UINT;
+  attribute_descriptions[3].offset = offsetof(FontVertex, glyph_id);
 
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
   vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;

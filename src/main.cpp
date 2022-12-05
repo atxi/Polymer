@@ -281,21 +281,26 @@ int run() {
     if (vk_render.BeginFrame()) {
       game->Update(frame_time / 1000.0f, &g_input);
 
-      vk_render.font_renderer.RenderText(Vector3f(8, 8, 0), POLY_STR("Polymer"));
+      using namespace polymer::render;
+
+      FontStyleFlags style = FontStyle_Background | FontStyle_DropShadow;
+
+      vk_render.font_renderer.RenderText(Vector3f(8, 8, 0), POLY_STR("Polymer"), style,
+                                         Vector4f(1.0f, 0.67f, 0.0f, 1.0f));
 
       char text[256] = {};
       int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
       sprintf(text, "%d fps", fps);
 
-      vk_render.font_renderer.RenderText(Vector3f(8, 24, 0), String(text));
+      vk_render.font_renderer.RenderText(Vector3f(8, 24, 0), String(text), style);
 
       sprintf(text, "(%.02f, %.02f, %.02f)", g_game->camera.position.x, g_game->camera.position.y,
               g_game->camera.position.z);
 
-      vk_render.font_renderer.RenderText(Vector3f(8, 40, 0), String(text));
+      vk_render.font_renderer.RenderText(Vector3f(8, 40, 0), String(text), style);
 
       sprintf(text, "%d chunks rendered", g_game->chunk_render_count);
-      vk_render.font_renderer.RenderText(Vector3f(8, 56, 0), String(text));
+      vk_render.font_renderer.RenderText(Vector3f(8, 56, 0), String(text), style);
 
       vk_render.Render();
     }

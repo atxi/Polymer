@@ -7,7 +7,8 @@ layout(binding = 0) uniform UniformBufferObject {
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec2 inUV;
-layout(location = 2) in uint inGlyphId;
+layout(location = 2) in uint inRGBA;
+layout(location = 3) in uint inGlyphId;
 
 layout(location = 0) out vec2 fragTexCoord;
 layout(location = 1) flat out uint fragSheetIndex;
@@ -24,6 +25,11 @@ void main() {
   vec2 uv = inUV / 16.0f;
   
   fragTexCoord = vec2(glyph_x, glyph_y) + uv;
+  
+  uint alpha = (inRGBA >> 24) & 0xFF;
+  uint blue = (inRGBA >> 16) & 0xFF;
+  uint green = (inRGBA >> 8) & 0xFF;
+  uint red = (inRGBA) & 0xFF;
 
-  fragColorMod = vec4(1, 1, 1, 1);
+  fragColorMod = vec4(red / 255.0, green / 255.0, blue / 255.0, alpha / 255.0);
 }
