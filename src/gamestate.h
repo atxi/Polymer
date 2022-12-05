@@ -42,6 +42,8 @@ struct PlayerManager {
   void AddPlayer(const String& name, const String& uuid, u8 ping, u8 gamemode);
   void RemovePlayer(const String& uuid);
   Player* GetPlayerByUuid(const String& uuid);
+
+  void RenderPlayerList(render::VulkanRenderer& renderer);
 };
 
 struct GameState {

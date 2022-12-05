@@ -218,9 +218,7 @@ int run() {
   }
 
   MSG msg = {};
-  float total_time = 0.0f;
   float average_frame_time = 0.0f;
-  float last_display_time = 0.0f;
 
   using ms_float = std::chrono::duration<float, std::milli>;
 
@@ -340,15 +338,7 @@ int run() {
     auto end = std::chrono::high_resolution_clock::now();
 
     frame_time = std::chrono::duration_cast<ms_float>(end - start).count();
-
-    total_time += frame_time;
     average_frame_time = average_frame_time * 0.9f + frame_time * 0.1f;
-
-    if (total_time - last_display_time > 10000.0f) {
-      printf("%f\n", 1000.0f / average_frame_time);
-      fflush(stdout);
-      last_display_time = total_time;
-    }
   }
 
   vkDeviceWaitIdle(vk_render.device);

@@ -43,6 +43,7 @@ enum FontStyleFlag {
   FontStyle_None = 0,
   FontStyle_DropShadow = (1 << 0),
   FontStyle_Background = (1 << 1),
+  FontStyle_Center = (1 << 2),
 };
 using FontStyleFlags = u32;
 
@@ -70,6 +71,12 @@ struct FontRenderer {
 
   VkSemaphore finished_semaphores[2];
 
+  void RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style = FontStyle_None,
+                  const Vector4f& color = Vector4f(1, 1, 1, 1));
+  void RenderBackground(const Vector3f& screen_position, const String& str);
+  void RenderBackground(const Vector3f& screen_position, const Vector2f& size);
+  int GetTextWidth(const String& str);
+
   bool BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t current_frame);
   VkSemaphore SubmitCommands(VkDevice device, VkQueue graphics_queue, size_t current_frame, VkSemaphore wait_semaphore);
 
@@ -83,9 +90,6 @@ struct FontRenderer {
 
   void CreateSyncObjects(VkDevice device);
   void CleanupSwapchain(VkDevice device);
-
-  void RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style = FontStyle_None,
-                  const Vector4f& color = Vector4f(1, 1, 1, 1));
 
   void CreateLayoutSet(VulkanRenderer& renderer, VkDevice device);
 

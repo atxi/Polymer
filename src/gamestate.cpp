@@ -99,19 +99,7 @@ void GameState::Update(float dt, InputState* input) {
   }
 
   if (input->display_players) {
-    float center_x = renderer->swap_extent.width / 2.0f;
-
-    render::FontStyleFlags style = render::FontStyle_Background | render::FontStyle_DropShadow;
-
-    Vector3f position(center_x - 6 * 8, 16, 0);
-
-    for (size_t i = 0; i < player_manager.player_count; ++i) {
-      Player* player = player_manager.players + i;
-
-      renderer->font_renderer.RenderText(position, String(player->name), style);
-
-      position.y += 16;
-    }
+    player_manager.RenderPlayerList(*renderer);
   }
 
   // Process build queue
@@ -551,6 +539,42 @@ Player* PlayerManager::GetPlayerByUuid(const String& uuid) {
   }
 
   return nullptr;
+}
+
+void PlayerManager::RenderPlayerList(render::VulkanRenderer& renderer) {
+  float center_x = renderer.swap_extent.width / 2.0f;
+
+  render::FontStyleFlags style = render::FontStyle_DropShadow;
+
+  float max_width = 0;
+
+  // Find the width of the longest player name
+  for (size_t i = 0; i < player_count; ++i) {
+    Player* player = players + i;
+    String player_name(player->name);
+
+    float text_width = (float)renderer.font_renderer.GetTextWidth(player_name);
+
+    if (text_width > max_width) {
+      max_width = text_width;
+    }
+  }
+
+  Vector3f position(center_x - max_width / 2.0f, 16, 0);
+
+  for (size_t i = 0; i < player_count; ++i) {
+    Player* player = players + i;
+    String player_name(player->name);
+
+    // Add extra pixels to the last displayed name because the glyph is not vertically centered
+    float height = (i == player_count - 1) ? 18.0f : 16.0f;
+
+    // Render the background with the size determined by the longest name. Add some horizontal padding.
+    renderer.font_renderer.RenderBackground(position + Vector3f(-4, 0, 0), Vector2f(max_width + 8, height));
+    renderer.font_renderer.RenderText(position, player_name, style);
+
+    position.y += 16;
+  }
 }
 
 } // namespace polymer

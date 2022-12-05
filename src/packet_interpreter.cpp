@@ -557,8 +557,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           rb->ReadRawString(&signature, signature_size);
         }
 
-        printf("PlayerInfo add: %.*s\n", (u32)name.size, name.data);
-
         game->player_manager.AddPlayer(name, uuid_string, (u8)ping, (u8)gamemode);
       } break;
       case PlayerInfoAction::UpdateGamemode: {
