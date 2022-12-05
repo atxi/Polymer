@@ -98,6 +98,22 @@ void GameState::Update(float dt, InputState* input) {
     camera.position += Normalize(movement) * (dt * modifier);
   }
 
+  if (input->display_players) {
+    float center_x = renderer->swap_extent.width / 2.0f;
+
+    render::FontStyleFlags style = render::FontStyle_Background | render::FontStyle_DropShadow;
+
+    Vector3f position(center_x - 6 * 8, 16, 0);
+
+    for (size_t i = 0; i < player_manager.player_count; ++i) {
+      Player* player = player_manager.players + i;
+
+      renderer->font_renderer.RenderText(position, String(player->name), style);
+
+      position.y += 16;
+    }
+  }
+
   // Process build queue
   for (size_t i = 0; i < build_queue.count;) {
     s32 chunk_x = build_queue.data[i].x;
@@ -134,6 +150,9 @@ void GameState::Update(float dt, InputState* input) {
   VkDeviceSize offsets[] = {0};
 
   chunk_render_count = 0;
+  opaque_vertex_count = 0;
+  flora_vertex_count = 0;
+  alpha_vertex_count = 0;
 
   for (s32 chunk_z = 0; chunk_z < (s32)kChunkCacheSize; ++chunk_z) {
     for (s32 chunk_x = 0; chunk_x < (s32)kChunkCacheSize; ++chunk_x) {
@@ -166,6 +185,7 @@ void GameState::Update(float dt, InputState* input) {
               vkCmdBindVertexBuffers(block_buffer, 0, 1, &standard_mesh->vertex_buffer, offsets);
               vkCmdDraw(block_buffer, standard_mesh->vertex_count, 1, 0, 0);
               rendered = true;
+              opaque_vertex_count += standard_mesh->vertex_count;
             }
 
             if (flora_mesh->vertex_count > 0) {
@@ -175,6 +195,7 @@ void GameState::Update(float dt, InputState* input) {
               vkCmdBindVertexBuffers(flora_buffer, 0, 1, &flora_mesh->vertex_buffer, offsets);
               vkCmdDraw(flora_buffer, flora_mesh->vertex_count, 1, 0, 0);
               rendered = true;
+              flora_vertex_count += flora_mesh->vertex_count;
             }
 
             if (alpha_mesh->vertex_count > 0) {
@@ -184,6 +205,7 @@ void GameState::Update(float dt, InputState* input) {
               vkCmdBindVertexBuffers(alpha_buffer, 0, 1, &alpha_mesh->vertex_buffer, offsets);
               vkCmdDraw(alpha_buffer, alpha_mesh->vertex_count, 1, 0, 0);
               rendered = true;
+              alpha_vertex_count += alpha_mesh->vertex_count;
             }
 
             if (rendered) {
@@ -473,6 +495,62 @@ void GameState::FreeMeshes() {
       }
     }
   }
+}
+
+void PlayerManager::AddPlayer(const String& name, const String& uuid, u8 ping, u8 gamemode) {
+  Player* new_player = nullptr;
+
+  for (size_t i = 0; i < player_count; ++i) {
+    Player* player = players + i;
+    String player_uuid(player->uuid, 16);
+
+    if (poly_strcmp(player_uuid, uuid) == 0) {
+      new_player = player;
+      break;
+    }
+  }
+
+  if (!new_player) {
+    if (player_count >= polymer_array_count(players)) return;
+
+    new_player = players + player_count++;
+  }
+
+  assert(name.size <= polymer_array_count(new_player->name));
+
+  memcpy(new_player->name, name.data, name.size);
+  new_player->name[name.size] = 0;
+
+  assert(uuid.size <= polymer_array_count(new_player->uuid));
+  memcpy(new_player->uuid, uuid.data, uuid.size);
+
+  new_player->ping = ping;
+  new_player->gamemode = gamemode;
+}
+
+void PlayerManager::RemovePlayer(const String& uuid) {
+  for (size_t i = 0; i < player_count; ++i) {
+    Player* player = players + i;
+    String player_uuid(player->uuid, 16);
+
+    if (poly_strcmp(player_uuid, uuid) == 0) {
+      players[i] = players[--player_count];
+      return;
+    }
+  }
+}
+
+Player* PlayerManager::GetPlayerByUuid(const String& uuid) {
+  for (size_t i = 0; i < player_count; ++i) {
+    Player* player = players + i;
+    String player_uuid(player->uuid, 16);
+
+    if (poly_strcmp(player_uuid, uuid) == 0) {
+      return player;
+    }
+  }
+
+  return nullptr;
 }
 
 } // namespace polymer

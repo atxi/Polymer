@@ -70,6 +70,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       g_input.fall = true;
     } else if (wParam == VK_CONTROL) {
       g_input.sprint = true;
+    } else if (wParam == VK_TAB) {
+      g_input.display_players = true;
     }
   } break;
   case WM_KEYUP: {
@@ -87,6 +89,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       g_input.fall = false;
     } else if (wParam == VK_CONTROL) {
       g_input.sprint = false;
+    } else if (wParam == VK_TAB) {
+      g_input.display_players = false;
     }
   } break;
   case WM_INPUT: {
@@ -285,22 +289,40 @@ int run() {
 
       FontStyleFlags style = FontStyle_Background | FontStyle_DropShadow;
 
-      vk_render.font_renderer.RenderText(Vector3f(8, 8, 0), POLY_STR("Polymer"), style,
+      float y = 8;
+
+      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), POLY_STR("Polymer"), style,
                                          Vector4f(1.0f, 0.67f, 0.0f, 1.0f));
+      y += 16;
 
       char text[256] = {};
       int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
       sprintf(text, "%d fps", fps);
 
-      vk_render.font_renderer.RenderText(Vector3f(8, 24, 0), String(text), style);
+      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
+      y += 16;
 
       sprintf(text, "(%.02f, %.02f, %.02f)", g_game->camera.position.x, g_game->camera.position.y,
               g_game->camera.position.z);
 
-      vk_render.font_renderer.RenderText(Vector3f(8, 40, 0), String(text), style);
+      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
+      y += 16;
 
       sprintf(text, "%d chunks rendered", g_game->chunk_render_count);
-      vk_render.font_renderer.RenderText(Vector3f(8, 56, 0), String(text), style);
+      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
+      y += 16;
+
+      sprintf(text, "%llu opaque vertices rendered", g_game->opaque_vertex_count);
+      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
+      y += 16;
+
+      sprintf(text, "%llu flora vertices rendered", g_game->flora_vertex_count);
+      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
+      y += 16;
+
+      sprintf(text, "%llu alpha vertices rendered", g_game->alpha_vertex_count);
+      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
+      y += 16;
 
       vk_render.Render();
     }

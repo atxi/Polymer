@@ -110,6 +110,50 @@ inline u32 xorshift(u32 seed) {
   return seed;
 }
 
+static void RandomizeFaceTexture(u32 world_x, u32 world_y, u32 world_z, Vector2f& bl_uv, Vector2f& br_uv,
+                                 Vector2f& tr_uv, Vector2f& tl_uv) {
+  // TODO: Do this better. This is just some simple randomness
+  u32 xr = xorshift(world_x * 3917 + world_y * 3701 + world_z * 181) % 16;
+  u32 yr = xorshift(world_x * 1917 + world_y * 1559 + world_z * 381) % 16;
+  u32 zr = xorshift(world_x * 10191 + world_y * 1319 + world_z * 831) % 16;
+  u32 perm = xorshift(world_x * 171 + world_y * 7001 + world_z * 131) % 2;
+
+  float du = (xr ^ yr) / 16.0f;
+  float dv = (zr ^ yr) / 16.0f;
+
+  Vector2f delta(du, dv);
+
+  bl_uv += delta;
+  br_uv += delta;
+  tr_uv += delta;
+  tl_uv += delta;
+
+  switch (perm) {
+  case 0: {
+    // Flip horizontal
+    Vector2f bt = br_uv;
+    Vector2f tt = tr_uv;
+
+    br_uv = bl_uv;
+    bl_uv = bt;
+
+    tr_uv = tl_uv;
+    tl_uv = tt;
+  } break;
+  case 1: {
+    // Flip vertical
+    Vector2f rt = tr_uv;
+    Vector2f lt = tl_uv;
+
+    tr_uv = br_uv;
+    br_uv = rt;
+
+    tl_uv = bl_uv;
+    bl_uv = lt;
+  } break;
+  }
+}
+
 static void MeshBlock(PushContext& context, BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk,
                       u32 bid, size_t relative_x, size_t relative_y, size_t relative_z, const Vector3f& chunk_base) {
   BlockModel* model = &block_registry.states[bid].model;
@@ -217,47 +261,10 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
 
       if (face->random_flip) {
         u32 world_x = (u32)(chunk_base.x + x);
+        u32 world_y = (u32)(chunk_base.y + y);
         u32 world_z = (u32)(chunk_base.z + z);
 
-        // TODO: Do this better. This is just some simple randomness
-        u32 xr = xorshift(world_x * 3917 + world_z * 181) % 16;
-        u32 zr = xorshift(world_x * 10191 + world_z * 831) % 16;
-        u32 perm = xorshift(world_x * 171 + world_z * 131) % 2;
-
-        float du = xr / 16.0f;
-        float dv = zr / 16.0f;
-
-        Vector2f delta(du, dv);
-
-        bl_uv += delta;
-        br_uv += delta;
-        tr_uv += delta;
-        tl_uv += delta;
-
-        switch (perm) {
-        case 0: {
-          // Flip horizontal
-          Vector2f bt = br_uv;
-          Vector2f tt = tr_uv;
-
-          br_uv = bl_uv;
-          bl_uv = bt;
-
-          tr_uv = tl_uv;
-          tl_uv = tt;
-        } break;
-        case 1: {
-          // Flip vertical
-          Vector2f rt = tr_uv;
-          Vector2f lt = tl_uv;
-
-          tr_uv = br_uv;
-          br_uv = rt;
-
-          tl_uv = bl_uv;
-          bl_uv = lt;
-        } break;
-        }
+        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
       }
 
       int ele_ao_bl = 3;
@@ -327,6 +334,14 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
       Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
       Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
 
+      if (face->random_flip) {
+        u32 world_x = (u32)(chunk_base.x + x);
+        u32 world_y = (u32)(chunk_base.y + y);
+        u32 world_z = (u32)(chunk_base.z + z);
+
+        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
+      }
+
       int ele_ao_bl = 3;
       int ele_ao_br = 3;
       int ele_ao_tl = 3;
@@ -393,6 +408,14 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
       Vector2f br_uv(face->uv_to.x, face->uv_to.y);
       Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
       Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+      if (face->random_flip) {
+        u32 world_x = (u32)(chunk_base.x + x);
+        u32 world_y = (u32)(chunk_base.y + y);
+        u32 world_z = (u32)(chunk_base.z + z);
+
+        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
+      }
 
       int ele_ao_bl = 3;
       int ele_ao_br = 3;
@@ -463,6 +486,14 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
       Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
       Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
+      if (face->random_flip) {
+        u32 world_x = (u32)(chunk_base.x + x);
+        u32 world_y = (u32)(chunk_base.y + y);
+        u32 world_z = (u32)(chunk_base.z + z);
+
+        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
+      }
+
       int ele_ao_bl = 3;
       int ele_ao_br = 3;
       int ele_ao_tl = 3;
@@ -530,6 +561,14 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
       Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
       Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
+      if (face->random_flip) {
+        u32 world_x = (u32)(chunk_base.x + x);
+        u32 world_y = (u32)(chunk_base.y + y);
+        u32 world_z = (u32)(chunk_base.z + z);
+
+        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
+      }
+
       int ele_ao_bl = 3;
       int ele_ao_br = 3;
       int ele_ao_tl = 3;
@@ -596,6 +635,14 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
       Vector2f br_uv(face->uv_to.x, face->uv_to.y);
       Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
       Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+
+      if (face->random_flip) {
+        u32 world_x = (u32)(chunk_base.x + x);
+        u32 world_y = (u32)(chunk_base.y + y);
+        u32 world_z = (u32)(chunk_base.z + z);
+
+        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
+      }
 
       int ele_ao_bl = 3;
       int ele_ao_br = 3;

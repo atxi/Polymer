@@ -10,10 +10,10 @@
 
 #define LOG_PACKET_ID 0
 
-using polymer::world::DimensionCodec;
-using polymer::world::DimensionType;
 using polymer::world::ChunkSection;
 using polymer::world::ChunkSectionInfo;
+using polymer::world::DimensionCodec;
+using polymer::world::DimensionType;
 using polymer::world::kChunkColumnCount;
 
 namespace polymer {
@@ -63,10 +63,13 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     String sstr;
     sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    sstr.size = 32767;
+    sstr.size = 16;
 
-    // Read and discard Sender UUID
+    // Read Sender UUID
     rb->ReadRawString(&sstr, 16);
+    Player* sender = game->player_manager.GetPlayerByUuid(sstr);
+
+    sstr.size = 32767;
 
     // Read and discard header signature
     u64 header_sig_size = 0;
@@ -84,7 +87,11 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     }
 
     if (mesg_length > 0) {
-      printf("%.*s\n", (int)mesg_length, sstr.data);
+      if (sender) {
+        printf("%s> %.*s\n", sender->name, (int)mesg_length, sstr.data);
+      } else {
+        printf("%.*s\n", (int)mesg_length, sstr.data);
+      }
     }
 
     u64 timestamp = rb->ReadU64();
@@ -478,100 +485,112 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       PlayerInfoAction action = (PlayerInfoAction)action_value;
 
       switch (action) {
-        case PlayerInfoAction::Add: {
-          String name;
+      case PlayerInfoAction::Add: {
+        String name;
 
-          name.data = memory_arena_push_type_count(trans_arena, char, 16);
-          name.size = 16;
+        name.data = memory_arena_push_type_count(trans_arena, char, 16);
+        name.size = 16;
 
-          name.size = rb->ReadString(&name);
+        name.size = rb->ReadString(&name);
 
-          String property_name;
-          property_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
-          property_name.size = 32767;
+        String property_name;
+        property_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
+        property_name.size = 32767;
 
-          String property_value;
-          property_value.data = memory_arena_push_type_count(trans_arena, char, 32767);
-          property_value.size = 32767;
+        String property_value;
+        property_value.data = memory_arena_push_type_count(trans_arena, char, 32767);
+        property_value.size = 32767;
+
+        String signature;
+        signature.data = memory_arena_push_type_count(trans_arena, char, 32767);
+        signature.size = 32767;
+
+        u64 property_count;
+        rb->ReadVarInt(&property_count);
+
+        for (size_t i = 0; i < property_count; ++i) {
+          property_name.size = rb->ReadString(&property_name);
+          property_value.size = rb->ReadString(&property_value);
+
+          u8 is_signed = rb->ReadU8();
+
+          if (is_signed) {
+            signature.size = rb->ReadString(&signature);
+          }
+        }
+
+        u64 gamemode, ping;
+        rb->ReadVarInt(&gamemode);
+        rb->ReadVarInt(&ping);
+
+        u8 has_display_name = rb->ReadU8();
+        if (has_display_name) {
+          String display_name;
+
+          display_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
+          display_name.size = 32767;
+          display_name.size = rb->ReadString(&display_name);
+        }
+
+        u8 has_sig_data = rb->ReadU8();
+
+        if (has_sig_data) {
+          u64 timestamp = rb->ReadU64();
+          u64 public_key_size;
+
+          rb->ReadVarInt(&public_key_size);
+
+          String public_key;
+          public_key.data = memory_arena_push_type_count(trans_arena, char, public_key_size);
+          public_key.size = public_key_size;
+
+          rb->ReadRawString(&public_key, public_key_size);
+
+          u64 signature_size;
+
+          rb->ReadVarInt(&signature_size);
 
           String signature;
-          signature.data = memory_arena_push_type_count(trans_arena, char, 32767);
-          signature.size = 32767;
+          signature.data = memory_arena_push_type_count(trans_arena, char, signature_size);
+          signature.size = signature_size;
 
-          u64 property_count;
-          rb->ReadVarInt(&property_count);
+          rb->ReadRawString(&signature, signature_size);
+        }
 
-          for (size_t i = 0; i < property_count; ++i) {
-            property_name.size = rb->ReadString(&property_name);
-            property_value.size = rb->ReadString(&property_value);
+        printf("PlayerInfo add: %.*s\n", (u32)name.size, name.data);
 
-            u8 is_signed = rb->ReadU8();
+        game->player_manager.AddPlayer(name, uuid_string, (u8)ping, (u8)gamemode);
+      } break;
+      case PlayerInfoAction::UpdateGamemode: {
+        u64 gamemode;
 
-            if (is_signed) {
-              signature.size = rb->ReadString(&signature);
-            }
-          }
+        rb->ReadVarInt(&gamemode);
 
-          u64 gamemode, ping;
-          rb->ReadVarInt(&gamemode);
-          rb->ReadVarInt(&ping);
+        Player* player = game->player_manager.GetPlayerByUuid(uuid_string);
 
-          u8 has_display_name = rb->ReadU8();
-          if (has_display_name) {
-            String display_name;
+        if (player) {
+          player->gamemode = (u8)gamemode;
+        }
+      } break;
+      case PlayerInfoAction::UpdateLatency: {
+        u64 latency;
 
-            display_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
-            display_name.size = 32767;
-            display_name.size = rb->ReadString(&display_name);
-          }
+        rb->ReadVarInt(&latency);
 
-          u8 has_sig_data = rb->ReadU8();
+        Player* player = game->player_manager.GetPlayerByUuid(uuid_string);
 
-          if (has_sig_data) {
-            u64 timestamp = rb->ReadU64();
-            u64 public_key_size;
-
-            rb->ReadVarInt(&public_key_size);
-
-            String public_key;
-            public_key.data = memory_arena_push_type_count(trans_arena, char, public_key_size);
-            public_key.size = public_key_size;
-
-            rb->ReadRawString(&public_key, public_key_size);
-
-            u64 signature_size;
-
-            rb->ReadVarInt(&signature_size);
-
-            String signature;
-            signature.data = memory_arena_push_type_count(trans_arena, char, signature_size);
-            signature.size = signature_size;
-
-            rb->ReadRawString(&signature, signature_size);
-          }
-
-          printf("PlayerInfo add: %.*s\n", (u32)name.size, name.data);
-        } break;
-        case PlayerInfoAction::UpdateGamemode: {
-          u64 gamemode;
-
-          rb->ReadVarInt(&gamemode);
-          // TODO: Update player's gamemode for the provided UUID.
-        } break;
-        case PlayerInfoAction::UpdateLatency: {
-          u64 latency;
-
-          rb->ReadVarInt(&latency);
-          // TODO: Update player's latency for the provided UUID.
-        } break;
-        case PlayerInfoAction::UpdateDisplayName: {
-          // TODO: Update display name
-        } break;
-        case PlayerInfoAction::Remove: {
-          // TODO: Remove player from player list
-        } break;
-        default: {
-        } break;
+        if (player) {
+          player->ping = (u8)latency;
+        }
+      } break;
+      case PlayerInfoAction::UpdateDisplayName: {
+        // TODO: Update display name
+      } break;
+      case PlayerInfoAction::Remove: {
+        game->player_manager.RemovePlayer(uuid_string);
+      } break;
+      default: {
+      } break;
       }
 
       trans_arena->Revert(snapshot);

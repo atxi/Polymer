@@ -153,19 +153,23 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
 }
 
 static void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
-  if (poly_contains(texture, POLY_STR("water_still"))) {
+  if (poly_strcmp(texture, POLY_STR("water_still.png")) == 0) {
     face->render_layer = (int)RenderLayer::Alpha;
-  } else if (poly_contains(texture, POLY_STR("grass.png"))) {
+  } else if (poly_strcmp(texture, POLY_STR("grass.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
-  } else if (poly_contains(texture, POLY_STR("sugar_cane.png"))) {
+  } else if (poly_strcmp(texture, POLY_STR("sugar_cane.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
-  } else if (poly_contains(texture, POLY_STR("grass_bottom.png"))) {
+  } else if (poly_strcmp(texture, POLY_STR("grass_bottom.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
-  } else if (poly_contains(texture, POLY_STR("grass_top.png"))) {
+  } else if (poly_strcmp(texture, POLY_STR("grass_top.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
-  } else if (poly_contains(texture, POLY_STR("fern.png"))) {
+  } else if (poly_strcmp(texture, POLY_STR("fern.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
-  } else if (poly_contains(texture, POLY_STR("grass_block_top.png"))) {
+  } else if (poly_strcmp(texture, POLY_STR("grass_block_top.png")) == 0) {
+    face->random_flip = 1;
+  } else if (poly_strcmp(texture, POLY_STR("stone.png")) == 0) {
+    face->random_flip = 1;
+  } else if (poly_strcmp(texture, POLY_STR("sand.png")) == 0) {
     face->random_flip = 1;
   }
 }

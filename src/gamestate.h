@@ -24,6 +24,24 @@ struct InputState {
   bool climb;
   bool fall;
   bool sprint;
+  bool display_players;
+};
+
+struct Player {
+  char name[16];
+  char uuid[16];
+
+  u8 ping;
+  u8 gamemode;
+};
+
+struct PlayerManager {
+  Player players[256];
+  size_t player_count = 0;
+
+  void AddPlayer(const String& name, const String& uuid, u8 ping, u8 gamemode);
+  void RemovePlayer(const String& uuid);
+  Player* GetPlayerByUuid(const String& uuid);
 };
 
 struct GameState {
@@ -38,7 +56,12 @@ struct GameState {
   Camera camera;
   world::World world;
 
+  PlayerManager player_manager;
+
   u32 chunk_render_count;
+  u64 opaque_vertex_count;
+  u64 flora_vertex_count;
+  u64 alpha_vertex_count;
 
   render::ChunkBuildQueue build_queue;
 
