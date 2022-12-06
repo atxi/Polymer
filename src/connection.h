@@ -2,6 +2,7 @@
 #define POLYMER_CONNECTION_H_
 
 #include "buffer.h"
+#include "math.h"
 #include "memory.h"
 #include "types.h"
 
@@ -43,6 +44,7 @@ struct Connection {
   void SendLoginStart(const char* username);
   void SendKeepAlive(u64 id);
   void SendTeleportConfirm(u64 id);
+  void SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground);
 
   enum class ClientStatusAction { Respawn, Stats };
   void SendClientStatus(ClientStatusAction action);

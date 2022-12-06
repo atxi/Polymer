@@ -39,6 +39,13 @@ struct PlayerManager {
   Player players[256];
   size_t player_count = 0;
 
+  Player* client_player = nullptr;
+  char client_name[16];
+
+  void SetClientPlayer(Player* player) {
+    client_player = player;
+  }
+
   void AddPlayer(const String& name, const String& uuid, u8 ping, u8 gamemode);
   void RemovePlayer(const String& uuid);
   Player* GetPlayerByUuid(const String& uuid);
@@ -82,6 +89,8 @@ struct GameState {
 
   PlayerManager player_manager;
   ChatManager chat_manager;
+
+  float position_sync_timer;
 
   u32 chunk_render_count;
   u64 opaque_vertex_count;

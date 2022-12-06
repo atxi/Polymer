@@ -266,6 +266,7 @@ int run() {
 
   connection->SendHandshake(kProtocolVersion, kServerIp, kServerPort, ProtocolState::Login);
   connection->SendLoginStart("polymer");
+  strcpy(game->player_manager.client_name, "polymer");
 
   fflush(stdout);
 

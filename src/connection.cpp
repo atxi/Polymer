@@ -200,6 +200,26 @@ void Connection::SendTeleportConfirm(u64 id) {
   wb.WriteVarInt(id);
 }
 
+void Connection::SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground) {
+  RingBuffer& wb = write_buffer;
+  u32 pid = 0x15;
+
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + sizeof(double) + sizeof(double) + sizeof(double) +
+                sizeof(float) + sizeof(float) + 1;
+
+  wb.WriteVarInt(size);
+  wb.WriteVarInt(0);
+  wb.WriteVarInt(pid);
+
+  wb.WriteDouble(position.x);
+  wb.WriteDouble(position.y);
+  wb.WriteDouble(position.z);
+
+  wb.WriteFloat(yaw);
+  wb.WriteFloat(pitch);
+  wb.WriteU8(on_ground);
+}
+
 void Connection::SendClientStatus(ClientStatusAction action) {
   RingBuffer& wb = write_buffer;
   u32 pid = 0x07;

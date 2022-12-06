@@ -46,6 +46,8 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
   camera.near = 0.1f;
   camera.far = 1024.0f;
   camera.fov = Radians(80.0f);
+
+  position_sync_timer = 0.0f;
 }
 
 void GameState::Update(float dt, InputState* input) {
@@ -96,6 +98,17 @@ void GameState::Update(float dt, InputState* input) {
     }
 
     camera.position += Normalize(movement) * (dt * modifier);
+  }
+
+  position_sync_timer += dt;
+
+  // Send position packets when in spectator for testing chunk loading.
+  // TODO: Implement for real
+  if (player_manager.client_player && player_manager.client_player->gamemode == 3) {
+    if (position_sync_timer >= (50.0f / 1000.0f)) {
+      connection.SendPlayerPositionAndRotation(camera.position, 0.0f, 0.0f, false);
+      position_sync_timer = 0.0f;
+    }
   }
 
   if (input->display_players) {
@@ -516,6 +529,10 @@ void PlayerManager::AddPlayer(const String& name, const String& uuid, u8 ping, u
 
   new_player->ping = ping;
   new_player->gamemode = gamemode;
+
+  if (poly_strcmp(name, String(client_name)) == 0) {
+    client_player = new_player;
+  }
 }
 
 void PlayerManager::RemovePlayer(const String& uuid) {
@@ -524,7 +541,14 @@ void PlayerManager::RemovePlayer(const String& uuid) {
     String player_uuid(player->uuid, 16);
 
     if (poly_strcmp(player_uuid, uuid) == 0) {
-      players[i] = players[--player_count];
+      Player* swap_player = players + --player_count;
+
+      // Swap the pointer to the new slot if the removed player is the client player
+      if (poly_strcmp(swap_player->name, String(client_name)) == 0) {
+        client_player = players + i;
+      }
+
+      players[i] = *swap_player;
       return;
     }
   }
