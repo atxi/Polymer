@@ -102,6 +102,8 @@ void GameState::Update(float dt, InputState* input) {
     player_manager.RenderPlayerList(*renderer);
   }
 
+  chat_manager.Update(*renderer, dt);
+
   // Process build queue
   for (size_t i = 0; i < build_queue.count;) {
     s32 chunk_x = build_queue.data[i].x;
@@ -575,6 +577,61 @@ void PlayerManager::RenderPlayerList(render::VulkanRenderer& renderer) {
 
     position.y += 16;
   }
+}
+
+void ChatManager::Update(render::VulkanRenderer& renderer, float dt) {
+  constexpr size_t kChatMessageQueueSize = polymer_array_count(chat_message_queue);
+
+  for (int i = 0; i < polymer_array_count(chat_message_queue); ++i) {
+    ChatMessagePopup* popup = chat_message_queue + i;
+
+    if (popup->remaining_time > 0) {
+      popup->remaining_time -= dt;
+    }
+  }
+
+  for (int i = 0; i < polymer_array_count(chat_message_queue); ++i) {
+    // Index backwards into the queue from current index - 1 so they come out from bottom up
+    size_t index = (chat_message_index - i - 1 + kChatMessageQueueSize) % kChatMessageQueueSize;
+
+    ChatMessagePopup* popup = chat_message_queue + index;
+
+    if (popup->remaining_time <= 0.0f) {
+      continue;
+    }
+
+    float y = (float)(renderer.swap_extent.height - 24 - i * 18);
+    Vector3f position(8, y, 0);
+
+    render::FontStyleFlags style = render::FontStyle_DropShadow;
+
+    float alpha = 1.0f;
+
+    if (popup->remaining_time < 1.0f) {
+      alpha = popup->remaining_time;
+    }
+
+    Vector4f color(1, 1, 1, alpha);
+    Vector4f bg_color(0, 0, 0, 0.4f * alpha);
+
+    float background_width = 660;
+    if (position.x + background_width > renderer.swap_extent.width) {
+      background_width = (float)renderer.swap_extent.width - 8;
+    }
+
+    renderer.font_renderer.RenderBackground(position + Vector3f(-4, 0, 0), Vector2f(background_width, 18), bg_color);
+    renderer.font_renderer.RenderText(position, String(popup->message, popup->message_size), style, color);
+  }
+}
+
+void ChatManager::PushMessage(const char* mesg, size_t mesg_size, float display_time) {
+  ChatMessagePopup* popup = chat_message_queue + chat_message_index;
+
+  chat_message_index = (chat_message_index + 1) % polymer_array_count(chat_message_queue);
+
+  memcpy(popup->message, mesg, mesg_size);
+  popup->message_size = mesg_size;
+  popup->remaining_time = display_time;
 }
 
 } // namespace polymer

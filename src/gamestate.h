@@ -46,6 +46,28 @@ struct PlayerManager {
   void RenderPlayerList(render::VulkanRenderer& renderer);
 };
 
+// Temporary chat message display until a chat window is implemented.
+// TODO: Remove
+struct ChatMessagePopup {
+  char message[1024];
+  size_t message_size;
+  float remaining_time;
+};
+struct ChatManager {
+  ChatMessagePopup chat_message_queue[5];
+  size_t chat_message_index;
+
+  ChatManager() {
+    for (size_t i = 0; i < polymer_array_count(chat_message_queue); ++i) {
+      chat_message_queue[i].remaining_time = 0.0f;
+    }
+    chat_message_index = 0;
+  }
+
+  void Update(render::VulkanRenderer& renderer, float dt);
+  void PushMessage(const char* mesg, size_t mesg_size, float display_time);
+};
+
 struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
@@ -59,6 +81,7 @@ struct GameState {
   world::World world;
 
   PlayerManager player_manager;
+  ChatManager chat_manager;
 
   u32 chunk_render_count;
   u64 opaque_vertex_count;

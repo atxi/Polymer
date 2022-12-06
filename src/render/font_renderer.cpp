@@ -26,16 +26,18 @@ static void PushVertex(FontVertex* mapped_vertices, size_t& vertex_count, const 
 // Renders a background for the text by sampling from the first glyph in the first unicode page.
 // This glyph has a solid pixel at the top corner, so that uv is used and tinted.
 static void PushTextBackground(FontVertex* mapped_vertices, size_t& vertex_count, const Vector3f& pos,
-                               const Vector2f& size) {
+                               const Vector2f& size, const Vector4f& color) {
   float width = size.x;
   float height = size.y;
   float start = 0.0f;
   float end = 0.0f;
 
-  u32 gray = 40;
-  u32 alpha = 127;
+  u32 r = (u32)(color.x * 255);
+  u32 g = (u32)(color.y * 255);
+  u32 b = (u32)(color.z * 255);
+  u32 a = (u32)(color.w * 255);
 
-  u32 rgba = (alpha << 24) | (gray << 16) | (gray << 8) | gray;
+  u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
 
   PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), Vector2f(0, 0), rgba, 0);
   PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), Vector2f(0, 0), rgba, 0);
@@ -46,18 +48,18 @@ static void PushTextBackground(FontVertex* mapped_vertices, size_t& vertex_count
   PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), Vector2f(0, 0), rgba, 0);
 }
 
-void FontRenderer::RenderBackground(const Vector3f& screen_position, const String& str) {
+void FontRenderer::RenderBackground(const Vector3f& screen_position, const String& str, const Vector4f& color) {
   FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
   float width = (float)GetTextWidth(str);
   float height = 16;
 
-  PushTextBackground(mapped_vertices, vertex_count, screen_position, Vector2f(width, height));
+  PushTextBackground(mapped_vertices, vertex_count, screen_position, Vector2f(width, height), color);
 }
 
-void FontRenderer::RenderBackground(const Vector3f& screen_position, const Vector2f& size) {
+void FontRenderer::RenderBackground(const Vector3f& screen_position, const Vector2f& size, const Vector4f& color) {
   FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
 
-  PushTextBackground(mapped_vertices, vertex_count, screen_position, size);
+  PushTextBackground(mapped_vertices, vertex_count, screen_position, size, color);
 }
 
 int FontRenderer::GetTextWidth(const String& str) {
@@ -144,7 +146,7 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
 
   if (style & FontStyle_Background) {
     PushTextBackground(mapped_vertices, vertex_count, position + Vector3f(-kHorizontalPadding, 0, 0),
-                       Vector2f(width, 16));
+                       Vector2f(width, 16), Vector4f(0.2f, 0.2f, 0.2f, 0.5f));
   }
 
   if (style & FontStyle_DropShadow) {

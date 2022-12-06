@@ -87,11 +87,18 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     }
 
     if (mesg_length > 0) {
+      char output_text[1024];
+      size_t output_size = 0;
+
       if (sender) {
-        printf("%s> %.*s\n", sender->name, (int)mesg_length, sstr.data);
+        output_size = sprintf(output_text, "<%s> %.*s", sender->name, (int)mesg_length, sstr.data);
       } else {
-        printf("%.*s\n", (int)mesg_length, sstr.data);
+        output_size = sprintf(output_text, "%.*s", (int)mesg_length, sstr.data);
       }
+
+      printf("%s\n", output_text);
+
+      game->chat_manager.PushMessage(output_text, output_size, 10.0f);
     }
 
     u64 timestamp = rb->ReadU64();
