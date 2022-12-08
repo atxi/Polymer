@@ -6,9 +6,9 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec2 inUV;
-layout(location = 2) in uint inRGBA;
-layout(location = 3) in uint inGlyphId;
+layout(location = 1) in uint inRGBA;
+layout(location = 2) in uint inGlyphId;
+layout(location = 3) in uint inUV;
 
 layout(location = 0) out vec2 fragTexCoord;
 layout(location = 1) flat out uint fragSheetIndex;
@@ -20,9 +20,12 @@ void main() {
   fragSheetIndex = inGlyphId / 256;
   
   uint index_in_sheet = inGlyphId - (fragSheetIndex * 256);
-  float glyph_x = (index_in_sheet % 16) / 16.0f;
-  float glyph_y = (index_in_sheet / 16) / 16.0f;
-  vec2 uv = inUV / 16.0f;
+  float glyph_x = (index_in_sheet % 16) / 16.0;
+  float glyph_y = (index_in_sheet / 16) / 16.0;
+
+  uint uv_x = inUV >> 1;
+  uint uv_y = (inUV & 1) * 16;
+  vec2 uv = vec2(uv_x / 256.0, uv_y / 256.0);
   
   fragTexCoord = vec2(glyph_x, glyph_y) + uv;
   

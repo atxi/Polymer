@@ -75,6 +75,21 @@ struct ChatManager {
   void PushMessage(const char* mesg, size_t mesg_size, float display_time);
 };
 
+#define DISPLAY_PERF_STATS 1
+struct PerformanceStatistics {
+  u32 chunk_render_count;
+  u64 opaque_vertex_count;
+  u64 flora_vertex_count;
+  u64 alpha_vertex_count;
+
+  void Reset() {
+    chunk_render_count = 0;
+    opaque_vertex_count = 0;
+    flora_vertex_count = 0;
+    alpha_vertex_count = 0;
+  }
+};
+
 struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
@@ -92,10 +107,9 @@ struct GameState {
 
   float position_sync_timer;
 
-  u32 chunk_render_count;
-  u64 opaque_vertex_count;
-  u64 flora_vertex_count;
-  u64 alpha_vertex_count;
+#if DISPLAY_PERF_STATS
+  PerformanceStatistics stats;
+#endif
 
   render::ChunkBuildQueue build_queue;
 

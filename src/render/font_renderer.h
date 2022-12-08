@@ -23,10 +23,10 @@ struct FontRenderUBO {
 
 struct FontVertex {
   Vector3f position;
-  Vector2f uv;
-
   u32 rgba;
-  u32 glyph_id;
+
+  u16 glyph_id;
+  u16 uv_xy;
 };
 
 struct FontRenderPipeline {

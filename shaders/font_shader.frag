@@ -10,9 +10,10 @@ layout(location = 2) in vec4 fragColorMod;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-  vec4 diffuse = texture(texSampler, vec3(fragTexCoord, fragSheetIndex));
+  float value = texture(texSampler, vec3(fragTexCoord, fragSheetIndex)).r;
   
-  outColor = diffuse * fragColorMod;
+  outColor = fragColorMod;
+  outColor.a *= value;
 
   if (outColor.a <= 0.1) {
     discard;

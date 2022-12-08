@@ -79,6 +79,9 @@ struct TextureArray {
   // TODO: This shouldn't be required, but the mip generator might need updated.
   u32 dimensions;
 
+  u32 channels;
+  VkFormat format;
+
   TextureArray* next;
   TextureArray* prev;
 };
@@ -228,7 +231,8 @@ struct VulkanRenderer {
   TextureArrayPushState BeginTexturePush(TextureArray& texture);
   void CommitTexturePush(TextureArrayPushState& state);
 
-  TextureArray* CreateTextureArray(size_t width, size_t height, size_t layers, bool enable_mips = true);
+  TextureArray* CreateTextureArray(size_t width, size_t height, size_t layers, int channels = 4,
+                                   bool enable_mips = true);
   void PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture, size_t index);
   void FreeTextureArray(TextureArray& texture);
 

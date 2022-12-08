@@ -307,21 +307,23 @@ int run() {
       vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
       y += 16;
 
-      sprintf(text, "%d chunks rendered", g_game->chunk_render_count);
+#if DISPLAY_PERF_STATS
+      sprintf(text, "%d chunks rendered", g_game->stats.chunk_render_count);
       vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
       y += 16;
 
-      sprintf(text, "%llu opaque vertices rendered", g_game->opaque_vertex_count);
+      sprintf(text, "%llu opaque vertices rendered", g_game->stats.opaque_vertex_count);
       vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
       y += 16;
 
-      sprintf(text, "%llu flora vertices rendered", g_game->flora_vertex_count);
+      sprintf(text, "%llu flora vertices rendered", g_game->stats.flora_vertex_count);
       vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
       y += 16;
 
-      sprintf(text, "%llu alpha vertices rendered", g_game->alpha_vertex_count);
+      sprintf(text, "%llu alpha vertices rendered", g_game->stats.alpha_vertex_count);
       vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
       y += 16;
+#endif
 
       vk_render.Render();
     }

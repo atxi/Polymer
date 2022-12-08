@@ -319,7 +319,17 @@ bool VulkanRenderer::Initialize(HWND hwnd) {
   return true;
 }
 
-TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, size_t layers, bool enable_mips) {
+TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, size_t layers, int channels,
+                                                 bool enable_mips) {
+  if (channels <= 0 || channels > 4) {
+    fprintf(stderr, "Bad channel size during texture array creation.\n");
+    return nullptr;
+  }
+
+  const VkFormat kFormats[] = {VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM, VK_FORMAT_R8G8B8_UNORM,
+                               VK_FORMAT_R8G8B8A8_UNORM};
+  VkFormat format = kFormats[channels - 1];
+
   TextureArray* new_texture = texture_array_manager.CreateTexture(*perm_arena);
 
   if (new_texture == nullptr) {
@@ -331,6 +341,9 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
 
   result.dimensions = (u16)width;
   result.depth = (u16)layers;
+  result.channels = channels;
+  result.format = format;
+
   if (enable_mips) {
     result.mips = (u16)std::floor(std::log2(width)) + 1;
   } else {
@@ -346,7 +359,7 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
   image_info.extent.depth = 1;
   image_info.mipLevels = result.mips;
   image_info.arrayLayers = (u32)layers;
-  image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+  image_info.format = format;
   image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
   image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -377,7 +390,7 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
   view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
   view_create_info.image = result.image;
   view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-  view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+  view_create_info.format = format;
   view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   view_create_info.subresourceRange.baseMipLevel = 0;
   view_create_info.subresourceRange.levelCount = image_info.mipLevels;
@@ -476,7 +489,7 @@ TextureArrayPushState VulkanRenderer::BeginTexturePush(TextureArray& texture) {
   size_t texture_data_size = 0;
   size_t current_dim = texture.dimensions;
   for (size_t i = 0; i < texture.mips; ++i) {
-    texture_data_size += current_dim * current_dim * 4;
+    texture_data_size += current_dim * current_dim * texture.channels;
     current_dim /= 2;
   }
 
@@ -503,8 +516,8 @@ TextureArrayPushState VulkanRenderer::BeginTexturePush(TextureArray& texture) {
   }
 
   // Transition image to copy-destination optimal, then copy, then transition to shader-read optimal.
-  TransitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, (u32)texture.depth, texture.mips);
+  TransitionImageLayout(texture.image, texture.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        0, (u32)texture.depth, texture.mips);
 
   BeginOneShotCommandBuffer();
 
@@ -515,7 +528,7 @@ void VulkanRenderer::CommitTexturePush(TextureArrayPushState& state) {
   EndOneShotCommandBuffer();
   vmaDestroyBuffer(allocator, state.buffer, state.alloc);
 
-  TransitionImageLayout(state.texture.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+  TransitionImageLayout(state.texture.image, state.texture.format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, (u32)state.texture.depth, state.texture.mips);
 }
 
@@ -527,18 +540,20 @@ void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushS
 
   ArenaSnapshot snapshot = temp_arena.GetSnapshot();
 
-  // Create a buffer that can hold any size mipmap
-  u8* previous_data = temp_arena.Allocate(dim * dim * 4);
-  u8* buffer_data = temp_arena.Allocate(dim * dim * 4);
+  int channels = state.texture.channels;
 
-  memcpy(previous_data, texture, dim * dim * 4);
-  memcpy(buffer_data, texture, dim * dim * 4);
+  // Create a buffer that can hold any size mipmap
+  u8* previous_data = temp_arena.Allocate(dim * dim * channels);
+  u8* buffer_data = temp_arena.Allocate(dim * dim * channels);
+
+  memcpy(previous_data, texture, dim * dim * channels);
+  memcpy(buffer_data, texture, dim * dim * channels);
 
   size_t destination = state.texture_data_size * index;
 
   for (size_t i = 0; i < state.texture.mips; ++i) {
     if (state.alloc_info.pMappedData) {
-      size_t size = dim * dim * 4;
+      size_t size = dim * dim * channels;
 
       if (i > 0) {
         BoxFilterMipmap(previous_data, buffer_data, size, dim);

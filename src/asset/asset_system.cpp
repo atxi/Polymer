@@ -83,7 +83,7 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
     return false;
   }
 
-  glyph_page_texture = renderer.CreateTextureArray(kRequiredDimension, kRequiredDimension, kPageCount, false);
+  glyph_page_texture = renderer.CreateTextureArray(kRequiredDimension, kRequiredDimension, kPageCount, 1, false);
 
   if (!glyph_page_texture) {
     return false;
@@ -92,6 +92,8 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
   render::TextureArrayPushState glyph_page_push = renderer.BeginTexturePush(*glyph_page_texture);
 
   for (size_t i = 0; i < unicode_page_count; ++i) {
+    auto snapshot = trans_arena.GetSnapshot();
+
     size_t size = 0;
     u8* raw_image = (u8*)archive.ReadFile(&trans_arena, files[i].name, &size);
 
@@ -115,7 +117,21 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
     char* page_index_str = files[i].name + kTexturePathPrefixSize;
     long page_index = strtol(page_index_str, nullptr, 16);
 
-    renderer.PushArrayTexture(trans_arena, glyph_page_push, image, page_index);
+    // Pack the u32 expanded image into one channel.
+    // TODO: This could be packed further into a single bit to act as a binary alpha mask.
+    u8* single_channel_image = trans_arena.Allocate(width * height);
+    for (size_t i = 0; i < width * height * channels; i += channels) {
+      u8 out = image[i + channels - 1];
+      u8* current = single_channel_image + i / channels;
+
+      *current = out;
+
+      ++current;
+    }
+
+    renderer.PushArrayTexture(trans_arena, glyph_page_push, single_channel_image, page_index);
+
+    trans_arena.Revert(snapshot);
   }
 
   renderer.CommitTexturePush(glyph_page_push);

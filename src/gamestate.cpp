@@ -145,17 +145,16 @@ void GameState::Update(float dt, InputState* input) {
   render::ChunkRenderer& chunk_renderer = renderer->chunk_renderer;
 
   vmaMapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame], &data);
-  memcpy(data, ubo.mvp.data, sizeof(ubo));
+  memcpy(data, &ubo, sizeof(ubo));
   vmaUnmapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame]);
 
   Frustum frustum = camera.GetViewFrustum();
 
   VkDeviceSize offsets[] = {0};
 
-  chunk_render_count = 0;
-  opaque_vertex_count = 0;
-  flora_vertex_count = 0;
-  alpha_vertex_count = 0;
+#if DISPLAY_PERF_STATS
+  stats.Reset();
+#endif
 
   for (s32 chunk_z = 0; chunk_z < (s32)kChunkCacheSize; ++chunk_z) {
     for (s32 chunk_x = 0; chunk_x < (s32)kChunkCacheSize; ++chunk_x) {
@@ -179,7 +178,9 @@ void GameState::Update(float dt, InputState* input) {
             render::RenderMesh* flora_mesh = &mesh->meshes[(size_t)RenderLayer::Flora];
             render::RenderMesh* alpha_mesh = &mesh->meshes[(size_t)RenderLayer::Alpha];
 
+#if DISPLAY_PERF_STATS
             bool rendered = false;
+#endif
 
             if (standard_mesh->vertex_count > 0) {
               VkCommandBuffer block_buffer =
@@ -187,8 +188,10 @@ void GameState::Update(float dt, InputState* input) {
 
               vkCmdBindVertexBuffers(block_buffer, 0, 1, &standard_mesh->vertex_buffer, offsets);
               vkCmdDraw(block_buffer, standard_mesh->vertex_count, 1, 0, 0);
+#if DISPLAY_PERF_STATS
               rendered = true;
-              opaque_vertex_count += standard_mesh->vertex_count;
+              stats.opaque_vertex_count += standard_mesh->vertex_count;
+#endif
             }
 
             if (flora_mesh->vertex_count > 0) {
@@ -197,8 +200,11 @@ void GameState::Update(float dt, InputState* input) {
 
               vkCmdBindVertexBuffers(flora_buffer, 0, 1, &flora_mesh->vertex_buffer, offsets);
               vkCmdDraw(flora_buffer, flora_mesh->vertex_count, 1, 0, 0);
+
+#if DISPLAY_PERF_STATS
               rendered = true;
-              flora_vertex_count += flora_mesh->vertex_count;
+              stats.flora_vertex_count += flora_mesh->vertex_count;
+#endif
             }
 
             if (alpha_mesh->vertex_count > 0) {
@@ -207,13 +213,17 @@ void GameState::Update(float dt, InputState* input) {
 
               vkCmdBindVertexBuffers(alpha_buffer, 0, 1, &alpha_mesh->vertex_buffer, offsets);
               vkCmdDraw(alpha_buffer, alpha_mesh->vertex_count, 1, 0, 0);
+#if DISPLAY_PERF_STATS
               rendered = true;
-              alpha_vertex_count += alpha_mesh->vertex_count;
+              stats.alpha_vertex_count += alpha_mesh->vertex_count;
+#endif
             }
 
+#if DISPLAY_PERF_STATS
             if (rendered) {
-              ++chunk_render_count;
+              ++stats.chunk_render_count;
             }
+#endif
           }
         }
       }

@@ -12,13 +12,16 @@ namespace render {
 static const char* kFontVertShader = "shaders/font_vert.spv";
 static const char* kFontFragShader = "shaders/font_frag.spv";
 
-static void PushVertex(FontVertex* mapped_vertices, size_t& vertex_count, const Vector3f& pos, const Vector2f& uv,
-                       u32 rgba, u32 glyph_id) {
+#define PACK_UV(x, y) ((x << 1) | (y > 0))
+static inline void PushVertex(FontVertex* mapped_vertices, size_t& vertex_count, const Vector3f& pos, u16 uv_xy,
+                              u32 rgba, u16 glyph_id) {
+  // Any changes to this function should be checked to see if is still inlined so it doesn't cause huge performance
+  // loss.
   FontVertex* vertex = mapped_vertices + vertex_count++;
 
   // TODO: Probably need to do unicode conversion for everything
   vertex->position = pos;
-  vertex->uv = uv;
+  vertex->uv_xy = uv_xy;
   vertex->rgba = rgba;
   vertex->glyph_id = glyph_id;
 }
@@ -39,13 +42,15 @@ static void PushTextBackground(FontVertex* mapped_vertices, size_t& vertex_count
 
   u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
 
-  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), Vector2f(0, 0), rgba, 0);
-  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), Vector2f(0, 0), rgba, 0);
-  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(0, 0), rgba, 0);
+  u16 uv = 0;
 
-  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(0, 0), rgba, 0);
-  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), Vector2f(0, 0), rgba, 0);
-  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), Vector2f(0, 0), rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), uv, rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), uv, rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), uv, rgba, 0);
+
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), uv, rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), uv, rgba, 0);
+  PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), uv, rgba, 0);
 }
 
 void FontRenderer::RenderBackground(const Vector3f& screen_position, const String& str, const Vector4f& color) {
@@ -92,24 +97,22 @@ static void TextOutput(FontVertex* mapped_vertices, u8* glyph_size_table, size_t
   // TODO: Very inefficient
   for (size_t i = 0; i < str.size; ++i) {
     if (str.data[i] != ' ') {
-      u32 glyph_id = str.data[i];
+      u16 glyph_id = str.data[i];
       u8 size_entry = glyph_size_table[glyph_id];
 
-      int start_raw = (size_entry >> 4);
-      int end_raw = (size_entry & 0x0F) + 1;
+      int start = (size_entry >> 4);
+      int end = (size_entry & 0x0F) + 1;
 
-      float start = (start_raw) / 16.0f;
-      float end = (end_raw) / 16.0f;
-      float width = (float)(end_raw - start_raw);
+      float width = (float)(end - start);
       constexpr float height = 16;
 
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), Vector2f(start, 0), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), Vector2f(start, 1), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), PACK_UV(start, 0), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), PACK_UV(start, 1), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), PACK_UV(end, 0), rgba, str.data[i]);
 
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), Vector2f(end, 0), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), Vector2f(start, 1), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), Vector2f(end, 1), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), PACK_UV(end, 0), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), PACK_UV(start, 1), rgba, str.data[i]);
+      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), PACK_UV(end, 1), rgba, str.data[i]);
 
       pos.x += width + 2;
     } else {
@@ -277,18 +280,18 @@ void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkE
 
   attribute_descriptions[1].binding = 0;
   attribute_descriptions[1].location = 1;
-  attribute_descriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
-  attribute_descriptions[1].offset = offsetof(FontVertex, uv);
+  attribute_descriptions[1].format = VK_FORMAT_R32_UINT;
+  attribute_descriptions[1].offset = offsetof(FontVertex, rgba);
 
   attribute_descriptions[2].binding = 0;
   attribute_descriptions[2].location = 2;
-  attribute_descriptions[2].format = VK_FORMAT_R32_UINT;
-  attribute_descriptions[2].offset = offsetof(FontVertex, rgba);
+  attribute_descriptions[2].format = VK_FORMAT_R16_UINT;
+  attribute_descriptions[2].offset = offsetof(FontVertex, glyph_id);
 
   attribute_descriptions[3].binding = 0;
   attribute_descriptions[3].location = 3;
-  attribute_descriptions[3].format = VK_FORMAT_R32_UINT;
-  attribute_descriptions[3].offset = offsetof(FontVertex, glyph_id);
+  attribute_descriptions[3].format = VK_FORMAT_R16_UINT;
+  attribute_descriptions[3].offset = offsetof(FontVertex, uv_xy);
 
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
   vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -546,7 +549,7 @@ VkSemaphore FontRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue
     ubo.mvp = Orthographic(0, width, 0, height, -1.0f, 1.0f);
 
     vmaMapMemory(allocator, uniform_allocations[renderer->current_frame], &data);
-    memcpy(data, ubo.mvp.data, sizeof(FontRenderUBO));
+    memcpy(data, &ubo, sizeof(FontRenderUBO));
     vmaUnmapMemory(allocator, uniform_allocations[renderer->current_frame]);
 
     VkDeviceSize offsets[] = {0};
