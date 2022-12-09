@@ -31,9 +31,7 @@ struct String {
   String(char* data, size_t size) : data(data), size(size) {}
   String(const char* data, size_t size) : data((char*)data), size(size) {}
 
-  bool operator==(const String& other) const {
-    return data == other.data && size == other.size;
-  }
+  bool operator==(const String& other) const;
 };
 
 inline s32 poly_strcmp(const String& str1, const String& str2) {
@@ -46,6 +44,10 @@ inline s32 poly_strcmp(const String& str1, const String& str2) {
   }
 
   return str1.size == str2.size ? 0 : -1;
+}
+
+inline bool String::operator==(const String& other) const {
+  return poly_strcmp(*this, other) == 0;
 }
 
 inline String poly_string(const char* data, size_t size) {

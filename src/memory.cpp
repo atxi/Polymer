@@ -40,6 +40,11 @@ u8* MemoryArena::Allocate(size_t size, size_t alignment) {
   this->current = result + size;
 
   assert(this->current <= this->base + this->max_size);
+  if (this->current > this->base + this->max_size) {
+    this->current -= size;
+    fprintf(stderr, "Failed to allocate. Arena out of space.\n");
+    return nullptr;
+  }
 
   return result;
 }

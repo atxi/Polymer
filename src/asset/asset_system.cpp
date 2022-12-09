@@ -30,7 +30,8 @@ TextureIdRange AssetSystem::GetTextureRange(const String& texture_path) {
   return empty;
 }
 
-bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path) {
+bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path,
+                       world::BlockRegistry* registry) {
   ZipArchive archive;
 
   if (!archive.Open(jar_path)) {
@@ -47,7 +48,7 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
   MemoryArena trans_arena = CreateArena(Megabytes(128));
   BlockAssetLoader block_loader(perm_arena, trans_arena);
 
-  if (!block_loader.Load(renderer, archive, blocks_path)) {
+  if (!block_loader.Load(renderer, archive, blocks_path, registry)) {
     trans_arena.Destroy();
     perm_arena.Destroy();
 

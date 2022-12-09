@@ -125,11 +125,39 @@ struct ChunkVertexData {
   }
 };
 
-// TODO: This could be a standalone function, but I wanted to create a struct in preparation for each mesher creating
-// their own arena to make multithreaded meshing easier.
+struct BlockMesherMapping {
+  world::BlockIdRange water_range;
+  world::BlockIdRange kelp_range;
+  world::BlockIdRange seagrass_range;
+  world::BlockIdRange tall_seagrass_range;
+  world::BlockIdRange lava_range;
+  world::BlockIdRange lily_pad_range;
+  world::BlockIdRange cave_air_range;
+  world::BlockIdRange void_air_range;
+
+  void Initialize(world::BlockRegistry& registry) {
+    Load(registry, POLY_STR("minecraft:water"), &water_range);
+    Load(registry, POLY_STR("minecraft:kelp"), &kelp_range);
+    Load(registry, POLY_STR("minecraft:seagrass"), &seagrass_range);
+    Load(registry, POLY_STR("minecraft:tall_seagrass"), &tall_seagrass_range);
+    Load(registry, POLY_STR("minecraft:lava"), &lava_range);
+    Load(registry, POLY_STR("minecraft:lily_pad"), &lily_pad_range);
+    Load(registry, POLY_STR("minecraft:cave_air"), &cave_air_range);
+    Load(registry, POLY_STR("minecraft:void_air"), &void_air_range);
+  }
+
+private:
+  inline void Load(world::BlockRegistry& registry, const String& str, world::BlockIdRange* out) {
+    world::BlockIdRange* range = registry.name_map.Find(str);
+
+    if (range) {
+      *out = *range;
+    }
+  }
+};
+
 struct BlockMesher {
-  BlockMesher(MemoryArena& arena) : arena(arena) {
-    // TODO: Don't do this because it allocates for each chunk being meshed
+  BlockMesher(MemoryArena& trans_arena) : arena(trans_arena) {
     alpha_arena = CreateArena(Megabytes(32));
     flora_arena = CreateArena(Megabytes(32));
   }
@@ -139,10 +167,17 @@ struct BlockMesher {
     flora_arena.Destroy();
   }
 
+  void Reset() {
+    alpha_arena.Reset();
+    flora_arena.Reset();
+  }
+
   asset::TextureIdRange water_texture;
   MemoryArena& arena;
   MemoryArena alpha_arena;
   MemoryArena flora_arena;
+
+  BlockMesherMapping mapping;
 
   ChunkVertexData CreateMesh(asset::AssetSystem& assets, world::BlockRegistry& block_registry, ChunkBuildContext* ctx,
                              s32 chunk_y);

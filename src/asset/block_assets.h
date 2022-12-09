@@ -32,7 +32,7 @@ typedef HashMap<MapStringKey, TextureIdRange, MapStringHasher> TextureIdMap;
 struct BlockAssets {
   TextureIdMap* texture_id_map = nullptr;
   render::TextureArray* block_textures = nullptr;
-  world::BlockRegistry block_registry;
+  world::BlockRegistry* block_registry = nullptr;
 };
 
 struct BlockAssetLoader {
@@ -44,7 +44,7 @@ struct BlockAssetLoader {
   BlockAssetLoader(MemoryArena& perm_arena, MemoryArena& trans_arena)
       : perm_arena(perm_arena), trans_arena(trans_arena), assets(nullptr) {}
 
-  bool Load(render::VulkanRenderer& renderer, ZipArchive& archive, const char* blocks_path);
+  bool Load(render::VulkanRenderer& renderer, ZipArchive& archive, const char* blocks_path, world::BlockRegistry* registry);
 };
 
 } // namespace asset

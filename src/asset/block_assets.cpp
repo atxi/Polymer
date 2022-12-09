@@ -87,14 +87,18 @@ struct AssetParser {
   }
 };
 
-bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archive, const char* blocks_path) {
+bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archive, const char* blocks_path,
+                            world::BlockRegistry* registry) {
   assets = memory_arena_push_type(&perm_arena, BlockAssets);
 
-  assets->block_registry.info_count = 0;
-  assets->block_registry.state_count = 0;
+  assets->block_registry = registry;
+  assets->block_registry->info_count = 0;
+  assets->block_registry->state_count = 0;
+  assets->block_registry->name_map.Clear();
+
   assets->texture_id_map = memory_arena_construct_type(&perm_arena, TextureIdMap, perm_arena);
 
-  AssetParser parser(&trans_arena, &assets->block_registry, archive);
+  AssetParser parser(&trans_arena, assets->block_registry, archive);
 
   parser.full_texture_id_map = assets->texture_id_map;
 
@@ -136,8 +140,20 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
     free(parser.models[i].root_value);
   }
 
-  for (size_t i = 0; i < assets->block_registry.state_count; ++i) {
-    world::BlockState* state = assets->block_registry.states + i;
+  for (size_t i = 0; i < assets->block_registry->state_count; ++i) {
+    world::BlockState* state = assets->block_registry->states + i;
+    world::BlockStateInfo* info = state->info;
+
+    String key(info->name, info->name_length);
+    world::BlockIdRange* range = assets->block_registry->name_map.Find(key);
+
+    if (range == nullptr) {
+      world::BlockIdRange mapping(state->id, 1);
+
+      assets->block_registry->name_map.Insert(key, mapping);
+    } else {
+      ++range->count;
+    }
 
     for (size_t j = 0; j < state->model.element_count; ++j) {
       world::BlockElement* element = state->model.elements + j;

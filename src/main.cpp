@@ -200,7 +200,7 @@ int run() {
     using ms_float = std::chrono::duration<float, std::milli>;
     auto start = std::chrono::high_resolution_clock::now();
 
-    if (!g_game->assets.Load(vk_render, kMinecraftJar, "blocks.json")) {
+    if (!g_game->assets.Load(vk_render, kMinecraftJar, "blocks.json", &game->block_registry)) {
       fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and %s.\n", kMinecraftJar);
       return 1;
     }
@@ -214,7 +214,8 @@ int run() {
     vk_render.chunk_renderer.block_textures = g_game->assets.block_assets->block_textures;
     vk_render.font_renderer.glyph_page_texture = g_game->assets.glyph_page_texture;
     vk_render.font_renderer.glyph_size_table = g_game->assets.glyph_size_table;
-    game->block_registry = g_game->assets.block_assets->block_registry;
+
+    g_game->block_mesher.mapping.Initialize(g_game->block_registry);
   }
 
   MSG msg = {};

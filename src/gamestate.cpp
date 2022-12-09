@@ -25,7 +25,8 @@ using polymer::world::kChunkColumnCount;
 namespace polymer {
 
 GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
-    : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer) {
+    : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer),
+      block_registry(*perm_arena), block_mesher(*trans_arena) {
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
       ChunkSection* section = &world.chunks[chunk_z][chunk_x];
@@ -254,8 +255,7 @@ void GameState::OnPlayerPositionAndLook(const Vector3f& position, float yaw, flo
 void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z) {
   u8* arena_snapshot = trans_arena->current;
 
-  render::BlockMesher mesher(*trans_arena);
-  render::ChunkVertexData vertex_data = mesher.CreateMesh(assets, block_registry, ctx, chunk_y);
+  render::ChunkVertexData vertex_data = block_mesher.CreateMesh(assets, block_registry, ctx, chunk_y);
 
   ChunkMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
 
@@ -281,6 +281,7 @@ void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 
   // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
   // useful.
   trans_arena->current = arena_snapshot;
+  block_mesher.Reset();
 }
 
 void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx) {

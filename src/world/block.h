@@ -1,6 +1,7 @@
 #ifndef POLYMER_BLOCK_H_
 #define POLYMER_BLOCK_H_
 
+#include "../hash_map.h"
 #include "../math.h"
 #include "../types.h"
 
@@ -106,15 +107,36 @@ struct BlockState {
   };
 };
 
+struct BlockIdRange {
+  u32 base;
+  u32 count;
+
+  BlockIdRange() : base(0), count(0) {}
+  BlockIdRange(u32 base, u32 count) : base(base), count(count) {}
+
+  bool Contains(u32 bid) const {
+    return bid >= base && bid < base + count;
+  }
+
+  bool operator==(const BlockIdRange& other) const {
+    return base == other.base && count == other.count;
+  }
+};
+
 struct BlockRegistry {
-  size_t state_count;
+  size_t state_count = 0;
   BlockState* states;
 
-  size_t info_count;
+  size_t info_count = 0;
   BlockStateInfo* infos;
 
-  size_t property_count;
+  size_t property_count = 0;
   String* properties;
+
+  // Map block name to block id
+  HashMap<String, BlockIdRange, MapStringHasher> name_map;
+
+  BlockRegistry(MemoryArena& arena) : name_map(arena) {}
 };
 
 } // namespace world

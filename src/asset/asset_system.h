@@ -18,8 +18,6 @@ struct TextureArray;
 
 namespace asset {
 
-// TODO: Create block id range mappings for namespace name lookups so things like fluid renderers can tell if it's a
-// fluid id.
 struct AssetSystem {
   MemoryArena perm_arena;
   BlockAssets* block_assets = nullptr;
@@ -28,7 +26,8 @@ struct AssetSystem {
 
   AssetSystem();
 
-  bool Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path);
+  bool Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path,
+            world::BlockRegistry* registry);
 
   bool LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_arena, MemoryArena& trans_arena,
                 ZipArchive& archive);

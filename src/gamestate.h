@@ -112,6 +112,7 @@ struct GameState {
 #endif
 
   render::ChunkBuildQueue build_queue;
+  render::BlockMesher block_mesher;
 
   world::BlockRegistry block_registry;
 

@@ -2,6 +2,8 @@
 
 #include "../world/block.h"
 
+#include <stdio.h>
+
 using polymer::world::BlockElement;
 using polymer::world::BlockFace;
 using polymer::world::BlockModel;
@@ -76,29 +78,13 @@ struct MaterialDescription {
   bool water;
 };
 
-#define TEMP_LILY_PAD_ID 5601
-#define TEMP_VOID_AIR_ID 10546
-#define TEMP_CAVE_AIR_ID 10547
-#define TEMP_WATER_START_ID 75
-#define TEMP_WATER_START_END 90
-
-#define TEMP_LAVA_START_ID 91
-#define TEMP_LAVA_END_ID 106
-
-#define TEMP_KELP_START_ID 10351
-#define TEMP_KELP_END_ID 10376
-#define TEMP_SEAGRASS_ID 1599
-#define TEMP_TALL_SEAGRASS_START_ID 1600
-#define TEMP_TALL_SEAGRASS_END_ID 1601
-
-inline MaterialDescription GetMaterialDescription(u32 bid) {
+inline MaterialDescription GetMaterialDescription(BlockMesherMapping& mapping, u32 bid) {
   MaterialDescription result = {};
 
-  // TODO: Pull these from the asset system
-  result.water = (bid >= TEMP_WATER_START_ID && bid <= TEMP_WATER_START_END) ||
-                 (bid >= TEMP_KELP_START_ID && bid <= TEMP_KELP_END_ID) || (bid == TEMP_SEAGRASS_ID) ||
-                 (bid >= TEMP_TALL_SEAGRASS_START_ID && bid <= TEMP_TALL_SEAGRASS_END_ID);
-  result.fluid = result.water || (bid >= TEMP_LAVA_START_ID && bid <= TEMP_LAVA_END_ID);
+  result.water = mapping.water_range.Contains(bid) || mapping.kelp_range.Contains(bid) ||
+                 mapping.seagrass_range.Contains(bid) || mapping.tall_seagrass_range.Contains(bid);
+
+  result.fluid = result.water || mapping.lava_range.Contains(bid);
 
   return result;
 }
@@ -154,7 +140,7 @@ static void RandomizeFaceTexture(u32 world_x, u32 world_y, u32 world_z, Vector2f
   }
 }
 
-static void MeshBlock(PushContext& context, BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk,
+static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& block_registry, u32* bordered_chunk,
                       u32 bid, size_t relative_x, size_t relative_y, size_t relative_z, const Vector3f& chunk_base) {
   BlockModel* model = &block_registry.states[bid].model;
 
@@ -668,7 +654,7 @@ static void MeshBlock(PushContext& context, BlockRegistry& block_registry, Memor
 }
 
 // TODO: Real implementation.
-static void MeshFluid(PushContext& context, BlockRegistry& block_registry, MemoryArena& arena, u32* bordered_chunk,
+static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& block_registry, u32* bordered_chunk,
                       u32 bid, size_t relative_x, size_t relative_y, size_t relative_z, const Vector3f& chunk_base,
                       asset::TextureIdRange texture_range, u32 tintindex, RenderLayer layer) {
   float x = (float)relative_x;
@@ -741,9 +727,13 @@ static void MeshFluid(PushContext& context, BlockRegistry& block_registry, Memor
   face_.render_layer = (int)layer;
   RenderableFace* face = &face_;
 
-  bool fluid_below = GetMaterialDescription(below_id).fluid;
+  bool fluid_below = GetMaterialDescription(mesher.mapping, below_id).fluid;
 
-  if (above_id == 0 || above_id == TEMP_LILY_PAD_ID || above_id == TEMP_VOID_AIR_ID || above_id == TEMP_CAVE_AIR_ID) {
+  BlockMesherMapping& mapping = mesher.mapping;
+  bool is_empty_above = above_id == 0 || mapping.lily_pad_range.Contains(above_id) ||
+                        mapping.void_air_range.Contains(above_id) || mapping.cave_air_range.Contains(above_id);
+
+  if (is_empty_above) {
     Vector3f to(1, 0.9f, 1);
     Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
     Vector3f bottom_right(x + from.x, y + to.y, z + to.z);
@@ -954,7 +944,7 @@ ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistr
 
         u32 bid = bordered_chunk[index];
 
-        MaterialDescription desc = GetMaterialDescription(bid);
+        MaterialDescription desc = GetMaterialDescription(mapping, bid);
 
         if (desc.fluid) {
           RenderLayer layer = RenderLayer::Standard;
@@ -968,13 +958,13 @@ ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistr
           }
 
           context.anim_repeat = true;
-          MeshFluid(context, block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base,
+          MeshFluid(*this, context, block_registry, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base,
                     texture_range, tintindex, layer);
         }
 
         context.anim_repeat = false;
         // Always mesh block even if it's a fluid because the plants have both
-        MeshBlock(context, block_registry, arena, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base);
+        MeshBlock(*this, context, block_registry, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base);
       }
     }
   }
