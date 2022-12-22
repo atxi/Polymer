@@ -2,6 +2,7 @@
 
 #include "../world/block.h"
 
+#include <assert.h>
 #include <stdio.h>
 
 using polymer::world::BlockElement;
@@ -25,28 +26,44 @@ struct LayerData {
 };
 
 struct PushContext {
-  MemoryArena* arenas[(size_t)RenderLayer::Count];
+  MemoryArena* vertex_arenas[kRenderLayerCount];
+  MemoryArena* index_arenas[kRenderLayerCount];
   bool anim_repeat;
 
-  PushContext(MemoryArena& arena, bool anim_repeat) : anim_repeat(anim_repeat) {}
+  PushContext(bool anim_repeat) : anim_repeat(anim_repeat) {}
 
-  void SetLayerData(RenderLayer layer, MemoryArena* arena) {
-    arenas[(size_t)layer] = arena;
+  void SetLayerData(RenderLayer layer, MemoryArena* vertex_arena, MemoryArena* index_arena) {
+    vertex_arenas[(size_t)layer] = vertex_arena;
+    index_arenas[(size_t)layer] = index_arena;
   }
 };
 
-inline void PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u32 ao) {
+inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u32 ao) {
   render::ChunkVertex* vertex =
-      (render::ChunkVertex*)ctx.arenas[face->render_layer]->Allocate(sizeof(render::ChunkVertex), 1);
+      (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->Allocate(sizeof(render::ChunkVertex), 1);
 
   vertex->position = position;
-  vertex->texcoord = uv;
+
+  u16 uv_x = (u16)(uv.x * 16);
+  u16 uv_y = (u16)(uv.y * 16);
+
+  vertex->packed_uv = (uv_x << 5) | (uv_y & 0x1F);
+
   vertex->texture_id = face->texture_id;
 
   u32 anim_count = face->frame_count;
   anim_count |= ((u32)ctx.anim_repeat << 7);
 
   vertex->tint_index = (face->tintindex & 0xFF) | ((anim_count & 0xFF) << 8) | (ao << 16);
+
+  size_t index = (vertex - (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->base);
+  assert(index <= 65535);
+  return (u16)index;
+}
+
+inline void PushIndex(PushContext& ctx, u32 render_layer, u16 index) {
+  u16* out = (u16*)ctx.index_arenas[render_layer]->Allocate(sizeof(index), 1);
+  *out = index;
 }
 
 inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
@@ -265,13 +282,18 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushIndex(context, face->render_layer, bli);
+      PushIndex(context, face->render_layer, bri);
+      PushIndex(context, face->render_layer, tri);
+
+      PushIndex(context, face->render_layer, tri);
+      PushIndex(context, face->render_layer, tli);
+      PushIndex(context, face->render_layer, bli);
     }
   }
 
@@ -340,13 +362,18 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushIndex(context, face->render_layer, bli);
+      PushIndex(context, face->render_layer, bri);
+      PushIndex(context, face->render_layer, tri);
+
+      PushIndex(context, face->render_layer, tri);
+      PushIndex(context, face->render_layer, tli);
+      PushIndex(context, face->render_layer, bli);
     }
   }
 
@@ -415,13 +442,18 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushIndex(context, face->render_layer, bli);
+      PushIndex(context, face->render_layer, bri);
+      PushIndex(context, face->render_layer, tri);
+
+      PushIndex(context, face->render_layer, tri);
+      PushIndex(context, face->render_layer, tli);
+      PushIndex(context, face->render_layer, bli);
     }
   }
 
@@ -492,13 +524,18 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushIndex(context, face->render_layer, bli);
+      PushIndex(context, face->render_layer, bri);
+      PushIndex(context, face->render_layer, tri);
+
+      PushIndex(context, face->render_layer, tri);
+      PushIndex(context, face->render_layer, tli);
+      PushIndex(context, face->render_layer, bli);
     }
   }
 
@@ -567,13 +604,18 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushIndex(context, face->render_layer, bli);
+      PushIndex(context, face->render_layer, bri);
+      PushIndex(context, face->render_layer, tri);
+
+      PushIndex(context, face->render_layer, tri);
+      PushIndex(context, face->render_layer, tli);
+      PushIndex(context, face->render_layer, bli);
     }
   }
 
@@ -642,13 +684,18 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr = ao_tr;
       }
 
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-      PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-      PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+      PushIndex(context, face->render_layer, bli);
+      PushIndex(context, face->render_layer, bri);
+      PushIndex(context, face->render_layer, tri);
+
+      PushIndex(context, face->render_layer, tri);
+      PushIndex(context, face->render_layer, tli);
+      PushIndex(context, face->render_layer, bli);
     }
   }
 }
@@ -745,21 +792,26 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
     Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, bri);
+    PushIndex(context, face->render_layer, tri);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, tli);
+    PushIndex(context, face->render_layer, bli);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (below_id == 0) {
@@ -773,21 +825,26 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, bri);
+    PushIndex(context, face->render_layer, tri);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, tli);
+    PushIndex(context, face->render_layer, bli);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (fluid_below) {
@@ -807,21 +864,26 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, bri);
+    PushIndex(context, face->render_layer, tri);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, tli);
+    PushIndex(context, face->render_layer, bli);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (south_id == 0) {
@@ -835,21 +897,26 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, bri);
+    PushIndex(context, face->render_layer, tri);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, tli);
+    PushIndex(context, face->render_layer, bli);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (east_id == 0) {
@@ -863,21 +930,26 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, bri);
+    PushIndex(context, face->render_layer, tri);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, tli);
+    PushIndex(context, face->render_layer, bli);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (west_id == 0) {
@@ -891,21 +963,26 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
+    u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, bri);
+    PushIndex(context, face->render_layer, tri);
 
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, tli);
+    PushIndex(context, face->render_layer, bli);
 
-    PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-    PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-    PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 }
 
@@ -916,26 +993,20 @@ ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistr
   s32 chunk_x = ctx->chunk_x;
   s32 chunk_z = ctx->chunk_z;
 
-  u32* bordered_chunk = CreateBorderedChunk(arena, ctx, chunk_y);
+  u32* bordered_chunk = CreateBorderedChunk(trans_arena, ctx, chunk_y);
   if (!bordered_chunk) return vertex_data;
 
   water_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_still.png"));
   asset::TextureIdRange lava_texture =
       assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/lava_still.png"));
 
-  // Create an initial pointer to transient memory with zero vertices allocated.
-  // Each push will allocate a new vertex with just a stack pointer increase so it's quick and contiguous.
-  render::ChunkVertex* vertices = (render::ChunkVertex*)arena.Allocate(0);
-  render::ChunkVertex* alpha_vertices = (render::ChunkVertex*)alpha_arena.Allocate(0);
-  render::ChunkVertex* flora_vertices = (render::ChunkVertex*)flora_arena.Allocate(0);
-
   Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
 
-  PushContext context(arena, false);
+  PushContext context(false);
 
-  context.SetLayerData(RenderLayer::Standard, &arena);
-  context.SetLayerData(RenderLayer::Alpha, &alpha_arena);
-  context.SetLayerData(RenderLayer::Flora, &flora_arena);
+  context.SetLayerData(RenderLayer::Standard, &vertex_arenas[0], &index_arenas[0]);
+  context.SetLayerData(RenderLayer::Flora, &vertex_arenas[1], &index_arenas[1]);
+  context.SetLayerData(RenderLayer::Alpha, &vertex_arenas[2], &index_arenas[2]);
 
   for (size_t relative_y = 0; relative_y < 16; ++relative_y) {
     for (size_t relative_z = 0; relative_z < 16; ++relative_z) {
@@ -969,13 +1040,17 @@ ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistr
     }
   }
 
-  u32 vertex_count = (u32)(((ptrdiff_t)arena.current - (ptrdiff_t)vertices) / sizeof(ChunkVertex));
-  u32 alpha_vertex_count = (u32)(((ptrdiff_t)alpha_arena.current - (ptrdiff_t)alpha_vertices) / sizeof(ChunkVertex));
-  u32 flora_vertex_count = (u32)(((ptrdiff_t)flora_arena.current - (ptrdiff_t)flora_vertices) / sizeof(ChunkVertex));
+  for (size_t i = 0; i < kRenderLayerCount; ++i) {
+    MemoryArena& vertex_arena = vertex_arenas[i];
+    MemoryArena& index_arena = index_arenas[i];
+    RenderLayer layer = (RenderLayer)i;
 
-  vertex_data.SetVertices(RenderLayer::Standard, (u8*)vertices, vertex_count);
-  vertex_data.SetVertices(RenderLayer::Alpha, (u8*)alpha_vertices, alpha_vertex_count);
-  vertex_data.SetVertices(RenderLayer::Flora, (u8*)flora_vertices, flora_vertex_count);
+    u32 vertex_count = (u32)(((ptrdiff_t)vertex_arena.current - (ptrdiff_t)vertex_arena.base) / sizeof(ChunkVertex));
+    u32 index_count = (u32)(((ptrdiff_t)index_arena.current - (ptrdiff_t)index_arena.base) / sizeof(u16));
+
+    vertex_data.SetVertices(layer, vertex_arenas[i].base, vertex_count);
+    vertex_data.SetIndices(layer, (u16*)index_arenas[i].base, index_count);
+  }
 
   return vertex_data;
 }

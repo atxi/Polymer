@@ -864,13 +864,11 @@ void VulkanRenderer::WaitForIdle() {
   vkQueueWaitIdle(graphics_queue);
 }
 
-RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
-  RenderMesh mesh = {};
-
+bool VulkanRenderer::PushStagingBuffer(u8* data, size_t data_size, VkBuffer* buffer, VmaAllocation* allocation, VkBufferUsageFlagBits usage_type) {
   VkBufferCreateInfo buffer_info = {};
 
   buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = size;
+  buffer_info.size = data_size;
   buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -885,7 +883,7 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
   if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &staging_buffer, &staging_alloc,
                       &staging_alloc_info) != VK_SUCCESS) {
     printf("Failed to create staging buffer.\n");
-    return mesh;
+    return false;
   }
 
   assert(staging_buffer_count < polymer_array_count(staging_buffers));
@@ -899,14 +897,13 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
     memcpy(staging_alloc_info.pMappedData, data, (size_t)buffer_info.size);
   }
 
-  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+  buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage_type;
   alloc_create_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
   alloc_create_info.flags = 0;
 
-  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, &mesh.vertex_buffer, &mesh.vertex_allocation,
-                      nullptr) != VK_SUCCESS) {
+  if (vmaCreateBuffer(allocator, &buffer_info, &alloc_create_info, buffer, allocation, nullptr) != VK_SUCCESS) {
     printf("Failed to create vertex buffer.\n");
-    return mesh;
+    return false;
   }
 
   VkBufferCopy copy = {};
@@ -914,9 +911,31 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* data, size_t size, size_t count) {
   copy.dstOffset = 0;
   copy.size = buffer_info.size;
 
-  vkCmdCopyBuffer(oneshot_command_buffer, staging_buffer, mesh.vertex_buffer, 1, &copy);
+  vkCmdCopyBuffer(oneshot_command_buffer, staging_buffer, *buffer, 1, &copy);
 
-  mesh.vertex_count = (u32)count;
+  return true;
+}
+
+RenderMesh VulkanRenderer::AllocateMesh(u8* vertex_data, size_t vertex_data_size, size_t vertex_count, u16* index_data,
+                                        size_t index_count) {
+  RenderMesh mesh = {};
+
+  if (vertex_count > 0) {
+    if (!PushStagingBuffer(vertex_data, vertex_data_size, &mesh.vertex_buffer, &mesh.vertex_allocation, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
+      return mesh;
+    }
+  }
+
+  mesh.vertex_count = (u32)vertex_count;
+
+  if (index_count > 0) {
+    if (!PushStagingBuffer((u8*)index_data, index_count * sizeof(*index_data), &mesh.index_buffer,
+                           &mesh.index_allocation, VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
+      return mesh;
+    }
+  }
+
+  mesh.index_count = (u32)index_count;
 
   return mesh;
 }
@@ -938,6 +957,10 @@ void VulkanRenderer::EndMeshAllocation() {
 void VulkanRenderer::FreeMesh(RenderMesh* mesh) {
   if (mesh->vertex_count > 0) {
     vmaDestroyBuffer(allocator, mesh->vertex_buffer, mesh->vertex_allocation);
+  }
+
+  if (mesh->index_count > 0) {
+    vmaDestroyBuffer(allocator, mesh->index_buffer, mesh->index_allocation);
   }
 }
 

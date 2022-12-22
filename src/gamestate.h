@@ -106,6 +106,7 @@ struct GameState {
   ChatManager chat_manager;
 
   float position_sync_timer;
+  float frame_accumulator;
 
 #if DISPLAY_PERF_STATS
   PerformanceStatistics stats;
@@ -132,6 +133,9 @@ struct GameState {
   void ImmediateRebuild(render::ChunkBuildContext* ctx, s32 chunk_y);
 
   void Update(float dt, InputState* input);
+  void ProcessMovement(float dt, InputState* input);
+  void RenderFrame();
+  void ProcessBuildQueue();
 
   void FreeMeshes();
 };

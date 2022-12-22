@@ -204,18 +204,18 @@ void ChunkRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, Vk
 
   attribute_descriptions[1].binding = 0;
   attribute_descriptions[1].location = 1;
-  attribute_descriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
-  attribute_descriptions[1].offset = offsetof(ChunkVertex, texcoord);
+  attribute_descriptions[1].format = VK_FORMAT_R32_UINT;
+  attribute_descriptions[1].offset = offsetof(ChunkVertex, texture_id);
 
   attribute_descriptions[2].binding = 0;
   attribute_descriptions[2].location = 2;
   attribute_descriptions[2].format = VK_FORMAT_R32_UINT;
-  attribute_descriptions[2].offset = offsetof(ChunkVertex, texture_id);
+  attribute_descriptions[2].offset = offsetof(ChunkVertex, tint_index);
 
   attribute_descriptions[3].binding = 0;
   attribute_descriptions[3].location = 3;
-  attribute_descriptions[3].format = VK_FORMAT_R32_UINT;
-  attribute_descriptions[3].offset = offsetof(ChunkVertex, tint_index);
+  attribute_descriptions[3].format = VK_FORMAT_R16_UINT;
+  attribute_descriptions[3].offset = offsetof(ChunkVertex, packed_uv);
 
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
   vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;

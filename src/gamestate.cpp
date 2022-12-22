@@ -49,17 +49,30 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
   camera.fov = Radians(80.0f);
 
   position_sync_timer = 0.0f;
+  frame_accumulator = 0.0f;
 }
 
 void GameState::Update(float dt, InputState* input) {
+  ProcessMovement(dt, input);
+
+  if (input->display_players) {
+    player_manager.RenderPlayerList(*renderer);
+  }
+
+  chat_manager.Update(*renderer, dt);
+
+  frame_accumulator += dt;
+  if (frame_accumulator >= 128.0f) {
+    frame_accumulator -= 128.0f;
+  }
+
+  ProcessBuildQueue();
+  RenderFrame();
+}
+
+void GameState::ProcessMovement(float dt, InputState* input) {
   const float kMoveSpeed = 20.0f;
   const float kSprintModifier = 1.3f;
-  static float frame_acc = 0.0f;
-
-  frame_acc += dt;
-  if (frame_acc >= 128.0f) {
-    frame_acc -= 128.0f;
-  }
 
   Vector3f movement;
 
@@ -111,14 +124,9 @@ void GameState::Update(float dt, InputState* input) {
       position_sync_timer = 0.0f;
     }
   }
+}
 
-  if (input->display_players) {
-    player_manager.RenderPlayerList(*renderer);
-  }
-
-  chat_manager.Update(*renderer, dt);
-
-  // Process build queue
+void GameState::ProcessBuildQueue() {
   for (size_t i = 0; i < build_queue.count;) {
     s32 chunk_x = build_queue.data[i].x;
     s32 chunk_z = build_queue.data[i].z;
@@ -133,15 +141,16 @@ void GameState::Update(float dt, InputState* input) {
       ++i;
     }
   }
+}
 
-  // Render game world
+void GameState::RenderFrame() {
   camera.aspect_ratio = (float)renderer->swap_extent.width / renderer->swap_extent.height;
 
   render::ChunkRenderUBO ubo;
   void* data = nullptr;
 
   ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
-  ubo.frame = (u32)(frame_acc * 8.0f);
+  ubo.frame = (u32)(frame_accumulator * 8.0f);
 
   render::ChunkRenderer& chunk_renderer = renderer->chunk_renderer;
 
@@ -152,6 +161,7 @@ void GameState::Update(float dt, InputState* input) {
   Frustum frustum = camera.GetViewFrustum();
 
   VkDeviceSize offsets[] = {0};
+  VkDeviceSize offset = {};
 
 #if DISPLAY_PERF_STATS
   stats.Reset();
@@ -188,7 +198,8 @@ void GameState::Update(float dt, InputState* input) {
                   renderer->chunk_renderer.block_renderer.command_buffers[renderer->current_frame];
 
               vkCmdBindVertexBuffers(block_buffer, 0, 1, &standard_mesh->vertex_buffer, offsets);
-              vkCmdDraw(block_buffer, standard_mesh->vertex_count, 1, 0, 0);
+              vkCmdBindIndexBuffer(block_buffer, standard_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
+              vkCmdDrawIndexed(block_buffer, standard_mesh->index_count, 1, 0, 0, 0);
 #if DISPLAY_PERF_STATS
               rendered = true;
               stats.opaque_vertex_count += standard_mesh->vertex_count;
@@ -200,7 +211,8 @@ void GameState::Update(float dt, InputState* input) {
                   renderer->chunk_renderer.flora_renderer.command_buffers[renderer->current_frame];
 
               vkCmdBindVertexBuffers(flora_buffer, 0, 1, &flora_mesh->vertex_buffer, offsets);
-              vkCmdDraw(flora_buffer, flora_mesh->vertex_count, 1, 0, 0);
+              vkCmdBindIndexBuffer(flora_buffer, flora_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
+              vkCmdDrawIndexed(flora_buffer, flora_mesh->index_count, 1, 0, 0, 0);
 
 #if DISPLAY_PERF_STATS
               rendered = true;
@@ -213,7 +225,8 @@ void GameState::Update(float dt, InputState* input) {
                   renderer->chunk_renderer.alpha_renderer.command_buffers[renderer->current_frame];
 
               vkCmdBindVertexBuffers(alpha_buffer, 0, 1, &alpha_mesh->vertex_buffer, offsets);
-              vkCmdDraw(alpha_buffer, alpha_mesh->vertex_count, 1, 0, 0);
+              vkCmdBindIndexBuffer(alpha_buffer, alpha_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
+              vkCmdDrawIndexed(alpha_buffer, alpha_mesh->index_count, 1, 0, 0, 0);
 #if DISPLAY_PERF_STATS
               rendered = true;
               stats.alpha_vertex_count += alpha_mesh->vertex_count;
@@ -274,7 +287,8 @@ void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 
 
       meshes[chunk_y].meshes[i].vertex_count = (u32)vertex_data.vertex_count[i];
       meshes[chunk_y].meshes[i] =
-          renderer->AllocateMesh(vertex_data.vertices[i], data_size, vertex_data.vertex_count[i]);
+          renderer->AllocateMesh(vertex_data.vertices[i], data_size, vertex_data.vertex_count[i],
+                                 vertex_data.indices[i], vertex_data.index_count[i]);
     }
   }
 

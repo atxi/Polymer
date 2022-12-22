@@ -64,6 +64,10 @@ struct RenderMesh {
   VkBuffer vertex_buffer;
   VmaAllocation vertex_allocation;
   u32 vertex_count;
+
+  VkBuffer index_buffer;
+  VmaAllocation index_allocation;
+  u32 index_count;
 };
 
 struct TextureArray {
@@ -225,7 +229,8 @@ struct VulkanRenderer {
   void Cleanup();
 
   // Uses staging buffer to push data to the gpu and returns the allocation buffers.
-  RenderMesh AllocateMesh(u8* data, size_t size, size_t count);
+  RenderMesh AllocateMesh(u8* vertex_data, size_t vertex_data_size, size_t vertex_count, u16* index_data,
+                          size_t index_count);
   void FreeMesh(RenderMesh* mesh);
 
   TextureArrayPushState BeginTexturePush(TextureArray& texture);
@@ -242,6 +247,9 @@ struct VulkanRenderer {
   void WaitForIdle();
 
 private:
+  bool PushStagingBuffer(u8* data, size_t data_size, VkBuffer* buffer, VmaAllocation* allocation,
+                         VkBufferUsageFlagBits usage_type);
+
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
 
   void GenerateArrayMipmaps(TextureArray& texture, u32 index);

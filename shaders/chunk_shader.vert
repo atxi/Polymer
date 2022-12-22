@@ -7,9 +7,9 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec2 inTexCoord;
-layout(location = 2) in uint inTexId;
-layout(location = 3) in uint inTintIndex;
+layout(location = 1) in uint inTexId;
+layout(location = 2) in uint inTintIndex;
+layout(location = 3) in uint inTexCoord;
 
 layout(location = 0) out vec2 fragTexCoord;
 layout(location = 1) flat out uint fragTexId;
@@ -41,7 +41,8 @@ void main() {
   uint animRepeat = (inTintIndex >> 15) & 1;
 
   gl_Position = ubo.mvp * vec4(inPosition, 1.0);
-  fragTexCoord = inTexCoord;
+  fragTexCoord.x = (inTexCoord >> 5) / 16.0;
+  fragTexCoord.y = (inTexCoord & 0x1F) / 16.0;
 
   // Have animation repeat itself backwards
   uint frame = 0;

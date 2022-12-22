@@ -107,21 +107,31 @@ struct ChunkBuildContext {
   }
 };
 
-// TODO: This should support any number of draw layers
 struct ChunkVertexData {
   u8* vertices[render::kRenderLayerCount];
   size_t vertex_count[render::kRenderLayerCount];
+
+  u16* indices[render::kRenderLayerCount];
+  size_t index_count[render::kRenderLayerCount];
 
   ChunkVertexData() {
     for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
       vertices[i] = nullptr;
       vertex_count[i] = 0;
+
+      indices[i] = nullptr;
+      index_count[i] = 0;
     }
   }
 
   inline void SetVertices(render::RenderLayer layer, u8* new_vertices, size_t new_vertex_count) {
     vertices[(size_t)layer] = new_vertices;
     vertex_count[(size_t)layer] = new_vertex_count;
+  }
+
+  inline void SetIndices(render::RenderLayer layer, u16* new_indices, size_t new_index_count) {
+    indices[(size_t)layer] = new_indices;
+    index_count[(size_t)layer] = new_index_count;
   }
 };
 
@@ -157,25 +167,31 @@ private:
 };
 
 struct BlockMesher {
-  BlockMesher(MemoryArena& trans_arena) : arena(trans_arena) {
-    alpha_arena = CreateArena(Megabytes(32));
-    flora_arena = CreateArena(Megabytes(32));
+  BlockMesher(MemoryArena& trans_arena) : trans_arena(trans_arena) {
+    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
+      vertex_arenas[i] = CreateArena(Megabytes(32));
+      index_arenas[i] = CreateArena(Megabytes(4));
+    }
   }
 
   ~BlockMesher() {
-    alpha_arena.Destroy();
-    flora_arena.Destroy();
+    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
+      vertex_arenas[i].Destroy();
+      index_arenas[i].Destroy();
+    }
   }
 
   void Reset() {
-    alpha_arena.Reset();
-    flora_arena.Reset();
+    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
+      vertex_arenas[i].Reset();
+      index_arenas[i].Reset();
+    }
   }
 
   asset::TextureIdRange water_texture;
-  MemoryArena& arena;
-  MemoryArena alpha_arena;
-  MemoryArena flora_arena;
+  MemoryArena& trans_arena;
+  MemoryArena vertex_arenas[render::kRenderLayerCount];
+  MemoryArena index_arenas[render::kRenderLayerCount];
 
   BlockMesherMapping mapping;
 
