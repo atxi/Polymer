@@ -130,7 +130,9 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
       ++current;
     }
 
-    renderer.PushArrayTexture(trans_arena, glyph_page_push, single_channel_image, page_index);
+    render::TextureConfig cfg(false);
+
+    renderer.PushArrayTexture(trans_arena, glyph_page_push, single_channel_image, page_index, cfg);
 
     trans_arena.Revert(snapshot);
   }

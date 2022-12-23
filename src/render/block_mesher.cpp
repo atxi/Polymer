@@ -1004,9 +1004,10 @@ ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistr
 
   PushContext context(false);
 
-  context.SetLayerData(RenderLayer::Standard, &vertex_arenas[0], &index_arenas[0]);
-  context.SetLayerData(RenderLayer::Flora, &vertex_arenas[1], &index_arenas[1]);
-  context.SetLayerData(RenderLayer::Alpha, &vertex_arenas[2], &index_arenas[2]);
+  for (size_t i = 0; i < kRenderLayerCount; ++i) {
+    RenderLayer layer = (RenderLayer)i;
+    context.SetLayerData(layer, &vertex_arenas[i], &index_arenas[i]);
+  }
 
   for (size_t relative_y = 0; relative_y < 16; ++relative_y) {
     for (size_t relative_z = 0; relative_z < 16; ++relative_z) {

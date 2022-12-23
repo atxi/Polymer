@@ -78,15 +78,15 @@ struct ChatManager {
 #define DISPLAY_PERF_STATS 1
 struct PerformanceStatistics {
   u32 chunk_render_count;
-  u64 opaque_vertex_count;
-  u64 flora_vertex_count;
-  u64 alpha_vertex_count;
+
+  u64 vertex_counts[render::kRenderLayerCount];
 
   void Reset() {
     chunk_render_count = 0;
-    opaque_vertex_count = 0;
-    flora_vertex_count = 0;
-    alpha_vertex_count = 0;
+
+    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
+      vertex_counts[i] = 0;
+    }
   }
 };
 

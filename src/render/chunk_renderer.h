@@ -17,12 +17,14 @@ namespace render {
 enum class RenderLayer {
   Standard,
   Flora,
-  Alpha, // Water
+  Leaves,
+  Alpha,
 
   Count,
 };
 
 constexpr size_t kRenderLayerCount = (size_t)RenderLayer::Count;
+extern const char* kRenderLayerNames[kRenderLayerCount];
 
 struct TextureArray;
 struct VulkanRenderer;
@@ -62,6 +64,17 @@ struct FloraRenderer {
   void CreateRenderPass(VkDevice device, VkFormat swap_format);
 };
 
+struct LeafRenderer {
+  VkRenderPass render_pass;
+  VkPipeline pipeline;
+
+  VkCommandBuffer command_buffers[2];
+  VkDescriptorSet descriptors[2];
+  VkSampler sampler;
+
+  void CreateRenderPass(VkDevice device, VkFormat swap_format);
+};
+
 struct AlphaRenderer {
   VkRenderPass render_pass;
   VkPipeline pipeline;
@@ -90,6 +103,7 @@ struct ChunkRenderer {
 
   BlockRenderer block_renderer;
   FloraRenderer flora_renderer;
+  LeafRenderer leaf_renderer;
   AlphaRenderer alpha_renderer;
 
   VkSemaphore block_finished_semaphores[2];

@@ -65,6 +65,7 @@ struct AssetParser {
 
   size_t texture_count;
   u8* texture_images;
+  render::TextureConfig* texture_configs;
 
   AssetParser(MemoryArena* arena, BlockRegistry* registry, ZipArchive& archive)
       : arena(arena), registry(registry), archive(archive), model_count(0), parsed_block_map(*arena),
@@ -131,7 +132,9 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
   render::TextureArrayPushState push_state = renderer.BeginTexturePush(*assets->block_textures);
 
   for (size_t i = 0; i < texture_count; ++i) {
-    renderer.PushArrayTexture(trans_arena, push_state, parser.GetTexture(i), i);
+    const render::TextureConfig& cfg = parser.texture_configs[i];
+
+    renderer.PushArrayTexture(trans_arena, push_state, parser.GetTexture(i), i, cfg);
   }
 
   renderer.CommitTexturePush(push_state);
@@ -169,15 +172,17 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
 }
 
 static void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
-  if (poly_strcmp(texture, POLY_STR("water_still.png")) == 0) {
+  if (poly_contains(texture, POLY_STR("leaves"))) {
+    face->render_layer = (int)RenderLayer::Leaves;
+  } else if (poly_strcmp(texture, POLY_STR("water_still.png")) == 0) {
     face->render_layer = (int)RenderLayer::Alpha;
   } else if (poly_strcmp(texture, POLY_STR("grass.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
   } else if (poly_strcmp(texture, POLY_STR("sugar_cane.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
-  } else if (poly_strcmp(texture, POLY_STR("grass_bottom.png")) == 0) {
+  } else if (poly_contains(texture, POLY_STR("grass_bottom.png"))) {
     face->render_layer = (int)RenderLayer::Flora;
-  } else if (poly_strcmp(texture, POLY_STR("grass_top.png")) == 0) {
+  } else if (poly_contains(texture, POLY_STR("grass_top.png"))) {
     face->render_layer = (int)RenderLayer::Flora;
   } else if (poly_strcmp(texture, POLY_STR("fern.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
@@ -188,6 +193,16 @@ static void AssignFaceRenderSettings(RenderableFace* face, const String& texture
   } else if (poly_strcmp(texture, POLY_STR("sand.png")) == 0) {
     face->random_flip = 1;
   }
+}
+
+static inline render::TextureConfig CreateTextureConfig(String texture_name) {
+  render::TextureConfig cfg(true);
+
+  if (poly_contains(texture_name, POLY_STR("leaves"))) {
+    cfg.brighten_mipping = false;
+  }
+
+  return cfg;
 }
 
 inline String GetFilenameBase(const char* filename) {
@@ -276,6 +291,7 @@ size_t AssetParser::LoadTextures() {
   // TODO: Allocate this better. This should be enough for current versions but it would be better to allocate to handle
   // any amount.
   this->texture_images = memory_arena_push_type_count(arena, u8, kTextureSize * state_count * 4);
+  this->texture_configs = memory_arena_push_type_count(arena, render::TextureConfig, state_count * 4);
 
   u32 current_texture_id = 0;
 
@@ -310,7 +326,10 @@ size_t AssetParser::LoadTextures() {
 
       full_texture_id_map->Insert(full_texture_name, range);
 
+      render::TextureConfig cfg = CreateTextureConfig(texture_name);
+
       for (u32 j = 0; j < range.count; ++j) {
+        texture_configs[current_texture_id] = cfg;
         u8* destination = texture_images + (current_texture_id * kTextureSize);
         memcpy(destination, image + j * (width * 16 * 4), kTextureSize);
 

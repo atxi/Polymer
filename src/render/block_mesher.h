@@ -169,7 +169,7 @@ private:
 struct BlockMesher {
   BlockMesher(MemoryArena& trans_arena) : trans_arena(trans_arena) {
     for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
-      vertex_arenas[i] = CreateArena(Megabytes(32));
+      vertex_arenas[i] = CreateArena(Megabytes(16));
       index_arenas[i] = CreateArena(Megabytes(4));
     }
   }

@@ -70,6 +70,13 @@ struct RenderMesh {
   u32 index_count;
 };
 
+struct TextureConfig {
+  bool brighten_mipping;
+
+  TextureConfig() : brighten_mipping(true) {}
+  TextureConfig(bool brighten_mipping) : brighten_mipping(brighten_mipping) {}
+};
+
 struct TextureArray {
   VmaAllocation allocation;
   VkImage image;
@@ -238,7 +245,8 @@ struct VulkanRenderer {
 
   TextureArray* CreateTextureArray(size_t width, size_t height, size_t layers, int channels = 4,
                                    bool enable_mips = true);
-  void PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture, size_t index);
+  void PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture, size_t index,
+                        const TextureConfig& cfg);
   void FreeTextureArray(TextureArray& texture);
 
   void BeginMeshAllocation();

@@ -313,17 +313,13 @@ int run() {
       vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
       y += 16;
 
-      sprintf(text, "%llu opaque vertices rendered", g_game->stats.opaque_vertex_count);
-      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
-      y += 16;
+      for (size_t i = 0; i < polymer::render::kRenderLayerCount; ++i) {
+        const char* name = polymer::render::kRenderLayerNames[i];
 
-      sprintf(text, "%llu flora vertices rendered", g_game->stats.flora_vertex_count);
-      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
-      y += 16;
-
-      sprintf(text, "%llu alpha vertices rendered", g_game->stats.alpha_vertex_count);
-      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
-      y += 16;
+        sprintf(text, "%llu %s vertices rendered", g_game->stats.vertex_counts[i], name);
+        vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
+        y += 16;
+      }
 #endif
 
       vk_render.Render();

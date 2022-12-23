@@ -167,6 +167,13 @@ void GameState::RenderFrame() {
   stats.Reset();
 #endif
 
+  VkCommandBuffer buffers[] = {
+      renderer->chunk_renderer.block_renderer.command_buffers[renderer->current_frame],
+      renderer->chunk_renderer.flora_renderer.command_buffers[renderer->current_frame],
+      renderer->chunk_renderer.leaf_renderer.command_buffers[renderer->current_frame],
+      renderer->chunk_renderer.alpha_renderer.command_buffers[renderer->current_frame],
+  };
+
   for (s32 chunk_z = 0; chunk_z < (s32)kChunkCacheSize; ++chunk_z) {
     for (s32 chunk_x = 0; chunk_x < (s32)kChunkCacheSize; ++chunk_x) {
       ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
@@ -185,52 +192,23 @@ void GameState::RenderFrame() {
           Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, section_info->z * 16.0f + 16.0f);
 
           if (frustum.Intersects(chunk_min, chunk_max)) {
-            render::RenderMesh* standard_mesh = &mesh->meshes[(size_t)RenderLayer::Standard];
-            render::RenderMesh* flora_mesh = &mesh->meshes[(size_t)RenderLayer::Flora];
-            render::RenderMesh* alpha_mesh = &mesh->meshes[(size_t)RenderLayer::Alpha];
-
 #if DISPLAY_PERF_STATS
             bool rendered = false;
 #endif
+            for (s32 i = 0; i < render::kRenderLayerCount; ++i) {
+              render::RenderMesh* layer_mesh = &mesh->meshes[i];
 
-            if (standard_mesh->vertex_count > 0) {
-              VkCommandBuffer block_buffer =
-                  renderer->chunk_renderer.block_renderer.command_buffers[renderer->current_frame];
+              if (layer_mesh->vertex_count > 0) {
+                VkCommandBuffer command_buffer = buffers[i];
 
-              vkCmdBindVertexBuffers(block_buffer, 0, 1, &standard_mesh->vertex_buffer, offsets);
-              vkCmdBindIndexBuffer(block_buffer, standard_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
-              vkCmdDrawIndexed(block_buffer, standard_mesh->index_count, 1, 0, 0, 0);
+                vkCmdBindVertexBuffers(command_buffer, 0, 1, &layer_mesh->vertex_buffer, offsets);
+                vkCmdBindIndexBuffer(command_buffer, layer_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
+                vkCmdDrawIndexed(command_buffer, layer_mesh->index_count, 1, 0, 0, 0);
 #if DISPLAY_PERF_STATS
-              rendered = true;
-              stats.opaque_vertex_count += standard_mesh->vertex_count;
+                stats.vertex_counts[i] += layer_mesh->vertex_count;
+                rendered = true;
 #endif
-            }
-
-            if (flora_mesh->vertex_count > 0) {
-              VkCommandBuffer flora_buffer =
-                  renderer->chunk_renderer.flora_renderer.command_buffers[renderer->current_frame];
-
-              vkCmdBindVertexBuffers(flora_buffer, 0, 1, &flora_mesh->vertex_buffer, offsets);
-              vkCmdBindIndexBuffer(flora_buffer, flora_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
-              vkCmdDrawIndexed(flora_buffer, flora_mesh->index_count, 1, 0, 0, 0);
-
-#if DISPLAY_PERF_STATS
-              rendered = true;
-              stats.flora_vertex_count += flora_mesh->vertex_count;
-#endif
-            }
-
-            if (alpha_mesh->vertex_count > 0) {
-              VkCommandBuffer alpha_buffer =
-                  renderer->chunk_renderer.alpha_renderer.command_buffers[renderer->current_frame];
-
-              vkCmdBindVertexBuffers(alpha_buffer, 0, 1, &alpha_mesh->vertex_buffer, offsets);
-              vkCmdBindIndexBuffer(alpha_buffer, alpha_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
-              vkCmdDrawIndexed(alpha_buffer, alpha_mesh->index_count, 1, 0, 0, 0);
-#if DISPLAY_PERF_STATS
-              rendered = true;
-              stats.alpha_vertex_count += alpha_mesh->vertex_count;
-#endif
+              }
             }
 
 #if DISPLAY_PERF_STATS

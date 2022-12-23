@@ -177,17 +177,19 @@ inline int AlphaBlend(int c0, int c1, int c2, int c3, int a0, int a1, int a2, in
 }
 
 // Performs basic pixel averaging filter for generating mipmap.
-void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim) {
+void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim, bool brighten_mipping) {
   size_t size_per_tex = dim * dim * 4;
   size_t count = data_size / size_per_tex;
   size_t prev_dim = dim * 2;
 
   bool has_transparent = false;
 
-  for (size_t i = 0; i < data_size; i += 4) {
-    if (data[i + 3] == 0) {
-      has_transparent = true;
-      break;
+  if (brighten_mipping) {
+    for (size_t i = 0; i < data_size; i += 4) {
+      if (data[i + 3] == 0) {
+        has_transparent = true;
+        break;
+      }
     }
   }
 
@@ -532,8 +534,8 @@ void VulkanRenderer::CommitTexturePush(TextureArrayPushState& state) {
                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, (u32)state.texture.depth, state.texture.mips);
 }
 
-void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture,
-                                      size_t index) {
+void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture, size_t index,
+                                      const TextureConfig& cfg) {
   if (texture == nullptr) return;
 
   u32 dim = state.texture.dimensions;
@@ -556,7 +558,7 @@ void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushS
       size_t size = dim * dim * channels;
 
       if (i > 0) {
-        BoxFilterMipmap(previous_data, buffer_data, size, dim);
+        BoxFilterMipmap(previous_data, buffer_data, size, dim, cfg.brighten_mipping);
       }
 
       memcpy((u8*)state.alloc_info.pMappedData + destination, buffer_data, size);
@@ -864,7 +866,8 @@ void VulkanRenderer::WaitForIdle() {
   vkQueueWaitIdle(graphics_queue);
 }
 
-bool VulkanRenderer::PushStagingBuffer(u8* data, size_t data_size, VkBuffer* buffer, VmaAllocation* allocation, VkBufferUsageFlagBits usage_type) {
+bool VulkanRenderer::PushStagingBuffer(u8* data, size_t data_size, VkBuffer* buffer, VmaAllocation* allocation,
+                                       VkBufferUsageFlagBits usage_type) {
   VkBufferCreateInfo buffer_info = {};
 
   buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -921,7 +924,8 @@ RenderMesh VulkanRenderer::AllocateMesh(u8* vertex_data, size_t vertex_data_size
   RenderMesh mesh = {};
 
   if (vertex_count > 0) {
-    if (!PushStagingBuffer(vertex_data, vertex_data_size, &mesh.vertex_buffer, &mesh.vertex_allocation, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
+    if (!PushStagingBuffer(vertex_data, vertex_data_size, &mesh.vertex_buffer, &mesh.vertex_allocation,
+                           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
       return mesh;
     }
   }
