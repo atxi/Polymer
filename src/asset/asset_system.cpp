@@ -121,7 +121,7 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
     // Pack the u32 expanded image into one channel.
     // TODO: This could be packed further into a single bit to act as a binary alpha mask.
     u8* single_channel_image = trans_arena.Allocate(width * height);
-    for (size_t i = 0; i < width * height * channels; i += channels) {
+    for (int i = 0; i < width * height * channels; i += channels) {
       u8 out = image[i + channels - 1];
       u8* current = single_channel_image + i / channels;
 

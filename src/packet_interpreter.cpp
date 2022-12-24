@@ -55,10 +55,10 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       rb->ReadVarInt(&mesg_signature_size);
 
       String mesg_signature;
-      mesg_signature.data = memory_arena_push_type_count(trans_arena, char, mesg_signature_size);
-      mesg_signature.size = mesg_signature_size;
+      mesg_signature.data = memory_arena_push_type_count(trans_arena, char, (size_t)mesg_signature_size);
+      mesg_signature.size = (size_t)mesg_signature_size;
 
-      rb->ReadRawString(&mesg_signature, mesg_signature_size);
+      rb->ReadRawString(&mesg_signature, (size_t)mesg_signature_size);
     }
 
     String sstr;
@@ -75,7 +75,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u64 header_sig_size = 0;
     rb->ReadVarInt(&header_sig_size);
     assert(header_sig_size <= sstr.size);
-    rb->ReadRawString(&sstr, header_sig_size);
+    rb->ReadRawString(&sstr, (size_t)header_sig_size);
 
     // Read plain message
     size_t mesg_length = rb->ReadString(&sstr);
@@ -548,20 +548,20 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           rb->ReadVarInt(&public_key_size);
 
           String public_key;
-          public_key.data = memory_arena_push_type_count(trans_arena, char, public_key_size);
-          public_key.size = public_key_size;
+          public_key.data = memory_arena_push_type_count(trans_arena, char, (size_t)public_key_size);
+          public_key.size = (size_t)public_key_size;
 
-          rb->ReadRawString(&public_key, public_key_size);
+          rb->ReadRawString(&public_key, (size_t)public_key_size);
 
           u64 signature_size;
 
           rb->ReadVarInt(&signature_size);
 
           String signature;
-          signature.data = memory_arena_push_type_count(trans_arena, char, signature_size);
-          signature.size = signature_size;
+          signature.data = memory_arena_push_type_count(trans_arena, char, (size_t)signature_size);
+          signature.size = (size_t)signature_size;
 
-          rb->ReadRawString(&signature, signature_size);
+          rb->ReadRawString(&signature, (size_t)signature_size);
         }
 
         game->player_manager.AddPlayer(name, uuid_string, (u8)ping, (u8)gamemode);

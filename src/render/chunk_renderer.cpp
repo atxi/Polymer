@@ -702,7 +702,7 @@ VkSemaphore ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queu
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
-    if (vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr) != VK_SUCCESS) {
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, (VkFence) nullptr) != VK_SUCCESS) {
       fprintf(stderr, "Failed to submit draw command buffer.\n");
     }
   }
@@ -724,7 +724,7 @@ VkSemaphore ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queu
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &block_finished_semaphores[current_frame];
 
-    if (vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr) != VK_SUCCESS) {
+    if (vkQueueSubmit(graphics_queue, 1, &submit_info, (VkFence) nullptr) != VK_SUCCESS) {
       fprintf(stderr, "Failed to submit draw command buffer.\n");
     }
   }
