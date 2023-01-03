@@ -18,6 +18,41 @@ using polymer::world::kChunkColumnCount;
 
 namespace polymer {
 
+struct BitSet {
+  u64* data;
+  size_t total_bit_count;
+
+  BitSet() : data(nullptr), total_bit_count(0) {}
+
+  bool Read(MemoryArena& arena, RingBuffer& rb) {
+    u64 length = 0;
+
+    if (!rb.ReadVarInt(&length)) return false;
+
+    total_bit_count = 64 * length;
+    data = memory_arena_push_type_count(&arena, u64, length);
+
+    for (size_t i = 0; i < length; ++i) {
+      if (rb.GetReadAmount() < sizeof(u64)) {
+        return false;
+      }
+
+      data[i] = rb.ReadU64();
+    }
+
+    return true;
+  }
+
+  bool IsSet(size_t bit_index) {
+    if (bit_index >= total_bit_count) return false;
+
+    size_t data_index = bit_index / 64;
+    size_t data_offset = bit_index % 64;
+
+    return data[data_index] & ((size_t)1 << data_offset);
+  }
+};
+
 PacketInterpreter::PacketInterpreter(GameState* game)
     : game(game), compression(false), inflate_buffer(*game->perm_arena, 65536 * 32) {}
 
@@ -457,8 +492,107 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     // Jump to after the data because the data_size can be larger than actual chunk data sent according to
     // documentation.
     rb->read_offset = new_offset;
+
     u64 block_entity_count;
     rb->ReadVarInt(&block_entity_count);
+
+    for (size_t i = 0; i < block_entity_count; ++i) {
+      u8 packed_xz = rb->ReadU8();
+      s16 y = rb->ReadU16();
+
+      u64 type;
+      rb->ReadVarInt(&type);
+
+      nbt::TagCompound block_entity_nbt;
+
+      if (!nbt::Parse(*rb, *trans_arena, &block_entity_nbt)) {
+        fprintf(stderr, "Failed to parse block entity nbt.\n");
+        fflush(stderr);
+      }
+    }
+
+    bool trust_edges = rb->ReadU8();
+
+    BitSet skylight_mask;
+    if (!skylight_mask.Read(*trans_arena, *rb)) {
+      fprintf(stderr, "Failed to read skylight mask\n");
+      fflush(stderr);
+      break;
+    }
+
+    BitSet blocklight_mask;
+    if (!blocklight_mask.Read(*trans_arena, *rb)) {
+      fprintf(stderr, "Failed to read blocklight mask\n");
+      fflush(stderr);
+      break;
+    }
+
+    BitSet empty_skylight_mask;
+    if (!empty_skylight_mask.Read(*trans_arena, *rb)) {
+      fprintf(stderr, "Failed to read empty skylight mask\n");
+      fflush(stderr);
+      break;
+    }
+
+    BitSet empty_blocklight_mask;
+    if (!empty_blocklight_mask.Read(*trans_arena, *rb)) {
+      fprintf(stderr, "Failed to read empty blocklight mask\n");
+      fflush(stderr);
+      break;
+    }
+
+    for (size_t i = 0; i < kChunkColumnCount; ++i) {
+      memset(section->chunks[i].sky_lightmap, 0, sizeof(section->chunks[i].sky_lightmap));
+      memset(section->chunks[i].block_lightmap, 0, sizeof(section->chunks[i].block_lightmap));
+    }
+
+    u64 skylight_array_count = 0;
+    rb->ReadVarInt(&skylight_array_count);
+
+    for (size_t i = 0; i < 26; ++i) {
+      if (!skylight_mask.IsSet(i)) continue;
+
+      u64 skylight_length = 0;
+
+      rb->ReadVarInt(&skylight_length);
+      rb->ReadRawString(&sstr, skylight_length);
+
+      if (i == 0 || i == 25) continue;
+
+      size_t chunk_y = i - 1;
+
+      for (size_t index = 0; index < skylight_length; ++index) {
+        size_t block_data_index = index * 2;
+        u8* lightmap = (u8*)section->chunks[chunk_y].sky_lightmap;
+
+        lightmap[block_data_index] = sstr.data[index] & 0x0F;
+        lightmap[block_data_index + 1] = (sstr.data[index] & 0xF0) >> 4;
+      }
+    }
+
+    u64 blocklight_array_count = 0;
+    rb->ReadVarInt(&blocklight_array_count);
+
+    for (size_t i = 0; i < 26; ++i) {
+      if (!blocklight_mask.IsSet(i)) continue;
+
+      u64 blocklight_length = 0;
+
+      rb->ReadVarInt(&blocklight_length);
+      rb->ReadRawString(&sstr, blocklight_length);
+
+      if (i == 0 || i == 25) continue;
+
+      size_t chunk_y = i - 1;
+
+      for (size_t index = 0; index < blocklight_length; ++index) {
+        size_t block_data_index = index * 2;
+        u8* lightmap = (u8*)section->chunks[chunk_y].block_lightmap;
+
+        lightmap[block_data_index] = sstr.data[index] & 0x0F;
+        lightmap[block_data_index + 1] = (sstr.data[index] & 0xF0) >> 4;
+      }
+    }
   } break;
   case PlayProtocol::PlayerInfo: {
     u64 action_value, player_count;

@@ -17,6 +17,9 @@ struct ChunkCoord {
 
 struct Chunk {
   u32 blocks[16][16][16];
+
+  u8 sky_lightmap[16][16][16];
+  u8 block_lightmap[16][16][16];
 };
 
 struct ChunkSectionInfo {

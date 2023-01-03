@@ -21,6 +21,11 @@ inline constexpr float Degrees(float radians) {
   return radians * kRadianToDegrees;
 }
 
+template <typename T>
+inline constexpr T Clamp(const T& first, const T& top) {
+  return first > top ? top : first;
+}
+
 struct Vector2f {
   union {
     struct {

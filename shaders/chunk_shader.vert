@@ -61,7 +61,9 @@ void main() {
 
   // TODO: Remove this and sample biome from foliage/grass png
   uint tintindex = inTintIndex & 0xFF;
-  uint ao = inTintIndex >> 16;
+  uint ao = (inTintIndex >> 16) & 3;
+  uint light_val = (inTintIndex >> 18);
+
   if (tintindex == GRASS_TINTINDEX) {
     fragColorMod = PLAINS_GRASS_TINT;
   } else if (tintindex == LEAF_TINTINDEX) {
@@ -79,5 +81,8 @@ void main() {
     fragColorMod.rgb *= (1.0 / 0.8);
   }
 
-  fragColorMod.rgb *= (0.25 + float(ao) * 0.25) * 0.8;
+  float ao_intensity = (0.25 + float(ao) * 0.25);
+  float light_intensity = (float(light_val) / 15.0) * 0.85 + 0.15;
+
+  fragColorMod.rgb *= (ao_intensity * light_intensity);
 }

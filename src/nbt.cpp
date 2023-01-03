@@ -307,6 +307,10 @@ bool Parse(RingBuffer& rb, MemoryArena& arena, TagCompound* result) {
 
   type = (TagType)rb.ReadU8();
 
+  if (type == TagType::End) {
+    return true;
+  }
+
   if (type != TagType::Compound) {
     return false;
   }

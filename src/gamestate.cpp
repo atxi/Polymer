@@ -120,7 +120,7 @@ void GameState::ProcessMovement(float dt, InputState* input) {
   // TODO: Implement for real
   if (player_manager.client_player && player_manager.client_player->gamemode == 3) {
     if (position_sync_timer >= (50.0f / 1000.0f)) {
-      connection.SendPlayerPositionAndRotation(camera.position, 0.0f, 0.0f, false);
+      connection.SendPlayerPositionAndRotation(camera.position - Vector3f(0, 1.8f, 0.0f), 0.0f, 0.0f, false);
       position_sync_timer = 0.0f;
     }
   }
