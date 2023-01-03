@@ -18,8 +18,8 @@ struct ChunkCoord {
 struct Chunk {
   u32 blocks[16][16][16];
 
-  u8 sky_lightmap[16][16][16];
-  u8 block_lightmap[16][16][16];
+  // The bottom 4 bits contain the skylight data and the upper 4 bits contain the block
+  u8 lightmap[16][16][16];
 };
 
 struct ChunkSectionInfo {

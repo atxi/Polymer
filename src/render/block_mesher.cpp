@@ -23,8 +23,19 @@ struct BorderedChunk {
   constexpr static size_t kElementCount = 18 * 18 * 18;
 
   u32 blocks[kElementCount];
-  u8 sky_lightmap[kElementCount];
-  u8 block_lightmap[kElementCount];
+
+  // The bottom 4 bits contain the skylight data and the upper 4 bits contain the block
+  u8 lightmap[kElementCount];
+
+  // Position is chunk relative
+  inline u8 GetBlockLight(size_t index) const {
+    return lightmap[index] >> 4;
+  }
+
+  // Position is chunk relative
+  inline u8 GetSkyLight(size_t index) const {
+    return lightmap[index] & 0x0F;
+  }
 };
 
 BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s32 chunk_y);
@@ -171,15 +182,15 @@ inline u32 CalculateVertexLight(BorderedChunk* bordered_chunk, size_t* indices, 
   u32 block_sum = 0;
 
   for (size_t i = 0; i < 4; ++i) {
-    u8 current_sky = bordered_chunk->sky_lightmap[indices[i]];
-    u8 current_block = bordered_chunk->block_lightmap[indices[i]];
+    u8 current_sky = bordered_chunk->GetSkyLight(indices[i]);
+    u8 current_block = bordered_chunk->GetBlockLight(indices[i]);
 
     if (current_sky == 0) {
-      current_sky = bordered_chunk->sky_lightmap[current_index];
+      current_sky = bordered_chunk->GetSkyLight(current_index);
     }
 
     if (current_block == 0) {
-      current_block = bordered_chunk->block_lightmap[current_index];
+      current_block = bordered_chunk->GetBlockLight(current_index);
     }
 
     sky_sum += current_sky;
@@ -331,8 +342,8 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->sky_lightmap[current_index];
-        u32 shared_blocklight = bordered_chunk->block_lightmap[current_index];
+        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
         u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
 
         ele_ao_bl |= (shared_light << 2);
@@ -435,8 +446,8 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->sky_lightmap[current_index];
-        u32 shared_blocklight = bordered_chunk->block_lightmap[current_index];
+        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
         u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
 
         ele_ao_bl |= (shared_light << 2);
@@ -539,8 +550,8 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->sky_lightmap[current_index];
-        u32 shared_blocklight = bordered_chunk->block_lightmap[current_index];
+        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
         u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
 
         ele_ao_bl |= (shared_light << 2);
@@ -645,8 +656,8 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->sky_lightmap[current_index];
-        u32 shared_blocklight = bordered_chunk->block_lightmap[current_index];
+        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
         u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
 
         ele_ao_bl |= (shared_light << 2);
@@ -749,8 +760,8 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->sky_lightmap[current_index];
-        u32 shared_blocklight = bordered_chunk->block_lightmap[current_index];
+        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
         u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
 
         ele_ao_bl |= (shared_light << 2);
@@ -853,8 +864,8 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->sky_lightmap[current_index];
-        u32 shared_blocklight = bordered_chunk->block_lightmap[current_index];
+        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
         u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
 
         ele_ao_bl |= (shared_light << 2);
@@ -1344,8 +1355,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
         size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1));
 
         bordered_chunk->blocks[index] = section->chunks[chunk_y].blocks[y][z][x];
-        bordered_chunk->sky_lightmap[index] = section->chunks[chunk_y].sky_lightmap[y][z][x];
-        bordered_chunk->block_lightmap[index] = section->chunks[chunk_y].block_lightmap[y][z][x];
+        bordered_chunk->lightmap[index] = section->chunks[chunk_y].lightmap[y][z][x];
       }
     }
   }
@@ -1356,8 +1366,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 0);
 
       bordered_chunk->blocks[index] = west_section->chunks[chunk_y].blocks[y][z][15];
-      bordered_chunk->sky_lightmap[index] = west_section->chunks[chunk_y].sky_lightmap[y][z][15];
-      bordered_chunk->block_lightmap[index] = west_section->chunks[chunk_y].block_lightmap[y][z][15];
+      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y].lightmap[y][z][15];
     }
   }
 
@@ -1367,8 +1376,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 17);
 
       bordered_chunk->blocks[index] = east_section->chunks[chunk_y].blocks[y][z][0];
-      bordered_chunk->sky_lightmap[index] = east_section->chunks[chunk_y].sky_lightmap[y][z][0];
-      bordered_chunk->block_lightmap[index] = east_section->chunks[chunk_y].block_lightmap[y][z][0];
+      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y].lightmap[y][z][0];
     }
   }
 
@@ -1378,8 +1386,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)((y + 1) * 18 * 18 + (x + 1));
 
       bordered_chunk->blocks[index] = north_section->chunks[chunk_y].blocks[y][15][x];
-      bordered_chunk->sky_lightmap[index] = north_section->chunks[chunk_y].sky_lightmap[y][15][x];
-      bordered_chunk->block_lightmap[index] = north_section->chunks[chunk_y].block_lightmap[y][15][x];
+      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y].lightmap[y][15][x];
     }
   }
 
@@ -1389,8 +1396,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + (x + 1));
 
       bordered_chunk->blocks[index] = south_section->chunks[chunk_y].blocks[y][0][x];
-      bordered_chunk->sky_lightmap[index] = south_section->chunks[chunk_y].sky_lightmap[y][0][x];
-      bordered_chunk->block_lightmap[index] = south_section->chunks[chunk_y].block_lightmap[y][0][x];
+      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y].lightmap[y][0][x];
     }
   }
 
@@ -1399,8 +1405,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + 17);
 
     bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y].blocks[y][0][0];
-    bordered_chunk->sky_lightmap[index] = south_east_section->chunks[chunk_y].sky_lightmap[y][0][0];
-    bordered_chunk->block_lightmap[index] = south_east_section->chunks[chunk_y].block_lightmap[y][0][0];
+    bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y].lightmap[y][0][0];
   }
 
   // North-east corner
@@ -1408,8 +1413,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     size_t index = (size_t)((y + 1) * 18 * 18 + 0 * 18 + 17);
 
     bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y].blocks[y][15][0];
-    bordered_chunk->sky_lightmap[index] = north_east_section->chunks[chunk_y].sky_lightmap[y][15][0];
-    bordered_chunk->block_lightmap[index] = north_east_section->chunks[chunk_y].block_lightmap[y][15][0];
+    bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y].lightmap[y][15][0];
   }
 
   // South-west corner
@@ -1417,8 +1421,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + 0);
 
     bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y].blocks[y][0][15];
-    bordered_chunk->sky_lightmap[index] = south_west_section->chunks[chunk_y].sky_lightmap[y][0][15];
-    bordered_chunk->block_lightmap[index] = south_west_section->chunks[chunk_y].block_lightmap[y][0][15];
+    bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y].lightmap[y][0][15];
   }
 
   // North-west corner
@@ -1426,8 +1429,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     size_t index = (size_t)((y + 1) * 18 * 18 + 0 * 18 + 0);
 
     bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y].blocks[y][15][15];
-    bordered_chunk->sky_lightmap[index] = north_west_section->chunks[chunk_y].sky_lightmap[y][15][15];
-    bordered_chunk->block_lightmap[index] = north_west_section->chunks[chunk_y].block_lightmap[y][15][15];
+    bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y].lightmap[y][15][15];
   }
 
   if (chunk_y < kChunkColumnCount) {
@@ -1437,8 +1439,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
         size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + (x + 1));
 
         bordered_chunk->blocks[index] = section->chunks[chunk_y + 1].blocks[0][z][x];
-        bordered_chunk->sky_lightmap[index] = section->chunks[chunk_y + 1].sky_lightmap[0][z][x];
-        bordered_chunk->block_lightmap[index] = section->chunks[chunk_y + 1].block_lightmap[0][z][x];
+        bordered_chunk->lightmap[index] = section->chunks[chunk_y + 1].lightmap[0][z][x];
       }
     }
 
@@ -1447,8 +1448,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(17 * 18 * 18 + 17 * 18 + (x + 1));
 
       bordered_chunk->blocks[index] = south_section->chunks[chunk_y + 1].blocks[0][0][x];
-      bordered_chunk->sky_lightmap[index] = south_section->chunks[chunk_y + 1].sky_lightmap[0][0][x];
-      bordered_chunk->block_lightmap[index] = south_section->chunks[chunk_y + 1].block_lightmap[0][0][x];
+      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y + 1].lightmap[0][0][x];
     }
 
     // Load above-north
@@ -1456,8 +1456,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(17 * 18 * 18 + 0 * 18 + (x + 1));
 
       bordered_chunk->blocks[index] = north_section->chunks[chunk_y + 1].blocks[0][15][x];
-      bordered_chunk->sky_lightmap[index] = north_section->chunks[chunk_y + 1].sky_lightmap[0][15][x];
-      bordered_chunk->block_lightmap[index] = north_section->chunks[chunk_y + 1].block_lightmap[0][15][x];
+      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y + 1].lightmap[0][15][x];
     }
 
     // Load above-east
@@ -1465,8 +1464,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + 17);
 
       bordered_chunk->blocks[index] = east_section->chunks[chunk_y + 1].blocks[0][z][0];
-      bordered_chunk->sky_lightmap[index] = east_section->chunks[chunk_y + 1].sky_lightmap[0][z][0];
-      bordered_chunk->block_lightmap[index] = east_section->chunks[chunk_y + 1].block_lightmap[0][z][0];
+      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y + 1].lightmap[0][z][0];
     }
 
     // Load above-west
@@ -1474,8 +1472,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + 0);
 
       bordered_chunk->blocks[index] = west_section->chunks[chunk_y + 1].blocks[0][z][15];
-      bordered_chunk->sky_lightmap[index] = west_section->chunks[chunk_y + 1].sky_lightmap[0][z][15];
-      bordered_chunk->block_lightmap[index] = west_section->chunks[chunk_y + 1].block_lightmap[0][z][15];
+      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y + 1].lightmap[0][z][15];
     }
 
     {
@@ -1483,8 +1480,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(17 * 18 * 18 + 17 * 18 + 17);
 
       bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y + 1].blocks[0][0][0];
-      bordered_chunk->sky_lightmap[index] = south_east_section->chunks[chunk_y + 1].sky_lightmap[0][0][0];
-      bordered_chunk->block_lightmap[index] = south_east_section->chunks[chunk_y + 1].block_lightmap[0][0][0];
+      bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y + 1].lightmap[0][0][0];
     }
 
     {
@@ -1492,8 +1488,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
 
       // Load above-south-west
       bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y + 1].blocks[0][0][15];
-      bordered_chunk->sky_lightmap[index] = south_west_section->chunks[chunk_y + 1].sky_lightmap[0][0][15];
-      bordered_chunk->block_lightmap[index] = south_west_section->chunks[chunk_y + 1].block_lightmap[0][0][15];
+      bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y + 1].lightmap[0][0][15];
     }
 
     {
@@ -1501,8 +1496,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
 
       // Load above-north-east
       bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y + 1].blocks[0][15][0];
-      bordered_chunk->sky_lightmap[index] = north_east_section->chunks[chunk_y + 1].sky_lightmap[0][15][0];
-      bordered_chunk->block_lightmap[index] = north_east_section->chunks[chunk_y + 1].block_lightmap[0][15][0];
+      bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y + 1].lightmap[0][15][0];
     }
 
     {
@@ -1510,8 +1504,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
 
       // Load above-north-west
       bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y + 1].blocks[0][15][15];
-      bordered_chunk->sky_lightmap[index] = north_west_section->chunks[chunk_y + 1].sky_lightmap[0][15][15];
-      bordered_chunk->block_lightmap[index] = north_west_section->chunks[chunk_y + 1].block_lightmap[0][15][15];
+      bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y + 1].lightmap[0][15][15];
     }
   }
 
@@ -1522,8 +1515,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
         size_t index = (size_t)((z + 1) * 18 + (x + 1));
 
         bordered_chunk->blocks[index] = section->chunks[chunk_y - 1].blocks[15][z][x];
-        bordered_chunk->sky_lightmap[index] = section->chunks[chunk_y - 1].sky_lightmap[15][z][x];
-        bordered_chunk->block_lightmap[index] = section->chunks[chunk_y - 1].block_lightmap[15][z][x];
+        bordered_chunk->lightmap[index] = section->chunks[chunk_y - 1].lightmap[15][z][x];
       }
     }
 
@@ -1532,8 +1524,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(0 * 18 * 18 + 17 * 18 + (x + 1));
 
       bordered_chunk->blocks[index] = south_section->chunks[chunk_y - 1].blocks[15][0][x];
-      bordered_chunk->sky_lightmap[index] = south_section->chunks[chunk_y - 1].sky_lightmap[15][0][x];
-      bordered_chunk->block_lightmap[index] = south_section->chunks[chunk_y - 1].block_lightmap[15][0][x];
+      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y - 1].lightmap[15][0][x];
     }
 
     // Load below-north
@@ -1541,8 +1532,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(0 * 18 * 18 + 0 * 18 + (x + 1));
 
       bordered_chunk->blocks[index] = north_section->chunks[chunk_y - 1].blocks[15][15][x];
-      bordered_chunk->sky_lightmap[index] = north_section->chunks[chunk_y - 1].sky_lightmap[15][15][x];
-      bordered_chunk->block_lightmap[index] = north_section->chunks[chunk_y - 1].block_lightmap[15][15][x];
+      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y - 1].lightmap[15][15][x];
     }
 
     // Load below-east
@@ -1550,8 +1540,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(0 * 18 * 18 + (z + 1) * 18 + 17);
 
       bordered_chunk->blocks[index] = east_section->chunks[chunk_y - 1].blocks[15][z][0];
-      bordered_chunk->sky_lightmap[index] = east_section->chunks[chunk_y - 1].sky_lightmap[15][z][0];
-      bordered_chunk->block_lightmap[index] = east_section->chunks[chunk_y - 1].block_lightmap[15][z][0];
+      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y - 1].lightmap[15][z][0];
     }
 
     // Load below-west
@@ -1559,8 +1548,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       size_t index = (size_t)(0 * 18 * 18 + (z + 1) * 18 + 0);
 
       bordered_chunk->blocks[index] = west_section->chunks[chunk_y - 1].blocks[15][z][15];
-      bordered_chunk->sky_lightmap[index] = west_section->chunks[chunk_y - 1].sky_lightmap[15][z][15];
-      bordered_chunk->block_lightmap[index] = west_section->chunks[chunk_y - 1].block_lightmap[15][z][15];
+      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y - 1].lightmap[15][z][15];
     }
 
     {
@@ -1568,8 +1556,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
 
       // Load below-south-east
       bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y - 1].blocks[15][0][0];
-      bordered_chunk->sky_lightmap[index] = south_east_section->chunks[chunk_y - 1].sky_lightmap[15][0][0];
-      bordered_chunk->block_lightmap[index] = south_east_section->chunks[chunk_y - 1].block_lightmap[15][0][0];
+      bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y - 1].lightmap[15][0][0];
     }
 
     {
@@ -1577,8 +1564,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
 
       // Load below-south-west
       bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y - 1].blocks[15][0][15];
-      bordered_chunk->sky_lightmap[index] = south_west_section->chunks[chunk_y - 1].sky_lightmap[15][0][15];
-      bordered_chunk->block_lightmap[index] = south_west_section->chunks[chunk_y - 1].block_lightmap[15][0][15];
+      bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y - 1].lightmap[15][0][15];
     }
 
     {
@@ -1586,8 +1572,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
 
       // Load below-north-east
       bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y - 1].blocks[15][15][0];
-      bordered_chunk->sky_lightmap[index] = north_east_section->chunks[chunk_y - 1].sky_lightmap[15][15][0];
-      bordered_chunk->block_lightmap[index] = north_east_section->chunks[chunk_y - 1].block_lightmap[15][15][0];
+      bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y - 1].lightmap[15][15][0];
     }
 
     {
@@ -1595,8 +1580,7 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
 
       // Load below-north-west
       bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y - 1].blocks[15][15][15];
-      bordered_chunk->sky_lightmap[index] = north_west_section->chunks[chunk_y - 1].sky_lightmap[15][15][15];
-      bordered_chunk->block_lightmap[index] = north_west_section->chunks[chunk_y - 1].block_lightmap[15][15][15];
+      bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y - 1].lightmap[15][15][15];
     }
   }
 

@@ -542,8 +542,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     }
 
     for (size_t i = 0; i < kChunkColumnCount; ++i) {
-      memset(section->chunks[i].sky_lightmap, 0, sizeof(section->chunks[i].sky_lightmap));
-      memset(section->chunks[i].block_lightmap, 0, sizeof(section->chunks[i].block_lightmap));
+      memset(section->chunks[i].lightmap, 0, sizeof(section->chunks[i].lightmap));
     }
 
     u64 skylight_array_count = 0;
@@ -563,7 +562,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       for (size_t index = 0; index < skylight_length; ++index) {
         size_t block_data_index = index * 2;
-        u8* lightmap = (u8*)section->chunks[chunk_y].sky_lightmap;
+        u8* lightmap = (u8*)section->chunks[chunk_y].lightmap;
 
         lightmap[block_data_index] = sstr.data[index] & 0x0F;
         lightmap[block_data_index + 1] = (sstr.data[index] & 0xF0) >> 4;
@@ -587,10 +586,11 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       for (size_t index = 0; index < blocklight_length; ++index) {
         size_t block_data_index = index * 2;
-        u8* lightmap = (u8*)section->chunks[chunk_y].block_lightmap;
+        u8* lightmap = (u8*)section->chunks[chunk_y].lightmap;
 
-        lightmap[block_data_index] = sstr.data[index] & 0x0F;
-        lightmap[block_data_index + 1] = (sstr.data[index] & 0xF0) >> 4;
+        // Merge the block lightmap into the packed chunk lightmap
+        lightmap[block_data_index] |= (sstr.data[index] & 0x0F) << 4;
+        lightmap[block_data_index + 1] |= (sstr.data[index] & 0xF0);
       }
     }
   } break;
