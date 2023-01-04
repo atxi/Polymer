@@ -735,6 +735,13 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       trans_arena->Revert(snapshot);
     }
   } break;
+  case PlayProtocol::TimeUpdate: {
+    u64 world_age = rb->ReadU64();
+    s64 time_tick = rb->ReadU64();
+
+    // TODO: Fixed time with negative values
+    game->world_tick = (u32)time_tick % 24000;
+  } break;
   default:
     break;
   }

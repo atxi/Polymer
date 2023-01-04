@@ -106,7 +106,10 @@ struct GameState {
   ChatManager chat_manager;
 
   float position_sync_timer;
-  float frame_accumulator;
+  float animation_accumulator;
+  float time_accumulator;
+
+  u32 world_tick;
 
 #if DISPLAY_PERF_STATS
   PerformanceStatistics stats;
@@ -138,6 +141,24 @@ struct GameState {
   void ProcessBuildQueue();
 
   void FreeMeshes();
+
+  inline float GetCelestialAngle() {
+    float result = (((s32)world_tick - 6000) % 24000) / 24000.0f;
+
+    if (result < 0.0f) result += 1.0f;
+    if (result > 1.0f) result -= 1.0f;
+
+    return result;
+  }
+
+  inline float GetSunlight() {
+    float angle = GetCelestialAngle();
+    float sunlight = 1.0f - (cosf(angle * 3.1415f * 2.0f) * 2.0f + 1.0f);
+
+    sunlight = 1.0f - Clamp(sunlight, 0.0f, 1.0f);
+
+    return sunlight * 0.8f + 0.2f;
+  }
 };
 
 } // namespace polymer

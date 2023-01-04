@@ -264,7 +264,7 @@ void ChunkRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, Vk
   attribute_descriptions[2].binding = 0;
   attribute_descriptions[2].location = 2;
   attribute_descriptions[2].format = VK_FORMAT_R32_UINT;
-  attribute_descriptions[2].offset = offsetof(ChunkVertex, tint_index);
+  attribute_descriptions[2].offset = offsetof(ChunkVertex, packed_light);
 
   attribute_descriptions[3].binding = 0;
   attribute_descriptions[3].location = 3;
@@ -610,7 +610,7 @@ bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t cu
     return false;
   }
 
-  VkClearValue clears[] = {{0.71f, 0.816f, 1.0f, 1.0f}, {1.0f, 0}};
+  VkClearValue clears[] = {{0.71f * sunlight, 0.816f * sunlight, 1.0f * sunlight, 1.0f}, {1.0f, 0}};
 
   render_pass_info.renderPass = block_renderer.render_pass;
   render_pass_info.clearValueCount = polymer_array_count(clears);

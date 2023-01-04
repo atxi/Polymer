@@ -32,13 +32,14 @@ struct VulkanRenderer;
 struct ChunkRenderUBO {
   mat4 mvp;
   u32 frame;
+  float sunlight;
 };
 
 struct ChunkVertex {
   Vector3f position;
 
   u32 texture_id;
-  u32 tint_index;
+  u32 packed_light;
 
   u16 packed_uv;
 };
@@ -105,6 +106,9 @@ struct ChunkRenderer {
   FloraRenderer flora_renderer;
   LeafRenderer leaf_renderer;
   AlphaRenderer alpha_renderer;
+
+  // TODO: Remove once skybox implemented
+  float sunlight;
 
   VkSemaphore block_finished_semaphores[2];
 

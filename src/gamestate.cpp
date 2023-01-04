@@ -49,7 +49,9 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
   camera.fov = Radians(80.0f);
 
   position_sync_timer = 0.0f;
-  frame_accumulator = 0.0f;
+  animation_accumulator = 0.0f;
+  time_accumulator = 0.0f;
+  world_tick = 0;
 }
 
 void GameState::Update(float dt, InputState* input) {
@@ -61,9 +63,19 @@ void GameState::Update(float dt, InputState* input) {
 
   chat_manager.Update(*renderer, dt);
 
-  frame_accumulator += dt;
-  if (frame_accumulator >= 128.0f) {
-    frame_accumulator -= 128.0f;
+  animation_accumulator += dt;
+  time_accumulator += dt;
+
+  if (animation_accumulator >= 128.0f) {
+    animation_accumulator -= 128.0f;
+  }
+
+  if (time_accumulator >= 1.0f / 20.0f) {
+    time_accumulator -= 1.0f / 20.0f;
+
+    if (world_tick++ >= 24000) {
+      world_tick = 0;
+    }
   }
 
   ProcessBuildQueue();
@@ -150,9 +162,12 @@ void GameState::RenderFrame() {
   void* data = nullptr;
 
   ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
-  ubo.frame = (u32)(frame_accumulator * 8.0f);
+  ubo.frame = (u32)(animation_accumulator * 8.0f);
+  ubo.sunlight = GetSunlight();
 
   render::ChunkRenderer& chunk_renderer = renderer->chunk_renderer;
+
+  chunk_renderer.sunlight = ubo.sunlight;
 
   vmaMapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame], &data);
   memcpy(data, &ubo, sizeof(ubo));

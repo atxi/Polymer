@@ -58,7 +58,7 @@ struct PushContext {
   }
 };
 
-inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u32 ao) {
+inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u16 light) {
   render::ChunkVertex* vertex =
       (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->Allocate(sizeof(render::ChunkVertex), 1);
 
@@ -71,10 +71,10 @@ inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f
 
   vertex->texture_id = face->texture_id;
 
-  u32 anim_count = face->frame_count;
-  anim_count |= ((u32)ctx.anim_repeat << 7);
+  u8 packed_anim = (ctx.anim_repeat << 7) | (u8)face->frame_count;
+  u8 tintindex = (u8)face->tintindex;
 
-  vertex->tint_index = (face->tintindex & 0xFF) | ((anim_count & 0xFF) << 8) | (ao << 16);
+  vertex->packed_light = (packed_anim << 24) | (tintindex << 16) | light;
 
   size_t index = (vertex - (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->base);
   assert(index <= 65535);
@@ -197,7 +197,9 @@ inline u32 CalculateVertexLight(BorderedChunk* bordered_chunk, size_t* indices, 
     block_sum += current_block;
   }
 
-  return Clamp(sky_sum / 4 + block_sum / 4, 15U);
+  u8 sky_avg = sky_sum / 4;
+  u8 block_avg = block_sum / 4;
+  return (block_avg << 4) | sky_avg;
 }
 
 static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& block_registry,
@@ -342,9 +344,9 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
-        u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
+        u8 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u8 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
+        u8 shared_light = (shared_blocklight << 4) | shared_skylight;
 
         ele_ao_bl |= (shared_light << 2);
         ele_ao_br |= (shared_light << 2);
@@ -446,9 +448,9 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
-        u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
+        u8 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u8 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
+        u8 shared_light = (shared_blocklight << 4) | shared_skylight;
 
         ele_ao_bl |= (shared_light << 2);
         ele_ao_br |= (shared_light << 2);
@@ -550,9 +552,9 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
-        u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
+        u8 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u8 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
+        u8 shared_light = (shared_blocklight << 4) | shared_skylight;
 
         ele_ao_bl |= (shared_light << 2);
         ele_ao_br |= (shared_light << 2);
@@ -656,9 +658,9 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
-        u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
+        u8 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u8 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
+        u8 shared_light = (shared_blocklight << 4) | shared_skylight;
 
         ele_ao_bl |= (shared_light << 2);
         ele_ao_br |= (shared_light << 2);
@@ -760,9 +762,9 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
-        u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
+        u8 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u8 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
+        u8 shared_light = (shared_blocklight << 4) | shared_skylight;
 
         ele_ao_bl |= (shared_light << 2);
         ele_ao_br |= (shared_light << 2);
@@ -864,9 +866,9 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tl |= (l_tl << 2);
         ele_ao_tr |= (l_tr << 2);
       } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index);
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
-        u32 shared_light = Clamp(shared_skylight + shared_blocklight, 15U);
+        u8 shared_skylight = bordered_chunk->GetSkyLight(current_index);
+        u8 shared_blocklight = bordered_chunk->GetBlockLight(current_index);
+        u8 shared_light = (shared_blocklight << 4) | shared_skylight;
 
         ele_ao_bl |= (shared_light << 2);
         ele_ao_br |= (shared_light << 2);

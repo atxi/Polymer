@@ -26,6 +26,14 @@ inline constexpr T Clamp(const T& first, const T& top) {
   return first > top ? top : first;
 }
 
+template <typename T>
+inline constexpr T Clamp(const T& first, const T& bottom, const T& top) {
+  T result = first;
+  if (result < bottom) result = bottom;
+  if (result > top) result = top;
+  return result;
+}
+
 struct Vector2f {
   union {
     struct {
