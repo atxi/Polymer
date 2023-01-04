@@ -5,7 +5,8 @@ It can only connect to offline Java servers at the moment, but online mode is pl
 
 It uses the original assets from a user-provided Minecraft jar. Only basic blocks can be rendered at the moment.
 
-### Screenshot
+### Screenshots
+![Lighting](https://i.imgur.com/C7zbsr0.png)
 ![Polymer Image](https://i.imgur.com/yG67AL7.png)
 
 ### Building
