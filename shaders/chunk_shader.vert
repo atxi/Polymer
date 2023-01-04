@@ -89,6 +89,10 @@ void main() {
   float blocklight_percent = blocklight_value / 15.0;
   float light_intensity = max(blocklight_percent, skylight_percent) * 0.85 + 0.15;
 
+  uint shaded_axis = (inPackedLight >> 11) & 1;
+
+  light_intensity *= 1.0 - (shaded_axis * 0.2);
+
   float ao_intensity = (0.25 + float(ao) * 0.25);
   fragColorMod.rgb *= (ao_intensity * light_intensity);
 }

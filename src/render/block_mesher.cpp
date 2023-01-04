@@ -58,7 +58,8 @@ struct PushContext {
   }
 };
 
-inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u16 light) {
+inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u16 light,
+                      bool shaded_axis = false) {
   render::ChunkVertex* vertex =
       (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->Allocate(sizeof(render::ChunkVertex), 1);
 
@@ -73,6 +74,7 @@ inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f
 
   u8 packed_anim = (ctx.anim_repeat << 7) | (u8)face->frame_count;
   u8 tintindex = (u8)face->tintindex;
+  light |= (shaded_axis << 11);
 
   vertex->packed_light = (packed_anim << 24) | (tintindex << 16) | light;
 
@@ -458,10 +460,10 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr |= (shared_light << 2);
       }
 
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl, element->shade);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br, element->shade);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr, element->shade);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl, element->shade);
 
       PushIndex(context, face->render_layer, bli);
       PushIndex(context, face->render_layer, bri);
@@ -772,10 +774,10 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr |= (shared_light << 2);
       }
 
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl, element->shade);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br, element->shade);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr, element->shade);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl, element->shade);
 
       PushIndex(context, face->render_layer, bli);
       PushIndex(context, face->render_layer, bri);
@@ -876,10 +878,10 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
         ele_ao_tr |= (shared_light << 2);
       }
 
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
+      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl, element->shade);
+      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br, element->shade);
+      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr, element->shade);
+      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl, element->shade);
 
       PushIndex(context, face->render_layer, bli);
       PushIndex(context, face->render_layer, bri);
@@ -982,10 +984,10 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
     Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
 
-    size_t bl_indices[] = { above_index, above_north_index, above_west_index, above_north_west_index };
-    size_t br_indices[] = { above_index, above_south_index, above_west_index, above_south_west_index };
-    size_t tl_indices[] = { above_index, above_north_index, above_east_index, above_north_east_index };
-    size_t tr_indices[] = { above_index, above_south_index, above_east_index, above_south_east_index };
+    size_t bl_indices[] = {above_index, above_north_index, above_west_index, above_north_west_index};
+    size_t br_indices[] = {above_index, above_south_index, above_west_index, above_south_west_index};
+    size_t tl_indices[] = {above_index, above_north_index, above_east_index, above_north_east_index};
+    size_t tr_indices[] = {above_index, above_south_index, above_east_index, above_south_east_index};
 
     u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, current_index);
     u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, current_index);
@@ -1030,10 +1032,10 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
 
-    size_t bl_indices[] = { below_index, below_north_index, below_east_index, below_north_east_index };
-    size_t br_indices[] = { below_index, below_south_index, below_east_index, below_south_east_index };
-    size_t tl_indices[] = { below_index, below_north_index, below_west_index, below_north_west_index };
-    size_t tr_indices[] = { below_index, below_south_index, below_west_index, below_south_west_index };
+    size_t bl_indices[] = {below_index, below_north_index, below_east_index, below_north_east_index};
+    size_t br_indices[] = {below_index, below_south_index, below_east_index, below_south_east_index};
+    size_t tl_indices[] = {below_index, below_north_index, below_west_index, below_north_west_index};
+    size_t tr_indices[] = {below_index, below_south_index, below_west_index, below_south_west_index};
 
     u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, current_index);
     u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, current_index);
@@ -1084,10 +1086,10 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    size_t bl_indices[] = { north_index, north_east_index, below_north_east_index, below_north_index };
-    size_t br_indices[] = { north_index, north_west_index, below_north_west_index, below_north_index };
-    size_t tl_indices[] = { north_index, north_east_index, above_north_east_index, above_north_index };
-    size_t tr_indices[] = { north_index, north_west_index, above_north_west_index, above_north_index };
+    size_t bl_indices[] = {north_index, north_east_index, below_north_east_index, below_north_index};
+    size_t br_indices[] = {north_index, north_west_index, below_north_west_index, below_north_index};
+    size_t tl_indices[] = {north_index, north_east_index, above_north_east_index, above_north_index};
+    size_t tr_indices[] = {north_index, north_west_index, above_north_west_index, above_north_index};
 
     u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, current_index);
     u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, current_index);
@@ -1132,10 +1134,10 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    size_t bl_indices[] = { south_index, south_west_index, below_south_west_index, below_south_index };
-    size_t br_indices[] = { south_index, south_east_index, below_south_east_index, below_south_index };
-    size_t tl_indices[] = { south_index, south_west_index, above_south_west_index, above_south_index };
-    size_t tr_indices[] = { south_index, south_east_index, above_south_east_index, above_south_index };
+    size_t bl_indices[] = {south_index, south_west_index, below_south_west_index, below_south_index};
+    size_t br_indices[] = {south_index, south_east_index, below_south_east_index, below_south_index};
+    size_t tl_indices[] = {south_index, south_west_index, above_south_west_index, above_south_index};
+    size_t tr_indices[] = {south_index, south_east_index, above_south_east_index, above_south_index};
 
     u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, current_index);
     u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, current_index);
@@ -1180,10 +1182,10 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    size_t bl_indices[] = { east_index, below_east_index, below_south_east_index, south_east_index };
-    size_t br_indices[] = { east_index, below_east_index, below_north_east_index, north_east_index };
-    size_t tl_indices[] = { east_index, above_east_index, above_south_east_index, south_east_index };
-    size_t tr_indices[] = { east_index, above_east_index, above_north_east_index, north_east_index };
+    size_t bl_indices[] = {east_index, below_east_index, below_south_east_index, south_east_index};
+    size_t br_indices[] = {east_index, below_east_index, below_north_east_index, north_east_index};
+    size_t tl_indices[] = {east_index, above_east_index, above_south_east_index, south_east_index};
+    size_t tr_indices[] = {east_index, above_east_index, above_north_east_index, north_east_index};
 
     u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, current_index);
     u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, current_index);
@@ -1228,10 +1230,10 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
     Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
 
-    size_t bl_indices[] = { west_index, below_west_index, below_north_west_index, north_west_index };
-    size_t br_indices[] = { west_index, below_west_index, below_south_west_index, south_west_index };
-    size_t tl_indices[] = { west_index, above_west_index, above_north_west_index, north_west_index };
-    size_t tr_indices[] = { west_index, above_west_index, above_south_west_index, south_west_index };
+    size_t bl_indices[] = {west_index, below_west_index, below_north_west_index, north_west_index};
+    size_t br_indices[] = {west_index, below_west_index, below_south_west_index, south_west_index};
+    size_t tl_indices[] = {west_index, above_west_index, above_north_west_index, north_west_index};
+    size_t tr_indices[] = {west_index, above_west_index, above_south_west_index, south_west_index};
 
     u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, current_index);
     u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, current_index);
