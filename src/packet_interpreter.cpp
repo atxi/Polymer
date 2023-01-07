@@ -1,5 +1,6 @@
 #include "packet_interpreter.h"
 
+#include "bitset.h"
 #include "gamestate.h"
 #include "miniz.h"
 #include "nbt.h"
@@ -17,41 +18,6 @@ using polymer::world::DimensionType;
 using polymer::world::kChunkColumnCount;
 
 namespace polymer {
-
-struct BitSet {
-  u64* data;
-  size_t total_bit_count;
-
-  BitSet() : data(nullptr), total_bit_count(0) {}
-
-  bool Read(MemoryArena& arena, RingBuffer& rb) {
-    u64 length = 0;
-
-    if (!rb.ReadVarInt(&length)) return false;
-
-    total_bit_count = 64 * length;
-    data = memory_arena_push_type_count(&arena, u64, length);
-
-    for (size_t i = 0; i < length; ++i) {
-      if (rb.GetReadAmount() < sizeof(u64)) {
-        return false;
-      }
-
-      data[i] = rb.ReadU64();
-    }
-
-    return true;
-  }
-
-  bool IsSet(size_t bit_index) {
-    if (bit_index >= total_bit_count) return false;
-
-    size_t data_index = bit_index / 64;
-    size_t data_offset = bit_index % 64;
-
-    return data[data_index] & ((size_t)1 << data_offset);
-  }
-};
 
 PacketInterpreter::PacketInterpreter(GameState* game)
     : game(game), compression(false), inflate_buffer(*game->perm_arena, 65536 * 32) {}
@@ -79,7 +45,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     printf("System: %.*s\n", (int)length, sstr.data);
 
     u8 type = rb->ReadU8();
-    
+
   } break;
   case PlayProtocol::PlayerChatMessage: {
     String sender_uuid;

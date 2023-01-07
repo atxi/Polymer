@@ -1,5 +1,6 @@
 #include "block_assets.h"
 
+#include "../bitset.h"
 #include "../memory.h"
 #include "../render/chunk_renderer.h"
 #include "../render/render.h"
@@ -523,6 +524,8 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
 }
 
 void AssetParser::LoadModels() {
+  BitSet element_set(*this->arena, registry->state_count);
+
   for (size_t i = 0; i < state_count; ++i) {
     json_object_element_s* root_element = states[i].root->start;
 
@@ -534,9 +537,7 @@ void AssetParser::LoadModels() {
         json_object_s* variant_obj = json_value_as_object(root_element->value);
 
         for (size_t bid = 0; bid < registry->state_count; ++bid) {
-          if (registry->states[bid].model.element_count > 0) {
-            continue;
-          }
+          if (element_set.IsSet(bid)) continue;
 
           String state_name(registry->states[bid].info->name + kNamespaceSize,
                             registry->states[bid].info->name_length - kNamespaceSize);
@@ -548,8 +549,7 @@ void AssetParser::LoadModels() {
           json_object_element_s* variant_element = variant_obj->start;
 
           while (variant_element) {
-            const char* variant_name = variant_element->name->string;
-            String variant_string(variant_name, strlen(variant_name));
+            String variant_string(variant_element->name->string, variant_element->name->string_size);
 
             String* properties = &registry->properties[bid];
 
@@ -581,6 +581,8 @@ void AssetParser::LoadModels() {
                   String model_name(model_name_json->string + kPrefixSize, model_name_json->string_size - kPrefixSize);
 
                   registry->states[bid].model = LoadModel(model_name, &texture_face_map, &texture_id_map);
+
+                  element_set.Set(bid, 1);
 
                   if (properties->size > 0) {
                     String level_str = poly_strstr(*properties, "level=");

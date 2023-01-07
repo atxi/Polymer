@@ -8,7 +8,7 @@ namespace polymer {
 bool ZipArchive::Open(const char* path) {
   mz_zip_zero_struct(&archive);
 
-  return mz_zip_reader_init_file_v2(&archive, path, MZ_ZIP_FLAG_DO_NOT_SORT_CENTRAL_DIRECTORY, 0, 0);
+  return mz_zip_reader_init_file_v2(&archive, path, 0, 0, 0);
 }
 
 void ZipArchive::Close() {
