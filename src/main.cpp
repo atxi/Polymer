@@ -23,7 +23,7 @@ namespace polymer {
 
 constexpr const char* kServerIp = "127.0.0.1";
 constexpr u16 kServerPort = 25565;
-constexpr const char* kMinecraftJar = "1.19.jar";
+constexpr const char* kMinecraftJar = "1.19.3.jar";
 
 // Window surface width
 constexpr u32 kWidth = 1280;
@@ -263,7 +263,7 @@ int run() {
 
   connection->SetBlocking(false);
 
-  constexpr u32 kProtocolVersion = 760;
+  constexpr u32 kProtocolVersion = 761;
 
   connection->SendHandshake(kProtocolVersion, kServerIp, kServerPort, ProtocolState::Login);
   connection->SendLoginStart("polymer");

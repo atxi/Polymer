@@ -78,15 +78,39 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     printf("System: %.*s\n", (int)length, sstr.data);
 
-    u64 type = 0;
-    rb->ReadVarInt(&type);
-    printf("Type: %lld\n", type);
+    u8 type = rb->ReadU8();
+    
   } break;
   case PlayProtocol::PlayerChatMessage: {
-    u64 mesg_signature_size = 0;
+    String sender_uuid;
+    sender_uuid.data = memory_arena_push_type_count(trans_arena, char, 16);
+    sender_uuid.size = 16;
+
+    rb->ReadRawString(&sender_uuid, 16);
+
+    if (sender_uuid.size != 16) {
+      fprintf(stderr, "Failed to read PlayerChatMessage::sender_uuid\n");
+      break;
+    }
+
+    Player* sender = game->player_manager.GetPlayerByUuid(sender_uuid);
+
+    if (!sender) {
+      fprintf(stderr, "Failed to find player with sender uuid in PlayerChatMessage\n");
+      break;
+    }
+
+    u64 index = 0;
+    if (!rb->ReadVarInt(&index)) {
+      fprintf(stderr, "Failed to read PlayerChatMessage::index\n");
+      break;
+    }
+
     bool has_mesg_signature = rb->ReadU8();
 
     if (has_mesg_signature) {
+      u64 mesg_signature_size = 0;
+
       rb->ReadVarInt(&mesg_signature_size);
 
       String mesg_signature;
@@ -94,41 +118,27 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       mesg_signature.size = (size_t)mesg_signature_size;
 
       rb->ReadRawString(&mesg_signature, (size_t)mesg_signature_size);
+
+      if (mesg_signature.size != mesg_signature_size) {
+        fprintf(stderr, "Failed to read PlayerChatMessage::mesg_signature\n");
+        break;
+      }
     }
 
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    sstr.size = 16;
+    String message;
+    message.data = memory_arena_push_type_count(trans_arena, char, 32767);
+    message.size = 32767;
 
-    // Read Sender UUID
-    rb->ReadRawString(&sstr, 16);
-    Player* sender = game->player_manager.GetPlayerByUuid(sstr);
+    message.size = rb->ReadString(&message);
 
-    sstr.size = 32767;
-
-    // Read and discard header signature
-    u64 header_sig_size = 0;
-    rb->ReadVarInt(&header_sig_size);
-    assert(header_sig_size <= sstr.size);
-    rb->ReadRawString(&sstr, (size_t)header_sig_size);
-
-    // Read plain message
-    size_t mesg_length = rb->ReadString(&sstr);
-
-    bool has_formatted_mesg = rb->ReadU8();
-
-    if (has_formatted_mesg) {
-      mesg_length = rb->ReadString(&sstr);
-    }
-
-    if (mesg_length > 0) {
+    if (message.size > 0) {
       char output_text[1024];
       size_t output_size = 0;
 
       if (sender) {
-        output_size = sprintf(output_text, "<%s> %.*s", sender->name, (int)mesg_length, sstr.data);
+        output_size = sprintf(output_text, "<%s> %.*s", sender->name, (int)message.size, message.data);
       } else {
-        output_size = sprintf(output_text, "%.*s", (int)mesg_length, sstr.data);
+        output_size = sprintf(output_text, "%.*s", (int)message.size, message.data);
       }
 
       printf("%s\n", output_text);
@@ -151,9 +161,9 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     }
   } break;
   case PlayProtocol::Explosion: {
-    float x = rb->ReadFloat();
-    float y = rb->ReadFloat();
-    float z = rb->ReadFloat();
+    double x = rb->ReadDouble();
+    double y = rb->ReadDouble();
+    double z = rb->ReadDouble();
     float strength = rb->ReadFloat();
 
     u64 records;
@@ -594,20 +604,18 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       }
     }
   } break;
-  case PlayProtocol::PlayerInfo: {
-    u64 action_value, player_count;
+  case PlayProtocol::PlayerInfoUpdate: {
+    u64 action_bitset = 0;
 
-    if (!rb->ReadVarInt(&action_value)) {
-      fprintf(stderr, "Failed to read PlayerInfo action varint.\n");
+    rb->ReadVarInt(&action_bitset);
+
+    u64 action_count = 0;
+    if (!rb->ReadVarInt(&action_count)) {
+      fprintf(stderr, "Failed to read PlayerInfoUpdate::action_count\n");
       break;
     }
 
-    if (!rb->ReadVarInt(&player_count)) {
-      fprintf(stderr, "Failed to read PlayerInfo player count varint.\n");
-      break;
-    }
-
-    for (u64 i = 0; i < player_count; ++i) {
+    for (u64 i = 0; i < action_count; ++i) {
       ArenaSnapshot snapshot = trans_arena->GetSnapshot();
 
       String uuid_string;
@@ -617,16 +625,21 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       rb->ReadRawString(&uuid_string, 16);
 
-      enum class PlayerInfoAction { Add, UpdateGamemode, UpdateLatency, UpdateDisplayName, Remove, Count };
-
-      if (action_value >= (u64)PlayerInfoAction::Count) {
-        fprintf(stderr, "Failed to read valid PlayerInfo action.\n");
+      if (uuid_string.size != 16) {
+        fprintf(stderr, "Failed to read PlayerInfoUpdate::uuid\n");
         break;
       }
-      PlayerInfoAction action = (PlayerInfoAction)action_value;
 
-      switch (action) {
-      case PlayerInfoAction::Add: {
+      enum ActionFlags {
+        AddAction = (1 << 0),
+        ChatAction = (1 << 1),
+        GamemodeAction = (1 << 2),
+        ListedAction = (1 << 3),
+        LatencyAction = (1 << 4),
+        DisplayNameAction = (1 << 5),
+      };
+
+      if (action_bitset & AddAction) {
         String name;
 
         name.data = memory_arena_push_type_count(trans_arena, char, 16);
@@ -660,80 +673,127 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           }
         }
 
-        u64 gamemode, ping;
-        rb->ReadVarInt(&gamemode);
-        rb->ReadVarInt(&ping);
+        game->player_manager.AddPlayer(name, uuid_string, 0, 0);
+      }
 
-        u8 has_display_name = rb->ReadU8();
+      Player* player = game->player_manager.GetPlayerByUuid(uuid_string);
+
+      if (action_bitset & ChatAction) {
+        bool has_signature = rb->ReadU8();
+
+        if (has_signature) {
+          String chat_session_id;
+
+          chat_session_id.data = memory_arena_push_type_count(trans_arena, char, 16);
+          chat_session_id.size = 16;
+
+          rb->ReadRawString(&chat_session_id, 16);
+
+          if (chat_session_id.size != 16) {
+            fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::chat_session_id\n");
+            break;
+          }
+
+          u64 public_key_expiry_time = rb->ReadU64();
+          u64 encoded_public_key_size = 0;
+
+          if (!rb->ReadVarInt(&encoded_public_key_size)) {
+            fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::encoded_public_key_size\n");
+            break;
+          }
+
+          String encoded_public_key;
+
+          encoded_public_key.data = memory_arena_push_type_count(trans_arena, char, encoded_public_key_size);
+          encoded_public_key.size = encoded_public_key_size;
+
+          rb->ReadRawString(&encoded_public_key, encoded_public_key_size);
+          if (encoded_public_key.size != encoded_public_key_size) {
+            fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::encoded_public_key\n");
+            break;
+          }
+
+          u64 public_key_sig_size = 0;
+
+          if (!rb->ReadVarInt(&public_key_sig_size)) {
+            fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::public_key_sig_size\n");
+            break;
+          }
+
+          String public_key_sig;
+
+          public_key_sig.data = memory_arena_push_type_count(trans_arena, char, public_key_sig_size);
+          public_key_sig.size = public_key_sig_size;
+
+          rb->ReadRawString(&public_key_sig, public_key_sig_size);
+          if (public_key_sig.size != public_key_sig_size) {
+            fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::public_key_sig\n");
+            break;
+          }
+        }
+      }
+
+      if (action_bitset & GamemodeAction) {
+        u64 gamemode = 0;
+
+        if (!rb->ReadVarInt(&gamemode)) {
+          fprintf(stderr, "Failed to read PlayerInfoAction::gamemode\n");
+          break;
+        }
+
+        if (player) {
+          player->gamemode = (u8)gamemode;
+        }
+      }
+
+      if (action_bitset & ListedAction) {
+        player->listed = rb->ReadU8();
+      }
+
+      if (action_bitset & LatencyAction) {
+        u64 latency = 0;
+
+        if (!rb->ReadVarInt(&latency)) {
+          fprintf(stderr, "Failed to read PlayerInfoAction::ping\n");
+          break;
+        }
+
+        if (player) {
+          player->ping = (u8)latency;
+        }
+      }
+
+      if (action_bitset & DisplayNameAction) {
+        bool has_display_name = rb->ReadU8();
+
         if (has_display_name) {
           String display_name;
 
           display_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
           display_name.size = 32767;
+
           display_name.size = rb->ReadString(&display_name);
         }
-
-        u8 has_sig_data = rb->ReadU8();
-
-        if (has_sig_data) {
-          u64 timestamp = rb->ReadU64();
-          u64 public_key_size;
-
-          rb->ReadVarInt(&public_key_size);
-
-          String public_key;
-          public_key.data = memory_arena_push_type_count(trans_arena, char, (size_t)public_key_size);
-          public_key.size = (size_t)public_key_size;
-
-          rb->ReadRawString(&public_key, (size_t)public_key_size);
-
-          u64 signature_size;
-
-          rb->ReadVarInt(&signature_size);
-
-          String signature;
-          signature.data = memory_arena_push_type_count(trans_arena, char, (size_t)signature_size);
-          signature.size = (size_t)signature_size;
-
-          rb->ReadRawString(&signature, (size_t)signature_size);
-        }
-
-        game->player_manager.AddPlayer(name, uuid_string, (u8)ping, (u8)gamemode);
-      } break;
-      case PlayerInfoAction::UpdateGamemode: {
-        u64 gamemode;
-
-        rb->ReadVarInt(&gamemode);
-
-        Player* player = game->player_manager.GetPlayerByUuid(uuid_string);
-
-        if (player) {
-          player->gamemode = (u8)gamemode;
-        }
-      } break;
-      case PlayerInfoAction::UpdateLatency: {
-        u64 latency;
-
-        rb->ReadVarInt(&latency);
-
-        Player* player = game->player_manager.GetPlayerByUuid(uuid_string);
-
-        if (player) {
-          player->ping = (u8)latency;
-        }
-      } break;
-      case PlayerInfoAction::UpdateDisplayName: {
-        // TODO: Update display name
-      } break;
-      case PlayerInfoAction::Remove: {
-        game->player_manager.RemovePlayer(uuid_string);
-      } break;
-      default: {
-      } break;
       }
 
       trans_arena->Revert(snapshot);
     }
+  } break;
+  case PlayProtocol::PlayerInfoRemove: {
+    u64 player_count = 0;
+
+    rb->ReadVarInt(&player_count);
+
+    String uuid_string;
+
+    uuid_string.data = memory_arena_push_type_count(trans_arena, char, 16);
+    uuid_string.size = 16;
+
+    for (u64 i = 0; i < player_count; ++i) {
+      rb->ReadRawString(&uuid_string, 16);
+      game->player_manager.RemovePlayer(uuid_string);
+    }
+
   } break;
   case PlayProtocol::TimeUpdate: {
     u64 world_age = rb->ReadU64();

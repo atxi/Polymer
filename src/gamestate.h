@@ -28,11 +28,12 @@ struct InputState {
 };
 
 struct Player {
-  char name[16];
+  char name[17];
   char uuid[16];
 
   u8 ping;
   u8 gamemode;
+  bool listed;
 };
 
 struct PlayerManager {

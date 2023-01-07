@@ -165,19 +165,18 @@ void Connection::SendLoginStart(const char* username) {
   sstr.size = strlen(username);
 
   u32 pid = 0;
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(sstr.size) + sstr.size + 2;
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(sstr.size) + sstr.size + 1;
 
   wb.WriteVarInt(size);
   wb.WriteVarInt(pid);
   wb.WriteString(sstr);
-  wb.WriteU8(0); // HasSigData
   wb.WriteU8(0); // HasPlayerUUID
 }
 
 void Connection::SendKeepAlive(u64 id) {
   RingBuffer& wb = write_buffer;
 
-  u32 pid = 0x12;
+  u32 pid = 0x11;
   size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + sizeof(id);
 
   wb.WriteVarInt(size);
@@ -202,7 +201,7 @@ void Connection::SendTeleportConfirm(u64 id) {
 
 void Connection::SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground) {
   RingBuffer& wb = write_buffer;
-  u32 pid = 0x15;
+  u32 pid = 0x14;
 
   size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + sizeof(double) + sizeof(double) + sizeof(double) +
                 sizeof(float) + sizeof(float) + 1;
@@ -222,7 +221,7 @@ void Connection::SendPlayerPositionAndRotation(const Vector3f& position, float y
 
 void Connection::SendClientStatus(ClientStatusAction action) {
   RingBuffer& wb = write_buffer;
-  u32 pid = 0x07;
+  u32 pid = 0x06;
 
   size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize((u64)action);
 

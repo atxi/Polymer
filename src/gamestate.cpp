@@ -132,7 +132,7 @@ void GameState::ProcessMovement(float dt, InputState* input) {
   // TODO: Implement for real
   if (player_manager.client_player && player_manager.client_player->gamemode == 3) {
     if (position_sync_timer >= (50.0f / 1000.0f)) {
-      connection.SendPlayerPositionAndRotation(camera.position - Vector3f(0, 1.8f, 0.0f), 0.0f, 0.0f, false);
+      connection.SendPlayerPositionAndRotation(camera.position - Vector3f(0, 1.62f, 0.0f), 0.0f, 0.0f, false);
       position_sync_timer = 0.0f;
     }
   }
@@ -537,7 +537,7 @@ void PlayerManager::AddPlayer(const String& name, const String& uuid, u8 ping, u
     new_player = players + player_count++;
   }
 
-  assert(name.size <= polymer_array_count(new_player->name));
+  assert(name.size < polymer_array_count(new_player->name));
 
   memcpy(new_player->name, name.data, name.size);
   new_player->name[name.size] = 0;
@@ -547,6 +547,7 @@ void PlayerManager::AddPlayer(const String& name, const String& uuid, u8 ping, u
 
   new_player->ping = ping;
   new_player->gamemode = gamemode;
+  new_player->listed = true;
 
   if (poly_strcmp(name, String(client_name)) == 0) {
     client_player = new_player;
