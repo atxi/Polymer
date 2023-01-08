@@ -65,8 +65,8 @@ void main() {
   uint tintindex = (inPackedLight >> 16) & 0xFF;
   uint ao = inPackedLight & 3;
   
-  uint skylight_value = (inPackedLight >> 2) & 0x0F;
-  uint blocklight_value = ((inPackedLight >> 2) & 0xF0) >> 4;
+  uint skylight_value = (inPackedLight >> 2) & 0x3F;
+  uint blocklight_value = (inPackedLight >> 8) & 0x3F;
 
   if (tintindex == GRASS_TINTINDEX) {
     fragColorMod = PLAINS_GRASS_TINT;
@@ -85,11 +85,11 @@ void main() {
     fragColorMod.rgb *= (1.0 / 0.8);
   }
 
-  float skylight_percent = (float(skylight_value) / 15.0) * ubo.sunlight * 0.85;
-  float blocklight_percent = blocklight_value / 15.0;
+  float skylight_percent = (float(skylight_value) / 60.0) * ubo.sunlight * 0.85;
+  float blocklight_percent = blocklight_value / 60.0;
   float light_intensity = max(blocklight_percent, skylight_percent) * 0.85 + 0.15;
 
-  uint shaded_axis = (inPackedLight >> 11) & 1;
+  uint shaded_axis = (inPackedLight >> 15) & 1;
 
   light_intensity *= 1.0 - (shaded_axis * 0.2);
 
