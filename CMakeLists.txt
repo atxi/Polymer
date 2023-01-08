@@ -6,7 +6,7 @@ add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 
 include(GNUInstallDirs)
 
-add_subdirectory(src)
+add_subdirectory(polymer)
 
 set(CPACK_PACKAGE_NAME "Polymer")
 set(CPACK_PACKAGE_VENDOR "atxi")
