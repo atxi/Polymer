@@ -132,7 +132,10 @@ void GameState::ProcessMovement(float dt, InputState* input) {
   // TODO: Implement for real
   if (player_manager.client_player && player_manager.client_player->gamemode == 3) {
     if (position_sync_timer >= (50.0f / 1000.0f)) {
-      connection.SendPlayerPositionAndRotation(camera.position - Vector3f(0, 1.62f, 0.0f), 0.0f, 0.0f, false);
+      float yaw = Degrees(camera.yaw) - 90.0f;
+      float pitch = -Degrees(camera.pitch);
+
+      connection.SendPlayerPositionAndRotation(camera.position - Vector3f(0, 1.62f, 0.0f), yaw, pitch, false);
       position_sync_timer = 0.0f;
     }
   }
@@ -253,7 +256,7 @@ void GameState::OnWindowMouseMove(s32 dx, s32 dy) {
 }
 
 void GameState::OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch) {
-  camera.position = position + Vector3f(0, 1.8f, 0);
+  camera.position = position + Vector3f(0, 1.62f, 0);
   camera.yaw = Radians(yaw + 90.0f);
   camera.pitch = -Radians(pitch);
 }
