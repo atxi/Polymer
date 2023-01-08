@@ -33,6 +33,7 @@ struct ChunkRenderUBO {
   mat4 mvp;
   u32 frame;
   float sunlight;
+  u32 alpha_discard;
 };
 
 struct ChunkVertex {
@@ -79,7 +80,12 @@ struct LeafRenderer {
 struct AlphaRenderer {
   VkRenderPass render_pass;
   VkPipeline pipeline;
+
   VkCommandBuffer command_buffers[2];
+  VkDescriptorSet descriptors[2];
+
+  VkBuffer uniform_buffers[2];
+  VmaAllocation uniform_allocations[2];
 
   void CreateRenderPass(VkDevice device, VkFormat swap_format);
 };

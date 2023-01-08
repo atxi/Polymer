@@ -167,6 +167,7 @@ void GameState::RenderFrame() {
   ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
   ubo.frame = (u32)(animation_accumulator * 8.0f);
   ubo.sunlight = GetSunlight();
+  ubo.alpha_discard = true;
 
   render::ChunkRenderer& chunk_renderer = renderer->chunk_renderer;
 
@@ -175,6 +176,12 @@ void GameState::RenderFrame() {
   vmaMapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame], &data);
   memcpy(data, &ubo, sizeof(ubo));
   vmaUnmapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame]);
+
+  ubo.alpha_discard = false;
+
+  vmaMapMemory(renderer->allocator, chunk_renderer.alpha_renderer.uniform_allocations[renderer->current_frame], &data);
+  memcpy(data, &ubo, sizeof(ubo));
+  vmaUnmapMemory(renderer->allocator, chunk_renderer.alpha_renderer.uniform_allocations[renderer->current_frame]);
 
   Frustum frustum = camera.GetViewFrustum();
 

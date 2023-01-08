@@ -1,6 +1,13 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
+layout(binding = 0) uniform UniformBufferObject {
+  mat4 mvp;
+  uint frame;
+  float sunlight;
+  uint alpha_discard;
+} ubo;
+
 layout(binding = 1) uniform sampler2DArray texSampler;
 
 layout(location = 0) in vec2 fragTexCoord;
@@ -34,7 +41,7 @@ void main() {
   
   outColor = diffuse * fragColorMod;
 
-  if (outColor.a <= 0.6) {
+  if (ubo.alpha_discard > 0 && outColor.a <= 0.6) {
     discard;
   }
 

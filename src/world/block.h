@@ -58,29 +58,33 @@ struct BlockElement {
     u32 rescale : 1;
     u32 padding : 29;
   };
+
+  inline RenderableFace& GetFace(BlockFace face) {
+    return faces[(size_t)face];
+  }
 };
 
 struct BlockModel {
   size_t element_count;
   BlockElement elements[20];
 
-  bool IsOccluding() {
-    for (size_t i = 0; i < element_count; ++i) {
-      if (elements[i].occluding) {
-        return true;
-      }
-    }
+  u32 has_occluding : 1;
+  u32 has_transparency : 1;
+  u32 has_shaded : 1;
+  u32 has_leaves : 1;
+  u32 has_glass : 1;
+  u32 padding : 27;
 
-    return false;
+  inline bool HasOccluding() const {
+    return has_occluding;
   }
 
-  bool HasShadedElement() {
-    for (size_t i = 0; i < element_count; ++i) {
-      if (elements[i].shade) {
-        return true;
-      }
-    }
-    return false;
+  inline bool HasTransparency() const {
+    return has_transparency;
+  }
+
+  inline bool HasShadedElement() const {
+    return has_shaded;
   }
 };
 

@@ -88,22 +88,66 @@ inline void PushIndex(PushContext& ctx, u32 render_layer, u16 index) {
   *out = index;
 }
 
-inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
-  // Only check the first element for transparency so blocks with overlay aren't treated as transparent.
-  for (size_t j = 0; j < 6; ++j) {
-    if (to->elements[0].faces[j].transparency) {
-      return false;
+inline bool HasOccludableFace(BlockModel& model, BlockFace face) {
+  for (size_t i = 0; i < model.element_count; ++i) {
+    RenderableFace& render_face = model.elements[i].faces[(size_t)face];
+
+    if (!render_face.render) continue;
+
+    if (!render_face.transparency) {
+      return true;
     }
   }
 
-  // TODO: Implement the rest
-  return to->IsOccluding();
+  return false;
+}
+
+inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
+  BlockFace opposite_face = world::GetOppositeFace(face);
+
+  bool from_is_transparent = !HasOccludableFace(*from, face);
+  bool to_is_transparent = !HasOccludableFace(*to, opposite_face);
+
+  if (to->element_count == 0) return false;
+  if (to->has_leaves) return false;
+
+  for (size_t i = 0; i < from->element_count; ++i) {
+    RenderableFace& from_face = from->elements[i].GetFace(face);
+
+    if (!from_face.render || from->elements[i].rescale) continue;
+
+    for (size_t j = 0; j < to->element_count; ++j) {
+      RenderableFace& to_face = to->elements[i].GetFace(opposite_face);
+
+      if (!to_face.render) continue;
+
+      Vector3f& from_start = from->elements[i].from;
+      Vector3f& from_end = from->elements[i].to;
+      Vector3f& to_start = to->elements[i].from;
+      Vector3f& to_end = to->elements[i].to;
+
+      // Check if the element of the 'to' model fully occludes the 'from' face
+      if (to_start.x <= from_start.x && to_start.y <= from_start.y && to_start.z <= from_start.z &&
+          to_end.x >= from_end.x && to_end.y >= from_end.y && to_end.z >= from_end.z) {
+        if (to_is_transparent) {
+          if (from_is_transparent) {
+            return true;
+          }
+          return false;
+        }
+
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel* corner) {
-  int value1 = side1->IsOccluding();
-  int value2 = side2->IsOccluding();
-  int value_corner = corner->IsOccluding();
+  int value1 = side1->HasOccluding() && !side1->has_glass;
+  int value2 = side2->HasOccluding() && !side2->has_glass;
+  int value_corner = corner->HasOccluding() && !corner->has_glass;
 
   if (value1 && value2) {
     return 0;

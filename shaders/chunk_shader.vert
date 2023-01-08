@@ -5,6 +5,7 @@ layout(binding = 0) uniform UniformBufferObject {
   mat4 mvp;
   uint frame;
   float sunlight;
+  uint alpha_discard;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;

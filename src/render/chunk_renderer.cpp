@@ -119,8 +119,8 @@ bool ChunkRenderPipeline::Create(VkDevice device) {
   ubo_binding.binding = 0;
   ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
   ubo_binding.descriptorCount = 1;
-  ubo_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
+  ubo_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+  
   VkDescriptorSetLayoutBinding sampler_binding{};
   sampler_binding.binding = 1;
   sampler_binding.descriptorCount = 1;
@@ -461,6 +461,11 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
                         uniform_allocations + i, nullptr) != VK_SUCCESS) {
       printf("Failed to create ChunkRenderer uniform buffer.\n");
     }
+
+    if (vmaCreateBuffer(renderer->allocator, &buffer_info, &alloc_create_info, alpha_renderer.uniform_buffers + i,
+                        alpha_renderer.uniform_allocations + i, nullptr) != VK_SUCCESS) {
+      printf("Failed to create ChunkRenderer alpha uniform buffer.\n");
+    }
   }
 
   VkDescriptorSetLayout layouts[kMaxFramesInFlight];
@@ -488,6 +493,10 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     fprintf(stderr, "Failed to allocate descriptor sets.");
   }
 
+  if (vkAllocateDescriptorSets(device, &alloc_info, alpha_renderer.descriptors) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to allocate descriptor sets.");
+  }
+
   for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
     VkDescriptorBufferInfo buffer_info = {};
 
@@ -500,7 +509,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     block_image_info.imageView = block_textures->image_view;
     block_image_info.sampler = block_textures->sampler;
 
-    VkWriteDescriptorSet descriptor_writes[6] = {};
+    VkWriteDescriptorSet descriptor_writes[8] = {};
     descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptor_writes[0].dstSet = block_renderer.descriptors[i];
     descriptor_writes[0].dstBinding = 0;
@@ -570,6 +579,32 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     descriptor_writes[5].pImageInfo = &leaf_image_info;
     descriptor_writes[5].pBufferInfo = nullptr;
     descriptor_writes[5].pTexelBufferView = nullptr;
+
+    VkDescriptorBufferInfo alpha_buffer_info = {};
+
+    alpha_buffer_info.buffer = alpha_renderer.uniform_buffers[i];
+    alpha_buffer_info.offset = 0;
+    alpha_buffer_info.range = sizeof(ChunkRenderUBO);
+
+    descriptor_writes[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[6].dstSet = alpha_renderer.descriptors[i];
+    descriptor_writes[6].dstBinding = 0;
+    descriptor_writes[6].dstArrayElement = 0;
+    descriptor_writes[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_writes[6].descriptorCount = 1;
+    descriptor_writes[6].pBufferInfo = &alpha_buffer_info;
+    descriptor_writes[6].pImageInfo = nullptr;
+    descriptor_writes[6].pTexelBufferView = nullptr;
+
+    descriptor_writes[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[7].dstSet = alpha_renderer.descriptors[i];
+    descriptor_writes[7].dstBinding = 1;
+    descriptor_writes[7].dstArrayElement = 0;
+    descriptor_writes[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_writes[7].descriptorCount = 1;
+    descriptor_writes[7].pImageInfo = &block_image_info;
+    descriptor_writes[7].pBufferInfo = nullptr;
+    descriptor_writes[7].pTexelBufferView = nullptr;
 
     vkUpdateDescriptorSets(device, polymer_array_count(descriptor_writes), descriptor_writes, 0, nullptr);
   }
@@ -648,7 +683,8 @@ bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t cu
   vkCmdBeginRenderPass(alpha_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
   {
     vkCmdBindPipeline(alpha_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, alpha_renderer.pipeline);
-    vkCmdBindDescriptorSets(alpha_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &descriptor, 0, nullptr);
+    vkCmdBindDescriptorSets(alpha_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
+                            alpha_renderer.descriptors + current_frame, 0, nullptr);
   }
 
   return true;
@@ -769,6 +805,7 @@ void ChunkRenderer::CleanupSwapchain(VkDevice device) {
 
   for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
     vmaDestroyBuffer(renderer->allocator, uniform_buffers[i], uniform_allocations[i]);
+    vmaDestroyBuffer(renderer->allocator, alpha_renderer.uniform_buffers[i], alpha_renderer.uniform_allocations[i]);
   }
 }
 

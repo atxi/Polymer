@@ -89,6 +89,8 @@ static void AssignFaceRenderSettings(RenderableFace* face, const String& texture
     face->render_layer = (int)RenderLayer::Alpha;
   } else if (poly_strcmp(texture, POLY_STR("nether_portal.png")) == 0) {
     face->render_layer = (int)RenderLayer::Alpha;
+  } else if (poly_contains(texture, POLY_STR("stained_glass.png"))) {
+    face->render_layer = (int)RenderLayer::Alpha;
   } else if (poly_strcmp(texture, POLY_STR("grass.png")) == 0) {
     face->render_layer = (int)RenderLayer::Flora;
   } else if (poly_strcmp(texture, POLY_STR("sugar_cane.png")) == 0) {
@@ -569,7 +571,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
       if (parsed_face->texture_name_size <= 0) continue;
 
       String texture_name =
-          parsed_model.ResolveTexture(String(parsed_face->texture_name, parsed_face->texture_name_size));
+        parsed_model.ResolveTexture(String(parsed_face->texture_name, parsed_face->texture_name_size));
 
       // Texture wasn't fully resolved
       if (texture_name.size <= 0 || texture_name.data[0] == '#') continue;
@@ -578,7 +580,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
 
       char lookup[1024];
       size_t lookup_size =
-          sprintf(lookup, "%.*s.png", (u32)(texture_name.size - prefix_size), texture_name.data + prefix_size);
+        sprintf(lookup, "%.*s.png", (u32)(texture_name.size - prefix_size), texture_name.data + prefix_size);
       String texture_search(lookup, lookup_size);
 
       TextureIdRange* texture_range = texture_id_map.Find(MapStringKey(texture_search.data, texture_search.size));
@@ -595,6 +597,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
     }
   }
 
+  // TODO: All of these checks should be pulled into a system for managing texture-specific data.
   String path(parsed_model.filename + kBlockModelAssetSkip);
   bool is_prismarine = poly_strstr(path, "prismarine").data != nullptr;
 
@@ -607,6 +610,8 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
     // Spruce and birch have hardcoded coloring so they go into their own tintindex.
     is_spruce = poly_strstr(path, "spruce").data != nullptr;
     is_birch = poly_strstr(path, "birch").data != nullptr;
+
+    model.has_leaves = 1;
   }
 
   for (size_t i = 0; i < model.element_count; ++i) {
@@ -614,8 +619,20 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
 
     element->occluding = element->from == Vector3f(0, 0, 0) && element->to == Vector3f(1, 1, 1);
 
+    if (element->occluding) {
+      model.has_occluding = 1;
+    }
+
+    if (element->shade) {
+      model.has_shaded = 1;
+    }
+
     for (size_t j = 0; j < 6; ++j) {
       element->faces[j].transparency = IsTransparentTexture(element->faces[j].texture_id);
+
+      if (element->faces[j].transparency) {
+        model.has_transparency = 1;
+      }
 
       if (is_prismarine) {
         // TODO: This should be removed once the meta files are processed
@@ -632,6 +649,11 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
         }
       }
     }
+  }
+
+  bool is_glass = poly_contains(path, POLY_STR("/glass.json")) || poly_contains(path, POLY_STR("stained_glass.json"));
+  if (is_glass) {
+    model.has_glass = true;
   }
 }
 

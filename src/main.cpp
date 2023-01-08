@@ -5,6 +5,7 @@
 #include "packet_interpreter.h"
 #include "types.h"
 
+#include "Debug.h"
 #include "render/render.h"
 
 #include <cassert>
@@ -271,6 +272,8 @@ int run() {
 
   fflush(stdout);
 
+  DebugTextSystem debug(game->renderer->font_renderer);
+
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -283,42 +286,30 @@ int run() {
     }
 
     if (vk_render.BeginFrame()) {
+      int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
+
       game->Update(frame_time / 1000.0f, &g_input);
 
-      using namespace polymer::render;
+      debug.position = Vector2f(8, 8);
+      debug.color = Vector4f(1.0f, 0.67f, 0.0f, 1.0f);
 
-      FontStyleFlags style = FontStyle_Background | FontStyle_DropShadow;
+      debug.Write("Polymer");
 
-      float y = 8;
+      debug.color = Vector4f(1, 1, 1, 1);
 
-      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), POLY_STR("Polymer"), style,
-                                         Vector4f(1.0f, 0.67f, 0.0f, 1.0f));
-      y += 16;
+      debug.Write("fps: %d", fps);
+      debug.Write("(%.02f, %.02f, %.02f)", g_game->camera.position.x, g_game->camera.position.y,
+                  g_game->camera.position.z);
 
-      char text[256] = {};
-      int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
-      sprintf(text, "%d fps", fps);
-
-      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
-      y += 16;
-
-      sprintf(text, "(%.02f, %.02f, %.02f)", g_game->camera.position.x, g_game->camera.position.y,
-              g_game->camera.position.z);
-
-      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
-      y += 16;
+      debug.Write("world tick: %u", game->world_tick);
 
 #if DISPLAY_PERF_STATS
-      sprintf(text, "%d chunks rendered", g_game->stats.chunk_render_count);
-      vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
-      y += 16;
+      debug.Write("chunks rendered: %u", g_game->stats.chunk_render_count);
 
       for (size_t i = 0; i < polymer::render::kRenderLayerCount; ++i) {
         const char* name = polymer::render::kRenderLayerNames[i];
 
-        sprintf(text, "%llu %s vertices rendered", g_game->stats.vertex_counts[i], name);
-        vk_render.font_renderer.RenderText(Vector3f(8, y, 0), String(text), style);
-        y += 16;
+        debug.Write("%s vertices rendered: %llu", name, g_game->stats.vertex_counts[i]);
       }
 #endif
 
