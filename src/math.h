@@ -567,6 +567,34 @@ inline mat4 Orthographic(float left, float right, float bottom, float top, float
   return mat4(values);
 }
 
+inline Vector3f Rotate(const Vector3f& v, float rads, const Vector3f& rotate_axis) {
+  float c = std::cos(rads);
+  float s = std::sin(rads);
+
+  Vector3f axis = Normalize(rotate_axis);
+  Vector3f t = (1.0f - c) * axis;
+
+  float rotator[3][3];
+
+  rotator[0][0] = c + t[0] * axis[0];
+  rotator[0][1] = t[0] * axis[1] + s * axis[2];
+  rotator[0][2] = t[0] * axis[2] - s * axis[1];
+
+  rotator[1][0] = t[1] * axis[0] - s * axis[2];
+  rotator[1][1] = c + t[1] * axis[1];
+  rotator[1][2] = t[1] * axis[2] + s * axis[0];
+
+  rotator[2][0] = t[2] * axis[0] + s * axis[1];
+  rotator[2][1] = t[2] * axis[1] - s * axis[0];
+  rotator[2][2] = c + t[2] * axis[2];
+
+  float x = v[0] * rotator[0][0] + v[1] * rotator[1][0] + v[2] * rotator[2][0];
+  float y = v[0] * rotator[0][1] + v[1] * rotator[1][1] + v[2] * rotator[2][1];
+  float z = v[0] * rotator[0][2] + v[1] * rotator[1][2] + v[2] * rotator[2][2];
+
+  return Vector3f(x, y, z);
+}
+
 inline mat4 Rotate(const mat4& M, float angle, const Vector3f& rotate_axis) {
   float c = std::cos(angle);
   float s = std::sin(angle);
