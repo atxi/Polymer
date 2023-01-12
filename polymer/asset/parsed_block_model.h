@@ -25,19 +25,28 @@ struct ParsedRenderableFace {
   Vector2f uv_from;
   Vector2f uv_to;
 
-  u32 frame_count;
+  float rotation;
+
   char texture_name[64];
   size_t texture_name_size;
 
   struct {
+    u32 custom_uv : 1;
     u32 render : 1;
     u32 transparency : 1;
     u32 cullface : 3;
     u32 render_layer : 3;
     u32 random_flip : 1;
-    u32 padding : 7;
+    u32 padding : 6;
     u32 tintindex : 16;
   };
+};
+
+struct ParsedRotation {
+  Vector3f origin;
+  Vector3f axis;
+  float angle;
+  bool rescale;
 };
 
 struct ParsedBlockElement {
@@ -45,11 +54,12 @@ struct ParsedBlockElement {
   Vector3f from;
   Vector3f to;
 
+  ParsedRotation rotation;
+
   struct {
     u32 occluding : 1;
     u32 shade : 1;
-    u32 rescale : 1;
-    u32 padding : 29;
+    u32 padding : 30;
   };
 };
 

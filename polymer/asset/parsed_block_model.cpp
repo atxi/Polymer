@@ -166,7 +166,11 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
   while (element_array_element) {
     json_object_s* element_obj = json_value_as_object(element_array_element->value);
 
-    elements[element_count].shade = true;
+    ParsedBlockElement* element = elements + element_count;
+
+    element->shade = true;
+    element->rotation.angle = 0.0f;
+    element->rotation.rescale = false;
 
     json_object_element_s* element_property = element_obj->start;
     while (element_property) {
@@ -176,16 +180,16 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
         JsonVector3Parser parser(element_property);
 
         if (parser.HasNext()) {
-          elements[element_count].from = parser.Next();
+          element->from = parser.Next();
         }
       } else if (poly_strcmp(property_name, POLY_STR("to")) == 0) {
         JsonVector3Parser parser(element_property);
 
         if (parser.HasNext()) {
-          elements[element_count].to = parser.Next();
+          element->to = parser.Next();
         }
       } else if (poly_strcmp(property_name, POLY_STR("shade")) == 0) {
-        elements[element_count].shade = json_value_is_true(element_property->value);
+        element->shade = json_value_is_true(element_property->value);
       } else if (poly_strcmp(property_name, POLY_STR("rotation")) == 0) {
         json_object_element_s* rotation_obj_element = json_value_as_object(element_property->value)->start;
 
@@ -193,11 +197,7 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
           String rotation_element_name(rotation_obj_element->name->string, rotation_obj_element->name->string_size);
 
           if (poly_strcmp(rotation_element_name, POLY_STR("rescale")) == 0) {
-            bool rescale = json_value_is_true(rotation_obj_element->value);
-
-            if (rescale) {
-              elements[element_count].rescale = 1;
-            }
+            element->rotation.rescale = json_value_is_true(rotation_obj_element->value);
           } else if (poly_strcmp(rotation_element_name, POLY_STR("origin")) == 0) {
             JsonVector3Parser parser(rotation_obj_element);
             Vector3f origin;
@@ -205,6 +205,8 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
             if (parser.HasNext()) {
               origin = parser.Next();
             }
+
+            element->rotation.origin = origin;
           }
 
           rotation_obj_element = rotation_obj_element->next;
@@ -218,26 +220,28 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
           size_t face_index = ParseFaceName(facename);
 
           json_object_element_s* face_element = json_value_as_object(face_obj_element->value)->start;
-          ParsedRenderableFace* face = elements[element_count].faces + face_index;
+          ParsedRenderableFace* face = element->faces + face_index;
 
           face->uv_from = Vector2f(0, 0);
           face->uv_to = Vector2f(1, 1);
+          face->custom_uv = 0;
           face->render = true;
           face->tintindex = 0xFFFF;
           face->cullface = 6;
           face->render_layer = 0;
+          face->rotation = 0.0f;
 
           while (face_element) {
-            const char* face_property = face_element->name->string;
+            String face_property(face_element->name->string, face_element->name->string_size);
 
-            if (strcmp(face_property, "texture") == 0) {
+            if (poly_strcmp(face_property, POLY_STR("texture")) == 0) {
               json_string_s* texture_str = json_value_as_string(face_element->value);
-              String texture_name = poly_string(texture_str->string, texture_str->string_size);
+              String texture_name(texture_str->string, texture_str->string_size);
 
               face->texture_name_size = texture_name.size;
               memcpy(face->texture_name, texture_name.data, texture_name.size);
               face->texture_name[texture_name.size] = 0;
-            } else if (strcmp(face_property, "uv") == 0) {
+            } else if (poly_strcmp(face_property, POLY_STR("uv")) == 0) {
               JsonVector2Parser vec_parser(face_element);
 
               Vector2f uv_from, uv_to;
@@ -250,17 +254,20 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
                 uv_to = vec_parser.Next();
               }
 
+              face->custom_uv = 1;
               face->uv_from = uv_from;
               face->uv_to = uv_to;
-            } else if (strcmp(face_property, "tintindex") == 0) {
+            } else if (poly_strcmp(face_property, POLY_STR("tintindex")) == 0) {
               face->tintindex = (u32)strtol(json_value_as_number(face_element->value)->number, nullptr, 10);
-            } else if (strcmp(face_property, "cullface") == 0) {
+            } else if (poly_strcmp(face_property, POLY_STR("cullface")) == 0) {
               json_string_s* texture_str = json_value_as_string(face_element->value);
               String face_str = poly_string(texture_str->string, texture_str->string_size);
 
               s32 face_index = ParseFaceName(face_str);
 
               face->cullface = face_index;
+            } else if (poly_strcmp(face_property, POLY_STR("rotation")) == 0) {
+              face->rotation = (float)atof(json_value_as_number(face_element->value)->number);
             }
 
             face_element = face_element->next;

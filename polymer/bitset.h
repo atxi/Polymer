@@ -14,6 +14,9 @@ struct BitSet {
   size_t total_bit_count;
 
   BitSet() : data(nullptr), total_bit_count(0) {}
+
+  BitSet(const BitSet& other) : data(other.data), total_bit_count(other.total_bit_count) {}
+
   BitSet(MemoryArena& arena, size_t total_bit_count) {
     size_t total_slices = total_bit_count / 64;
 

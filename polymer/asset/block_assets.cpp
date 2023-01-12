@@ -56,6 +56,8 @@ struct AssetParser {
   size_t state_count;
   ParsedBlockState* states = nullptr;
 
+  BitSet default_state_set;
+
   size_t texture_count;
   u8* texture_images;
   render::TextureConfig* texture_configs;
@@ -73,6 +75,8 @@ struct AssetParser {
 
   void ResolveModel(ParsedBlockModel& model);
   void ResolveModels();
+  bool ResolveMultiparts(BitSet& element_set, ParsedBlockState* parsed_state, const String& blockstate_name);
+  bool ResolveVariants(BitSet& element_set, ParsedBlockState* parsed_state, const String& blockstate_name);
 
   bool IsTransparentTexture(u32 texture_id);
 
@@ -428,6 +432,8 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
   registry->state_count = (size_t)GetHighestStateId(root_obj) + 1;
   assert(registry->state_count > 1);
 
+  default_state_set = BitSet(*this->arena, registry->state_count);
+
   // Create a list of pointers to property strings stored in the transient arena
   registry->states = memory_arena_push_type_count(perm_arena, BlockState, registry->state_count);
   registry->properties = memory_arena_push_type_count(perm_arena, String, registry->state_count);
@@ -443,6 +449,7 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
     assert(element->name->string_size < polymer_array_count(info->name));
     memcpy(info->name, element->name->string, element->name->string_size);
     info->name_length = element->name->string_size;
+    info->name[info->name_length] = 0;
 
     json_object_element_s* block_element = block_obj->start;
     while (block_element) {
@@ -516,6 +523,8 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
 
               registry->properties[id].data = property;
               registry->properties[id].size = property_length;
+            } else if (strncmp(state_element->name->string, "default", state_element->name->string_size) == 0) {
+              default_state_set.Set(id, 1);
             }
             state_element = state_element->next;
           }
@@ -544,12 +553,13 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
   model.element_count = parsed_model.element_count;
 
   for (size_t i = 0; i < parsed_model.element_count; ++i) {
+    BlockElement* element = model.elements + i;
     model.elements[i].from = parsed_model.elements[i].from;
     model.elements[i].to = parsed_model.elements[i].to;
 
     model.elements[i].occluding = parsed_model.elements[i].occluding;
     model.elements[i].shade = parsed_model.elements[i].shade;
-    model.elements[i].rescale = parsed_model.elements[i].rescale;
+    model.elements[i].rescale = parsed_model.elements[i].rotation.rescale;
     model.elements[i].occluding = 1;
 
     for (size_t j = 0; j < 6; ++j) {
@@ -567,6 +577,38 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
       model_face->tintindex = parsed_face->tintindex;
       model_face->texture_id = 0;
       model_face->frame_count = 0;
+
+      // Fill out the face uv info based on the actual element instead of the entire uv in the case of non-existence.
+      if (!parsed_face->custom_uv) {
+        BlockFace side = (BlockFace)j;
+
+        switch (side) {
+        case BlockFace::Down: {
+          model_face->uv_from = Vector2f(element->to.x, element->from.z);
+          model_face->uv_to = Vector2f(element->from.x, element->to.z);
+        } break;
+        case BlockFace::Up: {
+          model_face->uv_from = Vector2f(element->from.x, element->from.z);
+          model_face->uv_to = Vector2f(element->to.x, element->to.z);
+        } break;
+        case BlockFace::North: {
+          model_face->uv_from = Vector2f(element->to.x, element->from.y);
+          model_face->uv_to = Vector2f(element->from.x, element->to.y);
+        } break;
+        case BlockFace::South: {
+          model_face->uv_from = Vector2f(element->from.x, element->from.y);
+          model_face->uv_to = Vector2f(element->to.x, element->to.y);
+        } break;
+        case BlockFace::West: {
+          model_face->uv_from = Vector2f(element->from.z, element->from.y);
+          model_face->uv_to = Vector2f(element->to.z, element->to.y);
+        } break;
+        case BlockFace::East: {
+          model_face->uv_from = Vector2f(element->to.z, element->from.y);
+          model_face->uv_to = Vector2f(element->from.z, element->to.y);
+        } break;
+        }
+      }
 
       if (parsed_face->texture_name_size <= 0) continue;
 
@@ -657,6 +699,338 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
   }
 }
 
+inline json_object_element_s* GetJsonObjectElement(json_object_s* obj, const String& name) {
+  json_object_element_s* element = obj->start;
+
+  while (element) {
+    String element_name(element->name->string, element->name->string_size);
+
+    if (poly_strcmp(element_name, name) == 0) {
+      return element;
+    }
+
+    element = element->next;
+  }
+
+  return nullptr;
+}
+
+static bool HasPropertyValue(BlockRegistry* registry, size_t bid, const String& name, const String& value) {
+  String* properties = registry->properties + bid;
+
+  if (name.size == 0 && properties == nullptr || properties->size == 0) return true;
+  if (!properties || properties->size == 0) return false;
+
+  String current_name(properties->data, 0);
+  String current_value(properties->data, 0);
+  bool parsing_value = false;
+  for (size_t i = 0; i < properties->size; ++i) {
+    char c = properties->data[i];
+
+    if (!parsing_value) {
+      if (c == '=') {
+        current_value.data = properties->data + i + 1;
+        current_value.size = 0;
+        parsing_value = true;
+      } else {
+        ++current_name.size;
+      }
+    } else {
+      if (c == ',') {
+        if (poly_strcmp(current_name, name) == 0) {
+          return poly_strcmp(current_value, value) == 0;
+        }
+
+        current_name.data = properties->data + i + 1;
+        current_name.size = 0;
+        parsing_value = false;
+      } else {
+        ++current_value.size;
+      }
+    }
+  }
+
+  // It should never end while parsing a property name
+  assert(parsing_value);
+
+  if (poly_strcmp(current_name, name) == 0) {
+    return poly_strcmp(current_value, value) == 0;
+  }
+
+  return false;
+}
+
+static inline bool HasProperties(BlockRegistry* registry, size_t bid, json_array_s* arr, bool require_all) {
+  json_array_element_s* arr_ele = arr->start;
+
+  while (arr_ele) {
+    json_object_s* obj = json_value_as_object(arr_ele->value);
+
+    arr_ele = arr_ele->next;
+
+    json_object_element_s* ele = obj->start;
+
+    while (ele) {
+      assert(ele->value->type == json_type_string);
+
+      String property_name(ele->name->string, ele->name->string_size);
+
+      json_string_s* property_value_str = json_value_as_string(ele->value);
+      String property_value(property_value_str->string, property_value_str->string_size);
+
+      if (HasPropertyValue(registry, bid, property_name, property_value)) {
+        if (!require_all) {
+          return true;
+        }
+      } else {
+        if (require_all) {
+          return false;
+        }
+      }
+
+      ele = ele->next;
+    }
+  }
+
+  return require_all;
+}
+
+inline void ApplyMultipartModel(BlockModel& target_model, BlockModel& model) {
+  if (target_model.element_count == 0) {
+    memcpy(&target_model, &model, sizeof(BlockModel));
+    return;
+  }
+
+  for (size_t i = 0; i < model.element_count; ++i) {
+    BlockElement* element = target_model.elements + target_model.element_count++;
+
+    memcpy(element, model.elements + i, sizeof(BlockElement));
+  }
+}
+
+bool AssetParser::ResolveMultiparts(BitSet& element_set, ParsedBlockState* parsed_state,
+                                    const String& blockstate_name) {
+  json_object_element_s* multipart_obj = GetJsonObjectElement(parsed_state->root, POLY_STR("multipart"));
+  if (!multipart_obj) {
+    return false;
+  }
+
+  json_array_s* multipart_array = json_value_as_array(multipart_obj->value);
+
+  // Go through each blockstate to perform resolution of the parsed state.
+  for (size_t bid = 0; bid < registry->state_count; ++bid) {
+    // If this block is in the element_set then it was already assigned and must not be this one.
+    if (element_set.IsSet(bid)) continue;
+
+    String state_name(registry->states[bid].info->name + kNamespaceSize,
+                      registry->states[bid].info->name_length - kNamespaceSize);
+
+    if (poly_strcmp(state_name, blockstate_name) != 0) {
+      continue;
+    }
+
+    String* properties = registry->properties + bid;
+    bool model_applied = false;
+
+    json_array_element_s* multipart_element = multipart_array->start;
+    while (multipart_element) {
+      json_object_s* definition_obj = json_value_as_object(multipart_element->value);
+      multipart_element = multipart_element->next;
+
+      json_object_element_s* apply_element = GetJsonObjectElement(definition_obj, POLY_STR("apply"));
+      json_object_element_s* when_element = GetJsonObjectElement(definition_obj, POLY_STR("when"));
+
+      if (!apply_element) {
+        fprintf(stderr, "Invalid multipart. Did not contain apply element.\n");
+        continue;
+      }
+
+      // TODO: apply can be an array, so it needs to be handled
+      if (apply_element->value->type != json_type_object) continue;
+
+      json_object_s* apply_obj = json_value_as_object(apply_element->value);
+      json_object_element_s* model_element = GetJsonObjectElement(apply_obj, POLY_STR("model"));
+
+      if (!model_element) {
+        fprintf(stderr, "Invalid multipart. Apply element did not have a model to apply.\n");
+        continue;
+      }
+
+      json_string_s* model_str = json_value_as_string(model_element->value);
+      String model_name(model_str->string, model_str->string_size);
+
+      size_t prefix_size = poly_contains(model_name, ':') ? 10 : 0;
+      model_name.data += prefix_size;
+      model_name.size -= prefix_size;
+
+      if (!when_element) {
+        // Apply any unconditional multi-part models
+        ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
+
+        if (parsed_model && (*parsed_model)->parsed) {
+          ApplyMultipartModel(registry->states[bid].model, (*parsed_model)->model);
+          element_set.Set(bid, 1);
+        } else {
+          printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
+        }
+      } else {
+        json_object_s* when_obj = json_value_as_object(when_element->value);
+        json_object_element_s* when_obj_element = when_obj->start;
+
+        bool matches = true;
+
+        // All of the when element names must be in the property string with the correct values
+        while (when_obj_element) {
+          if (when_obj_element->value->type == json_type_array) {
+            String when_type(when_obj_element->name->string, when_obj_element->name->string_size);
+
+            json_array_s* property_array = json_value_as_array(when_obj_element->value);
+
+            if (poly_strcmp(when_type, POLY_STR("AND")) == 0) {
+              matches = HasProperties(registry, bid, property_array, true);
+            } else if (poly_strcmp(when_type, POLY_STR("OR")) == 0) {
+              matches = HasProperties(registry, bid, property_array, false);
+            } else {
+              assert(!"When combine type not handled");
+            }
+          } else if (when_obj_element->value->type == json_type_string) {
+            String when_property_name(when_obj_element->name->string, when_obj_element->name->string_size);
+            json_string_s* when_property_value_str = json_value_as_string(when_obj_element->value);
+            String when_property_value(when_property_value_str->string, when_property_value_str->string_size);
+
+            if (!HasPropertyValue(registry, bid, when_property_name, when_property_value)) {
+              matches = false;
+              break;
+            }
+          }
+
+          when_obj_element = when_obj_element->next;
+        }
+
+        if (matches) {
+          ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
+
+          if (parsed_model && (*parsed_model)->parsed) {
+            ApplyMultipartModel(registry->states[bid].model, (*parsed_model)->model);
+            element_set.Set(bid, 1);
+          } else {
+            printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
+          }
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+bool AssetParser::ResolveVariants(BitSet& element_set, ParsedBlockState* parsed_state, const String& blockstate_name) {
+  json_object_element_s* root_element = parsed_state->root->start;
+
+  json_object_s* variant_obj = nullptr;
+
+  // Find the variant object that must be an element of the root blockstate json.
+  while (root_element) {
+    String element_name(root_element->name->string, root_element->name->string_size);
+
+    if (poly_strcmp(element_name, POLY_STR("variants")) == 0) {
+      variant_obj = json_value_as_object(root_element->value);
+    }
+
+    root_element = root_element->next;
+  }
+
+  if (!variant_obj) return false;
+
+  // Go through each blockstate to perform resolution of the parsed state.
+  for (size_t bid = 0; bid < registry->state_count; ++bid) {
+    // If this block is in the element_set then it was already assigned and must not be this one.
+    if (element_set.IsSet(bid)) continue;
+
+    String state_name(registry->states[bid].info->name + kNamespaceSize,
+                      registry->states[bid].info->name_length - kNamespaceSize);
+
+    if (poly_strcmp(state_name, blockstate_name) != 0) {
+      continue;
+    }
+
+    json_object_element_s* variant_element = variant_obj->start;
+
+    while (variant_element) {
+      String variant_string(variant_element->name->string, variant_element->name->string_size);
+
+      String* properties = &registry->properties[bid];
+
+      if ((variant_element->name->string_size == 0 && properties->size == 0) ||
+          (properties->size > 0 && poly_strcmp(variant_string, *properties) == 0) || variant_element->next == nullptr) {
+        json_object_s* state_details = nullptr;
+
+        if (variant_element->value->type == json_type_array) {
+          // TODO: Find out why multiple models are listed under one variant type. Just default to first for now.
+          state_details = json_value_as_object(json_value_as_array(variant_element->value)->start->value);
+        } else {
+          state_details = json_value_as_object(variant_element->value);
+        }
+
+        json_object_element_s* state_element = state_details->start;
+
+        while (state_element) {
+          if (strcmp(state_element->name->string, "model") == 0) {
+            ArenaSnapshot snapshot = arena->GetSnapshot();
+
+            json_string_s* model_name_json = json_value_as_string(state_element->value);
+            String model_name(model_name_json->string, model_name_json->string_size);
+
+            size_t prefix_size = poly_contains(model_name, ':') ? 10 : 0;
+            model_name.data += prefix_size;
+            model_name.size -= prefix_size;
+
+            ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
+            // registry->states[bid].model = LoadModel(model_name, &texture_face_map, &texture_id_map);
+
+            if (parsed_model && (*parsed_model)->parsed) {
+              registry->states[bid].model = (*parsed_model)->model;
+            } else {
+              printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
+            }
+
+            element_set.Set(bid, 1);
+
+            if (properties->size > 0) {
+              String level_str = poly_strstr(*properties, "level=");
+
+              if (level_str.data != nullptr) {
+                char convert[16];
+
+                memcpy(convert, level_str.data + 6, level_str.size - 6);
+                convert[level_str.size - 6] = 0;
+
+                int level = atoi(convert);
+
+                assert(level >= 0 && level <= 15);
+
+                registry->states[bid].leveled = true;
+                registry->states[bid].level = level;
+              }
+            }
+
+            arena->Revert(snapshot);
+            variant_element = nullptr;
+            break;
+          }
+          state_element = state_element->next;
+        }
+      }
+
+      if (variant_element) {
+        variant_element = variant_element->next;
+      }
+    }
+  }
+
+  return true;
+}
+
 void AssetParser::ResolveModels() {
   BitSet element_set(*this->arena, registry->state_count);
 
@@ -672,98 +1046,12 @@ void AssetParser::ResolveModels() {
     String blockstate_name = states[i].filename;
     blockstate_name.size -= 5;
 
-    while (root_element) {
-      if (strncmp("variants", root_element->name->string, root_element->name->string_size) == 0) {
-        json_object_s* variant_obj = json_value_as_object(root_element->value);
+    if (ResolveMultiparts(element_set, states + i, blockstate_name)) {
+      // Resolved multiparts
+    }
 
-        for (size_t bid = 0; bid < registry->state_count; ++bid) {
-          if (element_set.IsSet(bid)) continue;
-
-          String state_name(registry->states[bid].info->name + kNamespaceSize,
-                            registry->states[bid].info->name_length - kNamespaceSize);
-
-          if (poly_strcmp(state_name, blockstate_name) != 0) {
-            continue;
-          }
-
-          json_object_element_s* variant_element = variant_obj->start;
-
-          while (variant_element) {
-            String variant_string(variant_element->name->string, variant_element->name->string_size);
-
-            String* properties = &registry->properties[bid];
-
-            if ((variant_element->name->string_size == 0 && properties->size == 0) ||
-                (properties->size > 0 && poly_strcmp(variant_string, *properties) == 0) ||
-                variant_element->next == nullptr) {
-              json_object_s* state_details = nullptr;
-
-              if (variant_element->value->type == json_type_array) {
-                // TODO: Find out why multiple models are listed under one variant type. Just default to first for now.
-                state_details = json_value_as_object(json_value_as_array(variant_element->value)->start->value);
-              } else {
-                state_details = json_value_as_object(variant_element->value);
-              }
-
-              json_object_element_s* state_element = state_details->start;
-
-              while (state_element) {
-                if (strcmp(state_element->name->string, "model") == 0) {
-                  ArenaSnapshot snapshot = arena->GetSnapshot();
-
-                  json_string_s* model_name_json = json_value_as_string(state_element->value);
-                  String model_name(model_name_json->string, model_name_json->string_size);
-
-                  size_t prefix_size = poly_contains(model_name, ':') ? 10 : 0;
-                  model_name.data += prefix_size;
-                  model_name.size -= prefix_size;
-
-                  ParsedBlockModel** parsed_model =
-                      parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
-                  // registry->states[bid].model = LoadModel(model_name, &texture_face_map, &texture_id_map);
-
-                  if (parsed_model && (*parsed_model)->parsed) {
-                    registry->states[bid].model = (*parsed_model)->model;
-                  } else {
-                    printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
-                  }
-
-                  element_set.Set(bid, 1);
-
-                  if (properties->size > 0) {
-                    String level_str = poly_strstr(*properties, "level=");
-
-                    if (level_str.data != nullptr) {
-                      char convert[16];
-
-                      memcpy(convert, level_str.data + 6, level_str.size - 6);
-                      convert[level_str.size - 6] = 0;
-
-                      int level = atoi(convert);
-
-                      assert(level >= 0 && level <= 15);
-
-                      registry->states[bid].leveled = true;
-                      registry->states[bid].level = level;
-                    }
-                  }
-
-                  arena->Revert(snapshot);
-                  variant_element = nullptr;
-                  break;
-                }
-                state_element = state_element->next;
-              }
-            }
-
-            if (variant_element) {
-              variant_element = variant_element->next;
-            }
-          }
-        }
-      }
-
-      root_element = root_element->next;
+    if (ResolveVariants(element_set, states + i, blockstate_name)) {
+      // Resolved variants
     }
 
     free(states[i].root_value);
