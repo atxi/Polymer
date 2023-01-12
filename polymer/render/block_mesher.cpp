@@ -473,7 +473,8 @@ struct FaceMesh {
     }
   }
 
-  inline void SetUVs(const Vector2f& uv_from, const Vector2f& uv_to, BlockFace direction) {
+  inline static void SetUVs(const Vector2f& uv_from, const Vector2f& uv_to, BlockFace direction, Vector2f& bl_uv,
+                            Vector2f& br_uv, Vector2f& tl_uv, Vector2f& tr_uv) {
     switch (direction) {
     case BlockFace::Down: {
       bl_uv = Vector2f(uv_to.x, uv_to.y);
@@ -514,25 +515,52 @@ struct FaceMesh {
     }
   }
 
-  inline static void Rotate0(Vector2f& from, Vector2f& to) {
-    // Do nothing, already correct.
+  inline static void Rotate0(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
+                             Vector2f& tl, Vector2f& tr) {
+    SetUVs(from, to, direction, bl, br, tl, tr);
   }
 
-  inline static void Rotate90(Vector2f& from, Vector2f& to) {
-    from.x = 1.0f - from.x;
-    to.x = 1.0f - to.x;
+  inline static void Rotate90(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
+                              Vector2f& tl, Vector2f& tr) {
+    float temp = from.x;
+
+    from.x = 1.0f - from.y;
+    from.y = to.x;
+    to.x = 1.0f - to.y;
+    to.y = temp;
+
+    Vector2f t = to;
+    to = from;
+    from = t;
+
+    SetUVs(from, to, direction, bl, br, tl, tr);
+
+    Vector2f obl = bl;
+
+    bl = tl;
+    tl = tr;
+    tr = br;
+    br = obl;
   }
 
-  inline static void Rotate180(Vector2f& from, Vector2f& to) {
+  inline static void Rotate180(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
+                               Vector2f& tl, Vector2f& tr) {
     from.x = 1.0f - from.x;
     from.y = 1.0f - from.y;
     to.x = 1.0f - to.x;
     to.y = 1.0f - to.y;
+
+    SetUVs(from, to, direction, bl, br, tl, tr);
   }
 
-  inline static void Rotate270(Vector2f& from, Vector2f& to) {
+  inline static void Rotate270(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
+                               Vector2f& tl, Vector2f& tr) {
+    from.x = 1.0f - from.x;
     from.y = 1.0f - from.y;
+    to.x = 1.0f - to.x;
     to.y = 1.0f - to.y;
+
+    Rotate90(direction, from, to, bl, br, tl, tr);
   }
 
   void CalculateLockedUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
@@ -544,7 +572,7 @@ struct FaceMesh {
 
     size_t index = x_index * 6 * 4 + y_index * 6 + (size_t)direction;
 
-    typedef void (*RotateFunc)(Vector2f&, Vector2f&);
+    typedef void (*RotateFunc)(BlockFace, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&);
     // Lookup table sorted by x, y, face for calculating locked uvs.
     static const RotateFunc kRotators[] = {
         Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate270, Rotate90,
@@ -567,9 +595,7 @@ struct FaceMesh {
     Vector2f uv_from = face.uv_from;
     Vector2f uv_to = face.uv_to;
 
-    kRotators[index](uv_from, uv_to);
-
-    SetUVs(uv_from, uv_to, direction);
+    kRotators[index](direction, uv_from, uv_to, bl_uv, br_uv, tl_uv, tr_uv);
   }
 
   void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
@@ -622,7 +648,7 @@ struct FaceMesh {
     if (uvlock) {
       CalculateLockedUVs(*element, *face, direction);
     } else {
-      SetUVs(face->uv_from, face->uv_to, direction);
+      SetUVs(face->uv_from, face->uv_to, direction, bl_uv, br_uv, tl_uv, tr_uv);
     }
 
     if (face->random_flip) {
