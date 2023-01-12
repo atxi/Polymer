@@ -561,6 +561,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
     model.elements[i].shade = parsed_model.elements[i].shade;
     model.elements[i].rescale = parsed_model.elements[i].rotation.rescale;
     model.elements[i].occluding = 1;
+    model.elements[i].rotation = parsed_model.elements[i].rotation;
 
     for (size_t j = 0; j < 6; ++j) {
       ParsedRenderableFace* parsed_face = parsed_model.elements[i].faces + j;
@@ -972,53 +973,84 @@ bool AssetParser::ResolveVariants(BitSet& element_set, ParsedBlockState* parsed_
           state_details = json_value_as_object(variant_element->value);
         }
 
-        json_object_element_s* state_element = state_details->start;
+        json_object_element_s* model_element = GetJsonObjectElement(state_details, POLY_STR("model"));
+        if (model_element) {
+          ArenaSnapshot snapshot = arena->GetSnapshot();
 
-        while (state_element) {
-          if (strcmp(state_element->name->string, "model") == 0) {
-            ArenaSnapshot snapshot = arena->GetSnapshot();
+          json_string_s* model_name_json = json_value_as_string(model_element->value);
+          String model_name(model_name_json->string, model_name_json->string_size);
 
-            json_string_s* model_name_json = json_value_as_string(state_element->value);
-            String model_name(model_name_json->string, model_name_json->string_size);
+          size_t prefix_size = poly_contains(model_name, ':') ? 10 : 0;
+          model_name.data += prefix_size;
+          model_name.size -= prefix_size;
 
-            size_t prefix_size = poly_contains(model_name, ':') ? 10 : 0;
-            model_name.data += prefix_size;
-            model_name.size -= prefix_size;
+          ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
 
-            ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
-            // registry->states[bid].model = LoadModel(model_name, &texture_face_map, &texture_id_map);
-
-            if (parsed_model && (*parsed_model)->parsed) {
-              registry->states[bid].model = (*parsed_model)->model;
-            } else {
-              printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
-            }
-
-            element_set.Set(bid, 1);
-
-            if (properties->size > 0) {
-              String level_str = poly_strstr(*properties, "level=");
-
-              if (level_str.data != nullptr) {
-                char convert[16];
-
-                memcpy(convert, level_str.data + 6, level_str.size - 6);
-                convert[level_str.size - 6] = 0;
-
-                int level = atoi(convert);
-
-                assert(level >= 0 && level <= 15);
-
-                registry->states[bid].leveled = true;
-                registry->states[bid].level = level;
-              }
-            }
-
-            arena->Revert(snapshot);
-            variant_element = nullptr;
-            break;
+          if (parsed_model && (*parsed_model)->parsed) {
+            registry->states[bid].model = (*parsed_model)->model;
+          } else {
+            printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
           }
-          state_element = state_element->next;
+
+          element_set.Set(bid, 1);
+
+          if (properties->size > 0) {
+            String level_str = poly_strstr(*properties, "level=");
+
+            if (level_str.data != nullptr) {
+              char convert[16];
+
+              memcpy(convert, level_str.data + 6, level_str.size - 6);
+              convert[level_str.size - 6] = 0;
+
+              int level = atoi(convert);
+
+              assert(level >= 0 && level <= 15);
+
+              registry->states[bid].leveled = true;
+              registry->states[bid].level = level;
+            }
+          }
+
+          arena->Revert(snapshot);
+          variant_element = nullptr;
+
+          json_object_element_s* state_element = state_details->start;
+
+          // Loop through the other elements to see if there's any rotation in the variant
+          while (state_element) {
+            String element_name(state_element->name->string, state_element->name->string_size);
+
+            if (poly_strcmp(element_name, POLY_STR("x")) == 0) {
+              assert(state_element->value->type == json_type_number);
+              float angle = (float)atof(json_value_as_number(state_element->value)->number);
+
+              angle = Radians(angle);
+
+              registry->states[bid].model.has_variant_rotation = 1;
+              registry->states[bid].model.variant_rotation.x = angle;
+            } else if (poly_strcmp(element_name, POLY_STR("y")) == 0) {
+              assert(state_element->value->type == json_type_number);
+              float angle = (float)atof(json_value_as_number(state_element->value)->number);
+
+              angle = -Radians(angle);
+
+              registry->states[bid].model.has_variant_rotation = 1;
+              registry->states[bid].model.variant_rotation.y = angle;
+            } else if (poly_strcmp(element_name, POLY_STR("z")) == 0) {
+              assert(state_element->value->type == json_type_number);
+              float angle = (float)atof(json_value_as_number(state_element->value)->number);
+
+              angle = Radians(angle);
+
+              registry->states[bid].model.has_variant_rotation = 1;
+              registry->states[bid].model.variant_rotation.z = angle;
+            } else if (poly_strcmp(element_name, POLY_STR("uvlock")) == 0) {
+              // TODO: impl
+            }
+
+            state_element = state_element->next;
+          }
         }
       }
 

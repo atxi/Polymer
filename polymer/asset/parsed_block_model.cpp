@@ -26,7 +26,7 @@ struct JsonVectorParser {
     T result;
 
     for (size_t i = 0; i < size; ++i) {
-      result[i] = strtol(json_value_as_number(array_element->value)->number, nullptr, 10) / 16.0f;
+      result[i] = (float)atof(json_value_as_number(array_element->value)->number) / 16.0f;
       array_element = array_element->next;
     }
 
@@ -207,6 +207,20 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
             }
 
             element->rotation.origin = origin;
+          } else if (poly_strcmp(rotation_element_name, POLY_STR("angle")) == 0) {
+            element->rotation.angle = Radians((float)atof(json_value_as_number(rotation_obj_element->value)->number));
+          } else if (poly_strcmp(rotation_element_name, POLY_STR("axis")) == 0) {
+            assert(rotation_obj_element->value->type == json_type_string);
+            json_string_s* axis_str = json_value_as_string(rotation_obj_element->value);
+            String axis(axis_str->string, axis_str->string_size);
+
+            if (poly_strcmp(axis, POLY_STR("x")) == 0) {
+              element->rotation.axis = Vector3f(1, 0, 0);
+            } else if (poly_strcmp(axis, POLY_STR("y")) == 0) {
+              element->rotation.axis = Vector3f(0, 1, 0);
+            } else if (poly_strcmp(axis, POLY_STR("z")) == 0) {
+              element->rotation.axis = Vector3f(0, 0, 1);
+            }
           }
 
           rotation_obj_element = rotation_obj_element->next;

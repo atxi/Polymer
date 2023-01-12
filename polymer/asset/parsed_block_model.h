@@ -42,19 +42,12 @@ struct ParsedRenderableFace {
   };
 };
 
-struct ParsedRotation {
-  Vector3f origin;
-  Vector3f axis;
-  float angle;
-  bool rescale;
-};
-
 struct ParsedBlockElement {
   ParsedRenderableFace faces[6];
   Vector3f from;
   Vector3f to;
 
-  ParsedRotation rotation;
+  world::ElementRotation rotation;
 
   struct {
     u32 occluding : 1;

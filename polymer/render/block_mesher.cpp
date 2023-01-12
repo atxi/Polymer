@@ -108,7 +108,8 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
   bool from_is_transparent = !HasOccludableFace(*from, face);
   bool to_is_transparent = !HasOccludableFace(*to, opposite_face);
 
-  if (to->element_count == 0) return false;
+  // TODO: Clean this up once rotation is settled.
+  if (to->element_count == 0 || to->has_variant_rotation || from->has_variant_rotation) return false;
   if (to->has_leaves) return false;
 
   for (size_t i = 0; i < from->element_count; ++i) {
@@ -142,18 +143,6 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
   }
 
   return false;
-}
-
-inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel* corner) {
-  int value1 = side1->HasOccluding() && !side1->has_glass;
-  int value2 = side2->HasOccluding() && !side2->has_glass;
-  int value_corner = corner->HasOccluding() && !corner->has_glass;
-
-  if (value1 && value2) {
-    return 0;
-  }
-
-  return 3 - (value1 + value2 + value_corner);
 }
 
 struct MaterialDescription {
@@ -246,6 +235,306 @@ inline u32 CalculateVertexLight(BorderedChunk* bordered_chunk, size_t* indices, 
   return (block_sum << 6) | sky_sum;
 }
 
+struct FaceMesh {
+  Vector3f bl_lookups[3];
+  Vector3f br_lookups[3];
+  Vector3f tl_lookups[3];
+  Vector3f tr_lookups[3];
+
+  Vector3f direction;
+
+  Vector3f bl_pos;
+  Vector3f br_pos;
+  Vector3f tl_pos;
+  Vector3f tr_pos;
+
+  Vector2f bl_uv;
+  Vector2f br_uv;
+  Vector2f tl_uv;
+  Vector2f tr_uv;
+
+  inline void PerformRotation(float angle, const Vector3f& axis, const Vector3f& origin) {
+    bl_pos = Rotate(bl_pos - origin, angle, axis) + origin;
+    br_pos = Rotate(br_pos - origin, angle, axis) + origin;
+    tl_pos = Rotate(tl_pos - origin, angle, axis) + origin;
+    tr_pos = Rotate(tr_pos - origin, angle, axis) + origin;
+
+    this->direction = Rotate(this->direction, angle, axis);
+
+    for (size_t i = 0; i < 3; ++i) {
+      bl_lookups[i] = Rotate(bl_lookups[i], angle, axis);
+      br_lookups[i] = Rotate(br_lookups[i], angle, axis);
+      tl_lookups[i] = Rotate(tl_lookups[i], angle, axis);
+      tr_lookups[i] = Rotate(tr_lookups[i], angle, axis);
+    }
+  }
+
+  void RotateFace(const BlockModel& model, const BlockElement& element, const Vector3f& base) {
+    Vector3f ele_axis = element.rotation.axis;
+    Vector3f ele_origin = element.rotation.origin;
+
+    // Rotate the elements by the variant rotation before rotating the actual elements
+    if (model.has_variant_rotation) {
+      Vector3f origin(0.5f, 0.5f, 0.5f);
+
+      if (model.variant_rotation.x) {
+        float angle = model.variant_rotation.x;
+        Vector3f axis(1, 0, 0);
+
+        PerformRotation(angle, axis, origin);
+
+        ele_axis = Rotate(ele_axis, angle, axis);
+        ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
+      }
+
+      if (model.variant_rotation.y) {
+        float angle = model.variant_rotation.y;
+        Vector3f axis(0, 1, 0);
+
+        PerformRotation(angle, axis, origin);
+
+        ele_axis = Rotate(ele_axis, angle, axis);
+        ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
+      }
+
+      if (model.variant_rotation.z) {
+        float angle = model.variant_rotation.z;
+        Vector3f axis(0, 0, 1);
+
+        PerformRotation(angle, axis, origin);
+
+        ele_axis = Rotate(ele_axis, angle, axis);
+        ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
+      }
+    }
+
+    if (element.rotation.angle != 0.0f) {
+      float angle = element.rotation.angle;
+
+      bl_pos = Rotate(bl_pos - ele_origin, angle, ele_axis) + ele_origin;
+      br_pos = Rotate(br_pos - ele_origin, angle, ele_axis) + ele_origin;
+      tl_pos = Rotate(tl_pos - ele_origin, angle, ele_axis) + ele_origin;
+      tr_pos = Rotate(tr_pos - ele_origin, angle, ele_axis) + ele_origin;
+
+      this->direction = Rotate(this->direction, angle, ele_axis);
+
+      for (size_t i = 0; i < 3; ++i) {
+        bl_lookups[i] = Rotate(bl_lookups[i], angle, ele_axis);
+        br_lookups[i] = Rotate(br_lookups[i], angle, ele_axis);
+        tl_lookups[i] = Rotate(tl_lookups[i], angle, ele_axis);
+        tr_lookups[i] = Rotate(tr_lookups[i], angle, ele_axis);
+      }
+    }
+
+    bl_pos += base;
+    br_pos += base;
+    tl_pos += base;
+    tr_pos += base;
+  }
+
+  inline size_t GetIndex(Vector3f lookup) {
+    int x = (int)floorf(lookup.x);
+    int y = (int)floorf(lookup.y);
+    int z = (int)floorf(lookup.z);
+
+    if (x < -1) ++x;
+    if (y < -1) ++y;
+    if (z < -1) ++z;
+
+    if (x > 17) --x;
+    if (y > 17) --y;
+    if (z > 17) --z;
+
+    assert(x >= -1 && x <= 17);
+    assert(y >= -1 && y <= 17);
+    assert(z >= -1 && z <= 17);
+
+    return (y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1);
+  }
+
+  inline u32 CalculateVertexLight(BorderedChunk* bordered_chunk, const Vector3f& relative_pos, Vector3f* lookups) {
+    size_t indices[4];
+
+    indices[0] = GetIndex(relative_pos + this->direction);
+
+    for (size_t i = 0; i < 3; ++i) {
+      size_t index = GetIndex(relative_pos + lookups[i]);
+
+      indices[i + 1] = index;
+    }
+
+    return ::polymer::render::CalculateVertexLight(bordered_chunk, indices, indices[0]);
+  }
+
+  inline u32 CalculateSharedLight(BorderedChunk* bordered_chunk, const Vector3f& relative_pos) {
+    size_t current_index = GetIndex(relative_pos);
+    u32 shared_skylight = bordered_chunk->GetSkyLight(current_index) * 4;
+    u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index) * 4;
+    u32 shared_light = (shared_blocklight << 6) | shared_skylight;
+
+    return shared_light;
+  }
+
+  inline int GetAmbientOcclusion(BlockRegistry& registry, BorderedChunk& bordered_chunk, const Vector3f& relative_pos,
+                                 Vector3f* lookups) {
+    BlockModel* models[3];
+
+    for (size_t i = 0; i < 3; ++i) {
+      size_t index = GetIndex(relative_pos + lookups[i]);
+      u32 bid = bordered_chunk.blocks[index];
+      models[i] = &registry.states[bid].model;
+    }
+
+    return GetAmbientOcclusion(models[0], models[1], models[2]);
+  }
+
+  inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel* corner) {
+    int value1 = side1->HasOccluding() && !side1->has_glass && !side1->has_variant_rotation;
+    int value2 = side2->HasOccluding() && !side2->has_glass && !side2->has_variant_rotation;
+    int value_corner = corner->HasOccluding() && !corner->has_glass && !corner->has_variant_rotation;
+
+    if (value1 && value2) {
+      return 0;
+    }
+
+    return 3 - (value1 + value2 + value_corner);
+  }
+
+  void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
+            BlockElement* element, const Vector3f& chunk_base, const Vector3f& relative_base, BlockFace direction) {
+    RenderableFace* face = element->faces + (size_t)direction;
+
+    if (!face->render) return;
+
+    const Vector3f& from = element->from;
+    const Vector3f& to = element->to;
+
+    switch (direction) {
+    case BlockFace::Down: {
+      bl_pos = Vector3f(to.x, from.y, from.z);
+      br_pos = Vector3f(to.x, from.y, to.z);
+      tl_pos = Vector3f(from.x, from.y, from.z);
+      tr_pos = Vector3f(from.x, from.y, to.z);
+
+      bl_uv = Vector2f(face->uv_to.x, face->uv_to.y);
+      br_uv = Vector2f(face->uv_to.x, face->uv_from.y);
+      tr_uv = Vector2f(face->uv_from.x, face->uv_from.y);
+      tl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
+    } break;
+    case BlockFace::Up: {
+      bl_pos = Vector3f(from.x, to.y, from.z);
+      br_pos = Vector3f(from.x, to.y, to.z);
+      tl_pos = Vector3f(to.x, to.y, from.z);
+      tr_pos = Vector3f(to.x, to.y, to.z);
+
+      bl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
+      br_uv = Vector2f(face->uv_from.x, face->uv_to.y);
+      tr_uv = Vector2f(face->uv_to.x, face->uv_to.y);
+      tl_uv = Vector2f(face->uv_to.x, face->uv_from.y);
+    } break;
+    case BlockFace::North: {
+      bl_pos = Vector3f(to.x, from.y, from.z);
+      br_pos = Vector3f(from.x, from.y, from.z);
+      tl_pos = Vector3f(to.x, to.y, from.z);
+      tr_pos = Vector3f(from.x, to.y, from.z);
+
+      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
+      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
+      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
+      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
+    } break;
+    case BlockFace::South: {
+      bl_pos = Vector3f(from.x, from.y, to.z);
+      br_pos = Vector3f(to.x, from.y, to.z);
+      tl_pos = Vector3f(from.x, to.y, to.z);
+      tr_pos = Vector3f(to.x, to.y, to.z);
+
+      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
+      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
+      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
+      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
+    } break;
+    case BlockFace::West: {
+      bl_pos = Vector3f(from.x, from.y, from.z);
+      br_pos = Vector3f(from.x, from.y, to.z);
+      tl_pos = Vector3f(from.x, to.y, from.z);
+      tr_pos = Vector3f(from.x, to.y, to.z);
+
+      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
+      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
+      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
+      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
+    } break;
+    case BlockFace::East: {
+      bl_pos = Vector3f(to.x, from.y, to.z);
+      br_pos = Vector3f(to.x, from.y, from.z);
+      tl_pos = Vector3f(to.x, to.y, to.z);
+      tr_pos = Vector3f(to.x, to.y, from.z);
+
+      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
+      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
+      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
+      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
+    } break;
+    }
+
+    RotateFace(*model, *element, chunk_base + relative_base);
+
+    bool shaded_axis = this->direction.y < -0.5f || (fabsf(this->direction.x) > 0.5f && fabsf(this->direction.z) < 0.5f);
+
+    if (face->random_flip) {
+      u32 world_x = (u32)(chunk_base.x + relative_base.x);
+      u32 world_y = (u32)(chunk_base.y + relative_base.y);
+      u32 world_z = (u32)(chunk_base.z + relative_base.z);
+
+      RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
+    }
+
+    int ele_ao_bl = 3;
+    int ele_ao_br = 3;
+    int ele_ao_tl = 3;
+    int ele_ao_tr = 3;
+
+    if (element->shade) {
+      ele_ao_bl = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, bl_lookups);
+      ele_ao_br = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, br_lookups);
+      ele_ao_tl = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, tl_lookups);
+      ele_ao_tr = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, tr_lookups);
+
+      u32 l_bl = CalculateVertexLight(bordered_chunk, relative_base, bl_lookups);
+      u32 l_br = CalculateVertexLight(bordered_chunk, relative_base, br_lookups);
+      u32 l_tl = CalculateVertexLight(bordered_chunk, relative_base, tl_lookups);
+      u32 l_tr = CalculateVertexLight(bordered_chunk, relative_base, tr_lookups);
+
+      ele_ao_bl |= (l_bl << 2);
+      ele_ao_br |= (l_br << 2);
+      ele_ao_tl |= (l_tl << 2);
+      ele_ao_tr |= (l_tr << 2);
+    } else {
+      u32 shared_light = CalculateSharedLight(bordered_chunk, relative_base);
+
+      ele_ao_bl |= (shared_light << 2);
+      ele_ao_br |= (shared_light << 2);
+      ele_ao_tl |= (shared_light << 2);
+      ele_ao_tr |= (shared_light << 2);
+      shaded_axis = false;
+    }
+
+    u16 bli = PushVertex(context, bl_pos, bl_uv, face, ele_ao_bl, shaded_axis);
+    u16 bri = PushVertex(context, br_pos, br_uv, face, ele_ao_br, shaded_axis);
+    u16 tri = PushVertex(context, tr_pos, tr_uv, face, ele_ao_tr, shaded_axis);
+    u16 tli = PushVertex(context, tl_pos, tl_uv, face, ele_ao_tl, shaded_axis);
+
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, bri);
+    PushIndex(context, face->render_layer, tri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, tli);
+    PushIndex(context, face->render_layer, bli);
+  }
+};
+
 static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& block_registry,
                       BorderedChunk* bordered_chunk, u32 bid, size_t relative_x, size_t relative_y, size_t relative_z,
                       const Vector3f& chunk_base) {
@@ -257,36 +546,10 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
 
   size_t above_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
   size_t below_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
-
   size_t north_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
   size_t south_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
   size_t east_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
   size_t west_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
-
-  size_t north_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
-  size_t north_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
-  size_t south_west_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
-  size_t south_east_index = (relative_y + 1) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
-
-  size_t above_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
-  size_t above_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
-  size_t above_north_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
-  size_t above_south_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
-
-  size_t above_north_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
-  size_t above_north_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
-  size_t above_south_west_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
-  size_t above_south_east_index = (relative_y + 2) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
-
-  size_t below_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 0);
-  size_t below_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 2);
-  size_t below_north_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 1);
-  size_t below_south_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 1);
-
-  size_t below_north_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 0);
-  size_t below_north_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 0) * 18 + (relative_x + 2);
-  size_t below_south_west_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 0);
-  size_t below_south_east_index = (relative_y + 0) * 18 * 18 + (relative_z + 2) * 18 + (relative_x + 2);
 
   u32 above_id = bordered_chunk->blocks[above_index];
   u32 below_id = bordered_chunk->blocks[below_index];
@@ -294,10 +557,6 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
   u32 south_id = bordered_chunk->blocks[south_index];
   u32 east_id = bordered_chunk->blocks[east_index];
   u32 west_id = bordered_chunk->blocks[west_index];
-
-  float x = (float)relative_x;
-  float y = (float)relative_y;
-  float z = (float)relative_z;
 
   BlockModel* above_model = &block_registry.states[above_id].model;
   BlockModel* below_model = &block_registry.states[below_id].model;
@@ -307,631 +566,108 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
   BlockModel* east_model = &block_registry.states[east_id].model;
   BlockModel* west_model = &block_registry.states[west_id].model;
 
-  size_t current_index = (relative_y + 1) * 18 * 18 + (relative_z + 1) * 18 + (relative_x + 1);
+  Vector3f relative_pos((float)relative_x, (float)relative_y, (float)relative_z);
+  Vector3f world_pos = chunk_base + relative_pos;
 
   if (!IsOccluding(model, above_model, BlockFace::Up)) {
-    int ao_bl = 3;
-    int ao_br = 3;
-    int ao_tl = 3;
-    int ao_tr = 3;
-
-    if (model->HasShadedElement()) {
-      BlockModel* above_west_model = &block_registry.states[bordered_chunk->blocks[above_west_index]].model;
-      BlockModel* above_east_model = &block_registry.states[bordered_chunk->blocks[above_east_index]].model;
-      BlockModel* above_north_model = &block_registry.states[bordered_chunk->blocks[above_north_index]].model;
-      BlockModel* above_south_model = &block_registry.states[bordered_chunk->blocks[above_south_index]].model;
-      BlockModel* above_north_west_model = &block_registry.states[bordered_chunk->blocks[above_north_west_index]].model;
-      BlockModel* above_south_west_model = &block_registry.states[bordered_chunk->blocks[above_south_west_index]].model;
-      BlockModel* above_north_east_model = &block_registry.states[bordered_chunk->blocks[above_north_east_index]].model;
-      BlockModel* above_south_east_model = &block_registry.states[bordered_chunk->blocks[above_south_east_index]].model;
-
-      ao_bl = GetAmbientOcclusion(above_west_model, above_north_model, above_north_west_model);
-      ao_br = GetAmbientOcclusion(above_west_model, above_south_model, above_south_west_model);
-
-      ao_tl = GetAmbientOcclusion(above_east_model, above_north_model, above_north_east_model);
-      ao_tr = GetAmbientOcclusion(above_east_model, above_south_model, above_south_east_model);
-    }
-
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
-      RenderableFace* face = element->faces + 1;
 
-      if (!face->render) continue;
+      FaceMesh face_mesh = {
+          {Vector3f(-1, 1, 0), Vector3f(0, 1, -1), Vector3f(-1, 1, -1)},
+          {Vector3f(-1, 1, 0), Vector3f(0, 1, 1), Vector3f(-1, 1, 1)},
+          {Vector3f(1, 1, 0), Vector3f(0, 1, -1), Vector3f(1, 1, -1)},
+          {Vector3f(1, 1, 0), Vector3f(0, 1, 1), Vector3f(1, 1, 1)},
+          Vector3f(0, 1, 0),
+      };
 
-      u32 texture_id = face->texture_id;
-      u32 tintindex = face->tintindex;
-
-      Vector3f& from = element->from;
-      Vector3f& to = element->to;
-
-      Vector3f bottom_left(x + from.x, y + to.y, z + from.z);
-      Vector3f bottom_right(x + from.x, y + to.y, z + to.z);
-      Vector3f top_left(x + to.x, y + to.y, z + from.z);
-      Vector3f top_right(x + to.x, y + to.y, z + to.z);
-
-      Vector2f bl_uv(face->uv_from.x, face->uv_from.y);
-      Vector2f br_uv(face->uv_from.x, face->uv_to.y);
-      Vector2f tr_uv(face->uv_to.x, face->uv_to.y);
-      Vector2f tl_uv(face->uv_to.x, face->uv_from.y);
-
-      if (face->random_flip) {
-        u32 world_x = (u32)(chunk_base.x + x);
-        u32 world_y = (u32)(chunk_base.y + y);
-        u32 world_z = (u32)(chunk_base.z + z);
-
-        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
-      }
-
-      int ele_ao_bl = 3;
-      int ele_ao_br = 3;
-      int ele_ao_tl = 3;
-      int ele_ao_tr = 3;
-
-      if (element->shade) {
-        ele_ao_bl = ao_bl;
-        ele_ao_br = ao_br;
-        ele_ao_tl = ao_tl;
-        ele_ao_tr = ao_tr;
-
-        size_t bl_indices[] = {above_index, above_north_index, above_west_index, above_north_west_index};
-        size_t br_indices[] = {above_index, above_south_index, above_west_index, above_south_west_index};
-        size_t tl_indices[] = {above_index, above_north_index, above_east_index, above_north_east_index};
-        size_t tr_indices[] = {above_index, above_south_index, above_east_index, above_south_east_index};
-
-        u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, above_index);
-        u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, above_index);
-        u32 l_tl = CalculateVertexLight(bordered_chunk, tl_indices, above_index);
-        u32 l_tr = CalculateVertexLight(bordered_chunk, tr_indices, above_index);
-
-        ele_ao_bl |= (l_bl << 2);
-        ele_ao_br |= (l_br << 2);
-        ele_ao_tl |= (l_tl << 2);
-        ele_ao_tr |= (l_tr << 2);
-      } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index) * 4;
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index) * 4;
-        u32 shared_light = (shared_blocklight << 6) | shared_skylight;
-
-        ele_ao_bl |= (shared_light << 2);
-        ele_ao_br |= (shared_light << 2);
-        ele_ao_tl |= (shared_light << 2);
-        ele_ao_tr |= (shared_light << 2);
-      }
-
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-
-      PushIndex(context, face->render_layer, bli);
-      PushIndex(context, face->render_layer, bri);
-      PushIndex(context, face->render_layer, tri);
-
-      PushIndex(context, face->render_layer, tri);
-      PushIndex(context, face->render_layer, tli);
-      PushIndex(context, face->render_layer, bli);
+      face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos, BlockFace::Up);
     }
   }
 
   if (!IsOccluding(model, below_model, BlockFace::Down)) {
-    int ao_bl = 3;
-    int ao_br = 3;
-    int ao_tl = 3;
-    int ao_tr = 3;
-
-    if (model->HasShadedElement()) {
-      BlockModel* below_west_model = &block_registry.states[bordered_chunk->blocks[below_west_index]].model;
-      BlockModel* below_east_model = &block_registry.states[bordered_chunk->blocks[below_east_index]].model;
-      BlockModel* below_north_model = &block_registry.states[bordered_chunk->blocks[below_north_index]].model;
-      BlockModel* below_south_model = &block_registry.states[bordered_chunk->blocks[below_south_index]].model;
-      BlockModel* below_north_west_model = &block_registry.states[bordered_chunk->blocks[below_north_west_index]].model;
-      BlockModel* below_south_west_model = &block_registry.states[bordered_chunk->blocks[below_south_west_index]].model;
-      BlockModel* below_north_east_model = &block_registry.states[bordered_chunk->blocks[below_north_east_index]].model;
-      BlockModel* below_south_east_model = &block_registry.states[bordered_chunk->blocks[below_south_east_index]].model;
-
-      ao_bl = GetAmbientOcclusion(below_east_model, below_north_model, below_north_east_model);
-      ao_br = GetAmbientOcclusion(below_east_model, below_south_model, below_south_east_model);
-
-      ao_tl = GetAmbientOcclusion(below_west_model, below_north_model, below_north_west_model);
-      ao_tr = GetAmbientOcclusion(below_west_model, below_south_model, below_south_west_model);
-    }
-
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
-      RenderableFace* face = element->faces + 0;
+      FaceMesh face_mesh = {
+          {Vector3f(0, -1, -1), Vector3f(1, -1, 0), Vector3f(1, -1, -1)},
+          {Vector3f(0, -1, 1), Vector3f(1, -1, 0), Vector3f(1, -1, 1)},
+          {Vector3f(0, -1, -1), Vector3f(-1, -1, 0), Vector3f(-1, -1, -1)},
+          {Vector3f(0, -1, 1), Vector3f(-1, -1, 0), Vector3f(-1, -1, 1)},
+          Vector3f(0, -1, 0),
+      };
 
-      if (!face->render) continue;
-
-      u32 texture_id = face->texture_id;
-      u32 tintindex = face->tintindex;
-
-      Vector3f& from = element->from;
-      Vector3f& to = element->to;
-
-      Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
-      Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
-      Vector3f top_left(x + from.x, y + from.y, z + from.z);
-      Vector3f top_right(x + from.x, y + from.y, z + to.z);
-
-      Vector2f bl_uv(face->uv_to.x, face->uv_to.y);
-      Vector2f br_uv(face->uv_to.x, face->uv_from.y);
-      Vector2f tr_uv(face->uv_from.x, face->uv_from.y);
-      Vector2f tl_uv(face->uv_from.x, face->uv_to.y);
-
-      if (face->random_flip) {
-        u32 world_x = (u32)(chunk_base.x + x);
-        u32 world_y = (u32)(chunk_base.y + y);
-        u32 world_z = (u32)(chunk_base.z + z);
-
-        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
-      }
-
-      int ele_ao_bl = 3;
-      int ele_ao_br = 3;
-      int ele_ao_tl = 3;
-      int ele_ao_tr = 3;
-
-      if (element->shade) {
-        ele_ao_bl = ao_bl;
-        ele_ao_br = ao_br;
-        ele_ao_tl = ao_tl;
-        ele_ao_tr = ao_tr;
-
-        size_t bl_indices[] = {below_index, below_north_index, below_east_index, below_north_east_index};
-        size_t br_indices[] = {below_index, below_south_index, below_east_index, below_south_east_index};
-        size_t tl_indices[] = {below_index, below_north_index, below_west_index, below_north_west_index};
-        size_t tr_indices[] = {below_index, below_south_index, below_west_index, below_south_west_index};
-
-        u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, below_index);
-        u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, below_index);
-        u32 l_tl = CalculateVertexLight(bordered_chunk, tl_indices, below_index);
-        u32 l_tr = CalculateVertexLight(bordered_chunk, tr_indices, below_index);
-
-        ele_ao_bl |= (l_bl << 2);
-        ele_ao_br |= (l_br << 2);
-        ele_ao_tl |= (l_tl << 2);
-        ele_ao_tr |= (l_tr << 2);
-      } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index) * 4;
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index) * 4;
-        u32 shared_light = (shared_blocklight << 6) | shared_skylight;
-
-        ele_ao_bl |= (shared_light << 2);
-        ele_ao_br |= (shared_light << 2);
-        ele_ao_tl |= (shared_light << 2);
-        ele_ao_tr |= (shared_light << 2);
-      }
-
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl, element->shade);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br, element->shade);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr, element->shade);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl, element->shade);
-
-      PushIndex(context, face->render_layer, bli);
-      PushIndex(context, face->render_layer, bri);
-      PushIndex(context, face->render_layer, tri);
-
-      PushIndex(context, face->render_layer, tri);
-      PushIndex(context, face->render_layer, tli);
-      PushIndex(context, face->render_layer, bli);
+      face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos,
+                     BlockFace::Down);
     }
   }
 
   if (!IsOccluding(model, north_model, BlockFace::North)) {
-    int ao_bl = 3;
-    int ao_br = 3;
-    int ao_tl = 3;
-    int ao_tr = 3;
-
-    if (model->HasShadedElement()) {
-      BlockModel* north_east_model = &block_registry.states[bordered_chunk->blocks[north_east_index]].model;
-      BlockModel* north_west_model = &block_registry.states[bordered_chunk->blocks[north_west_index]].model;
-      BlockModel* above_north_model = &block_registry.states[bordered_chunk->blocks[above_north_index]].model;
-      BlockModel* above_north_east_model = &block_registry.states[bordered_chunk->blocks[above_north_east_index]].model;
-      BlockModel* above_north_west_model = &block_registry.states[bordered_chunk->blocks[above_north_west_index]].model;
-      BlockModel* below_north_model = &block_registry.states[bordered_chunk->blocks[below_north_index]].model;
-      BlockModel* below_north_east_model = &block_registry.states[bordered_chunk->blocks[below_north_east_index]].model;
-      BlockModel* below_north_west_model = &block_registry.states[bordered_chunk->blocks[below_north_west_index]].model;
-
-      ao_bl = GetAmbientOcclusion(north_east_model, below_north_model, below_north_east_model);
-      ao_br = GetAmbientOcclusion(below_north_model, north_west_model, below_north_west_model);
-
-      ao_tl = GetAmbientOcclusion(above_north_model, north_east_model, above_north_east_model);
-      ao_tr = GetAmbientOcclusion(above_north_model, north_west_model, above_north_west_model);
-    }
-
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
-      RenderableFace* face = element->faces + 2;
+      FaceMesh face_mesh = {
+          {Vector3f(1, 0, -1), Vector3f(0, -1, -1), Vector3f(1, -1, -1)},
+          {Vector3f(-1, 0, -1), Vector3f(0, -1, -1), Vector3f(-1, -1, -1)},
+          {Vector3f(1, 0, -1), Vector3f(0, 1, -1), Vector3f(1, 1, -1)},
+          {Vector3f(-1, 0, -1), Vector3f(0, 1, -1), Vector3f(-1, 1, -1)},
+          Vector3f(0, 0, -1),
+      };
 
-      if (!face->render) continue;
-
-      u32 texture_id = face->texture_id;
-      u32 tintindex = face->tintindex;
-
-      Vector3f& from = element->from;
-      Vector3f& to = element->to;
-
-      Vector3f bottom_left(x + to.x, y + from.y, z + from.z);
-      Vector3f bottom_right(x + from.x, y + from.y, z + from.z);
-      Vector3f top_left(x + to.x, y + to.y, z + from.z);
-      Vector3f top_right(x + from.x, y + to.y, z + from.z);
-
-      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
-
-      if (face->random_flip) {
-        u32 world_x = (u32)(chunk_base.x + x);
-        u32 world_y = (u32)(chunk_base.y + y);
-        u32 world_z = (u32)(chunk_base.z + z);
-
-        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
-      }
-
-      int ele_ao_bl = 3;
-      int ele_ao_br = 3;
-      int ele_ao_tl = 3;
-      int ele_ao_tr = 3;
-
-      if (element->shade) {
-        ele_ao_bl = ao_bl;
-        ele_ao_br = ao_br;
-        ele_ao_tl = ao_tl;
-        ele_ao_tr = ao_tr;
-
-        size_t bl_indices[] = {north_index, north_east_index, below_north_east_index, below_north_index};
-        size_t br_indices[] = {north_index, north_west_index, below_north_west_index, below_north_index};
-        size_t tl_indices[] = {north_index, north_east_index, above_north_east_index, above_north_index};
-        size_t tr_indices[] = {north_index, north_west_index, above_north_west_index, above_north_index};
-
-        u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, north_index);
-        u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, north_index);
-        u32 l_tl = CalculateVertexLight(bordered_chunk, tl_indices, north_index);
-        u32 l_tr = CalculateVertexLight(bordered_chunk, tr_indices, north_index);
-
-        ele_ao_bl |= (l_bl << 2);
-        ele_ao_br |= (l_br << 2);
-        ele_ao_tl |= (l_tl << 2);
-        ele_ao_tr |= (l_tr << 2);
-      } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index) * 4;
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index) * 4;
-        u32 shared_light = (shared_blocklight << 6) | shared_skylight;
-
-        ele_ao_bl |= (shared_light << 2);
-        ele_ao_br |= (shared_light << 2);
-        ele_ao_tl |= (shared_light << 2);
-        ele_ao_tr |= (shared_light << 2);
-      }
-
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-
-      PushIndex(context, face->render_layer, bli);
-      PushIndex(context, face->render_layer, bri);
-      PushIndex(context, face->render_layer, tri);
-
-      PushIndex(context, face->render_layer, tri);
-      PushIndex(context, face->render_layer, tli);
-      PushIndex(context, face->render_layer, bli);
+      face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos,
+                     BlockFace::North);
     }
   }
 
   if (!IsOccluding(model, south_model, BlockFace::South)) {
-    int ao_bl = 3;
-    int ao_br = 3;
-    int ao_tl = 3;
-    int ao_tr = 3;
-
-    if (model->HasShadedElement()) {
-      BlockModel* south_east_model = &block_registry.states[bordered_chunk->blocks[south_east_index]].model;
-      BlockModel* south_west_model = &block_registry.states[bordered_chunk->blocks[south_west_index]].model;
-
-      BlockModel* above_south_model = &block_registry.states[bordered_chunk->blocks[above_south_index]].model;
-      BlockModel* above_south_east_model = &block_registry.states[bordered_chunk->blocks[above_south_east_index]].model;
-      BlockModel* above_south_west_model = &block_registry.states[bordered_chunk->blocks[above_south_west_index]].model;
-
-      BlockModel* below_south_model = &block_registry.states[bordered_chunk->blocks[below_south_index]].model;
-      BlockModel* below_south_east_model = &block_registry.states[bordered_chunk->blocks[below_south_east_index]].model;
-      BlockModel* below_south_west_model = &block_registry.states[bordered_chunk->blocks[below_south_west_index]].model;
-
-      ao_bl = GetAmbientOcclusion(south_west_model, below_south_model, below_south_west_model);
-      ao_br = GetAmbientOcclusion(south_east_model, below_south_model, below_south_east_model);
-
-      ao_tl = GetAmbientOcclusion(above_south_model, south_west_model, above_south_west_model);
-      ao_tr = GetAmbientOcclusion(above_south_model, south_east_model, above_south_east_model);
-    }
-
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
-      RenderableFace* face = element->faces + 3;
+      FaceMesh face_mesh = {
+          {Vector3f(-1, 0, 1), Vector3f(0, -1, 1), Vector3f(-1, -1, 1)},
+          {Vector3f(1, 0, 1), Vector3f(0, -1, 1), Vector3f(1, -1, 1)},
 
-      if (!face->render) continue;
+          {Vector3f(-1, 0, 1), Vector3f(0, 1, 1), Vector3f(-1, 1, 1)},
+          {Vector3f(1, 0, 1), Vector3f(0, 1, 1), Vector3f(1, 1, 1)},
 
-      u32 texture_id = face->texture_id;
-      u32 tintindex = face->tintindex;
+          Vector3f(0, 0, 1),
+      };
 
-      Vector3f& from = element->from;
-      Vector3f& to = element->to;
-
-      Vector3f bottom_left(x + from.x, y + from.y, z + to.z);
-      Vector3f bottom_right(x + to.x, y + from.y, z + to.z);
-      Vector3f top_left(x + from.x, y + to.y, z + to.z);
-      Vector3f top_right(x + to.x, y + to.y, z + to.z);
-
-      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
-
-      if (face->random_flip) {
-        u32 world_x = (u32)(chunk_base.x + x);
-        u32 world_y = (u32)(chunk_base.y + y);
-        u32 world_z = (u32)(chunk_base.z + z);
-
-        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
-      }
-
-      int ele_ao_bl = 3;
-      int ele_ao_br = 3;
-      int ele_ao_tl = 3;
-      int ele_ao_tr = 3;
-
-      if (element->shade) {
-        ele_ao_bl = ao_bl;
-        ele_ao_br = ao_br;
-        ele_ao_tl = ao_tl;
-        ele_ao_tr = ao_tr;
-
-        size_t bl_indices[] = {south_index, south_west_index, below_south_west_index, below_south_index};
-        size_t br_indices[] = {south_index, south_east_index, below_south_east_index, below_south_index};
-        size_t tl_indices[] = {south_index, south_west_index, above_south_west_index, above_south_index};
-        size_t tr_indices[] = {south_index, south_east_index, above_south_east_index, above_south_index};
-
-        u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, south_index);
-        u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, south_index);
-        u32 l_tl = CalculateVertexLight(bordered_chunk, tl_indices, south_index);
-        u32 l_tr = CalculateVertexLight(bordered_chunk, tr_indices, south_index);
-
-        ele_ao_bl |= (l_bl << 2);
-        ele_ao_br |= (l_br << 2);
-        ele_ao_tl |= (l_tl << 2);
-        ele_ao_tr |= (l_tr << 2);
-      } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index) * 4;
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index) * 4;
-        u32 shared_light = (shared_blocklight << 6) | shared_skylight;
-
-        ele_ao_bl |= (shared_light << 2);
-        ele_ao_br |= (shared_light << 2);
-        ele_ao_tl |= (shared_light << 2);
-        ele_ao_tr |= (shared_light << 2);
-      }
-
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl);
-
-      PushIndex(context, face->render_layer, bli);
-      PushIndex(context, face->render_layer, bri);
-      PushIndex(context, face->render_layer, tri);
-
-      PushIndex(context, face->render_layer, tri);
-      PushIndex(context, face->render_layer, tli);
-      PushIndex(context, face->render_layer, bli);
-    }
-  }
-
-  if (!IsOccluding(model, east_model, BlockFace::East)) {
-    int ao_bl = 3;
-    int ao_br = 3;
-    int ao_tl = 3;
-    int ao_tr = 3;
-
-    if (model->HasShadedElement()) {
-      BlockModel* north_east_model = &block_registry.states[bordered_chunk->blocks[north_east_index]].model;
-      BlockModel* south_east_model = &block_registry.states[bordered_chunk->blocks[south_east_index]].model;
-      BlockModel* above_east_model = &block_registry.states[bordered_chunk->blocks[above_east_index]].model;
-      BlockModel* above_north_east_model = &block_registry.states[bordered_chunk->blocks[above_north_east_index]].model;
-      BlockModel* above_south_east_model = &block_registry.states[bordered_chunk->blocks[above_south_east_index]].model;
-      BlockModel* below_east_model = &block_registry.states[bordered_chunk->blocks[below_east_index]].model;
-      BlockModel* below_north_east_model = &block_registry.states[bordered_chunk->blocks[below_north_east_index]].model;
-      BlockModel* below_south_east_model = &block_registry.states[bordered_chunk->blocks[below_south_east_index]].model;
-
-      ao_bl = GetAmbientOcclusion(south_east_model, below_east_model, below_south_east_model);
-      ao_br = GetAmbientOcclusion(below_east_model, north_east_model, below_north_east_model);
-
-      ao_tl = GetAmbientOcclusion(above_east_model, south_east_model, above_south_east_model);
-      ao_tr = GetAmbientOcclusion(above_east_model, north_east_model, above_north_east_model);
-    }
-
-    for (size_t i = 0; i < model->element_count; ++i) {
-      BlockElement* element = model->elements + i;
-      RenderableFace* face = element->faces + 5;
-
-      if (!face->render) continue;
-
-      u32 texture_id = face->texture_id;
-      u32 tintindex = face->tintindex;
-
-      Vector3f& from = element->from;
-      Vector3f& to = element->to;
-
-      Vector3f bottom_left(x + to.x, y + from.y, z + to.z);
-      Vector3f bottom_right(x + to.x, y + from.y, z + from.z);
-      Vector3f top_left(x + to.x, y + to.y, z + to.z);
-      Vector3f top_right(x + to.x, y + to.y, z + from.z);
-
-      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
-
-      if (face->random_flip) {
-        u32 world_x = (u32)(chunk_base.x + x);
-        u32 world_y = (u32)(chunk_base.y + y);
-        u32 world_z = (u32)(chunk_base.z + z);
-
-        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
-      }
-
-      int ele_ao_bl = 3;
-      int ele_ao_br = 3;
-      int ele_ao_tl = 3;
-      int ele_ao_tr = 3;
-
-      if (element->shade) {
-        ele_ao_bl = ao_bl;
-        ele_ao_br = ao_br;
-        ele_ao_tl = ao_tl;
-        ele_ao_tr = ao_tr;
-
-        size_t bl_indices[] = {east_index, below_east_index, below_south_east_index, south_east_index};
-        size_t br_indices[] = {east_index, below_east_index, below_north_east_index, north_east_index};
-        size_t tl_indices[] = {east_index, above_east_index, above_south_east_index, south_east_index};
-        size_t tr_indices[] = {east_index, above_east_index, above_north_east_index, north_east_index};
-
-        u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, east_index);
-        u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, east_index);
-        u32 l_tl = CalculateVertexLight(bordered_chunk, tl_indices, east_index);
-        u32 l_tr = CalculateVertexLight(bordered_chunk, tr_indices, east_index);
-
-        ele_ao_bl |= (l_bl << 2);
-        ele_ao_br |= (l_br << 2);
-        ele_ao_tl |= (l_tl << 2);
-        ele_ao_tr |= (l_tr << 2);
-      } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index) * 4;
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index) * 4;
-        u32 shared_light = (shared_blocklight << 6) | shared_skylight;
-
-        ele_ao_bl |= (shared_light << 2);
-        ele_ao_br |= (shared_light << 2);
-        ele_ao_tl |= (shared_light << 2);
-        ele_ao_tr |= (shared_light << 2);
-      }
-
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl, element->shade);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br, element->shade);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr, element->shade);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl, element->shade);
-
-      PushIndex(context, face->render_layer, bli);
-      PushIndex(context, face->render_layer, bri);
-      PushIndex(context, face->render_layer, tri);
-
-      PushIndex(context, face->render_layer, tri);
-      PushIndex(context, face->render_layer, tli);
-      PushIndex(context, face->render_layer, bli);
+      face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos,
+                     BlockFace::South);
     }
   }
 
   if (!IsOccluding(model, west_model, BlockFace::West)) {
-    int ao_bl = 3;
-    int ao_br = 3;
-    int ao_tl = 3;
-    int ao_tr = 3;
-
-    if (model->HasShadedElement()) {
-      BlockModel* north_west_model = &block_registry.states[bordered_chunk->blocks[north_west_index]].model;
-      BlockModel* south_west_model = &block_registry.states[bordered_chunk->blocks[south_west_index]].model;
-      BlockModel* above_west_model = &block_registry.states[bordered_chunk->blocks[above_west_index]].model;
-      BlockModel* above_north_west_model = &block_registry.states[bordered_chunk->blocks[above_north_west_index]].model;
-      BlockModel* above_south_west_model = &block_registry.states[bordered_chunk->blocks[above_south_west_index]].model;
-      BlockModel* below_west_model = &block_registry.states[bordered_chunk->blocks[below_west_index]].model;
-      BlockModel* below_north_west_model = &block_registry.states[bordered_chunk->blocks[below_north_west_index]].model;
-      BlockModel* below_south_west_model = &block_registry.states[bordered_chunk->blocks[below_south_west_index]].model;
-
-      ao_bl = GetAmbientOcclusion(below_west_model, north_west_model, below_north_west_model);
-      ao_br = GetAmbientOcclusion(below_west_model, south_west_model, below_south_west_model);
-
-      ao_tl = GetAmbientOcclusion(above_west_model, north_west_model, above_north_west_model);
-      ao_tr = GetAmbientOcclusion(above_west_model, south_west_model, above_south_west_model);
-    }
-
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
-      RenderableFace* face = element->faces + 4;
+      FaceMesh face_mesh = {
+          {Vector3f(-1, -1, 0), Vector3f(-1, 0, -1), Vector3f(-1, -1, -1)},
+          {Vector3f(-1, -1, 0), Vector3f(-1, 0, 1), Vector3f(-1, -1, 1)},
 
-      if (!face->render) continue;
+          {Vector3f(-1, 1, 0), Vector3f(-1, 0, -1), Vector3f(-1, 1, -1)},
+          {Vector3f(-1, 1, 0), Vector3f(-1, 0, 1), Vector3f(-1, 1, 1)},
 
-      u32 texture_id = face->texture_id;
-      u32 tintindex = face->tintindex;
+          Vector3f(-1, 0, 0),
+      };
 
-      Vector3f& from = element->from;
-      Vector3f& to = element->to;
+      face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos,
+                     BlockFace::West);
+    }
+  }
 
-      Vector3f bottom_left(x + from.x, y + from.y, z + from.z);
-      Vector3f bottom_right(x + from.x, y + from.y, z + to.z);
-      Vector3f top_left(x + from.x, y + to.y, z + from.z);
-      Vector3f top_right(x + from.x, y + to.y, z + to.z);
+  if (!IsOccluding(model, east_model, BlockFace::East)) {
+    for (size_t i = 0; i < model->element_count; ++i) {
+      BlockElement* element = model->elements + i;
+      FaceMesh face_mesh = {
+          {Vector3f(1, -1, 1), Vector3f(1, -1, 0), Vector3f(1, -1, 1)},
+          {Vector3f(1, -1, -1), Vector3f(1, -1, 0), Vector3f(1, -1, -1)},
 
-      Vector2f bl_uv(face->uv_from.x, face->uv_to.y);
-      Vector2f br_uv(face->uv_to.x, face->uv_to.y);
-      Vector2f tr_uv(face->uv_to.x, face->uv_from.y);
-      Vector2f tl_uv(face->uv_from.x, face->uv_from.y);
+          {Vector3f(1, 1, 1), Vector3f(1, 1, 0), Vector3f(1, 1, 1)},
+          {Vector3f(1, 1, -1), Vector3f(1, 1, 0), Vector3f(1, 1, -1)},
 
-      if (face->random_flip) {
-        u32 world_x = (u32)(chunk_base.x + x);
-        u32 world_y = (u32)(chunk_base.y + y);
-        u32 world_z = (u32)(chunk_base.z + z);
+          Vector3f(1, 0, 0),
+      };
 
-        RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
-      }
-
-      int ele_ao_bl = 3;
-      int ele_ao_br = 3;
-      int ele_ao_tl = 3;
-      int ele_ao_tr = 3;
-
-      if (element->shade) {
-        ele_ao_bl = ao_bl;
-        ele_ao_br = ao_br;
-        ele_ao_tl = ao_tl;
-        ele_ao_tr = ao_tr;
-
-        size_t bl_indices[] = {west_index, below_west_index, below_north_west_index, north_west_index};
-        size_t br_indices[] = {west_index, below_west_index, below_south_west_index, south_west_index};
-        size_t tl_indices[] = {west_index, above_west_index, above_north_west_index, north_west_index};
-        size_t tr_indices[] = {west_index, above_west_index, above_south_west_index, south_west_index};
-
-        u32 l_bl = CalculateVertexLight(bordered_chunk, bl_indices, west_index);
-        u32 l_br = CalculateVertexLight(bordered_chunk, br_indices, west_index);
-        u32 l_tl = CalculateVertexLight(bordered_chunk, tl_indices, west_index);
-        u32 l_tr = CalculateVertexLight(bordered_chunk, tr_indices, west_index);
-
-        ele_ao_bl |= (l_bl << 2);
-        ele_ao_br |= (l_br << 2);
-        ele_ao_tl |= (l_tl << 2);
-        ele_ao_tr |= (l_tr << 2);
-      } else {
-        u32 shared_skylight = bordered_chunk->GetSkyLight(current_index) * 4;
-        u32 shared_blocklight = bordered_chunk->GetBlockLight(current_index) * 4;
-        u32 shared_light = (shared_blocklight << 6) | shared_skylight;
-
-        ele_ao_bl |= (shared_light << 2);
-        ele_ao_br |= (shared_light << 2);
-        ele_ao_tl |= (shared_light << 2);
-        ele_ao_tr |= (shared_light << 2);
-      }
-
-      u16 bli = PushVertex(context, bottom_left + chunk_base, bl_uv, face, ele_ao_bl, element->shade);
-      u16 bri = PushVertex(context, bottom_right + chunk_base, br_uv, face, ele_ao_br, element->shade);
-      u16 tri = PushVertex(context, top_right + chunk_base, tr_uv, face, ele_ao_tr, element->shade);
-      u16 tli = PushVertex(context, top_left + chunk_base, tl_uv, face, ele_ao_tl, element->shade);
-
-      PushIndex(context, face->render_layer, bli);
-      PushIndex(context, face->render_layer, bri);
-      PushIndex(context, face->render_layer, tri);
-
-      PushIndex(context, face->render_layer, tri);
-      PushIndex(context, face->render_layer, tli);
-      PushIndex(context, face->render_layer, bli);
+      face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos,
+                     BlockFace::East);
     }
   }
 }
