@@ -551,6 +551,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
   BlockModel& model = parsed_model.model;
 
   model.element_count = parsed_model.element_count;
+  model.ambient_occlusion = parsed_model.ambient_occlusion;
 
   for (size_t i = 0; i < parsed_model.element_count; ++i) {
     BlockElement* element = model.elements + i;
@@ -562,6 +563,10 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
     model.elements[i].rescale = parsed_model.elements[i].rotation.rescale;
     model.elements[i].occluding = 1;
     model.elements[i].rotation = parsed_model.elements[i].rotation;
+
+    if (model.elements[i].rotation.angle != 0.0f) {
+      model.has_rotation = 1;
+    }
 
     for (size_t j = 0; j < 6; ++j) {
       ParsedRenderableFace* parsed_face = parsed_model.elements[i].faces + j;
@@ -716,21 +721,18 @@ inline json_object_element_s* GetJsonObjectElement(json_object_s* obj, const Str
   return nullptr;
 }
 
-static bool HasPropertyValue(BlockRegistry* registry, size_t bid, const String& name, const String& value) {
-  String* properties = registry->properties + bid;
+static bool HasPropertyValue(const String& properties, const String& name, const String& value) {
+  if (name.size == 0 || properties.size == 0) return true;
 
-  if (name.size == 0 && properties == nullptr || properties->size == 0) return true;
-  if (!properties || properties->size == 0) return false;
-
-  String current_name(properties->data, 0);
-  String current_value(properties->data, 0);
+  String current_name(properties.data, 0);
+  String current_value(properties.data, 0);
   bool parsing_value = false;
-  for (size_t i = 0; i < properties->size; ++i) {
-    char c = properties->data[i];
+  for (size_t i = 0; i < properties.size; ++i) {
+    char c = properties.data[i];
 
     if (!parsing_value) {
       if (c == '=') {
-        current_value.data = properties->data + i + 1;
+        current_value.data = properties.data + i + 1;
         current_value.size = 0;
         parsing_value = true;
       } else {
@@ -742,7 +744,7 @@ static bool HasPropertyValue(BlockRegistry* registry, size_t bid, const String& 
           return poly_strcmp(current_value, value) == 0;
         }
 
-        current_name.data = properties->data + i + 1;
+        current_name.data = properties.data + i + 1;
         current_name.size = 0;
         parsing_value = false;
       } else {
@@ -759,6 +761,15 @@ static bool HasPropertyValue(BlockRegistry* registry, size_t bid, const String& 
   }
 
   return false;
+}
+
+static bool HasPropertyValue(BlockRegistry* registry, size_t bid, const String& name, const String& value) {
+  String* properties = registry->properties + bid;
+
+  if (name.size == 0 && properties == nullptr || properties->size == 0) return true;
+  if (!properties || properties->size == 0) return false;
+
+  return HasPropertyValue(*properties, name, value);
 }
 
 static inline bool HasProperties(BlockRegistry* registry, size_t bid, json_array_s* arr, bool require_all) {
@@ -796,10 +807,55 @@ static inline bool HasProperties(BlockRegistry* registry, size_t bid, json_array
   return require_all;
 }
 
+static bool HasPropertySet(const String& check_set, const String& required_set) {
+  if (required_set.size == 0) return true;
+  if (check_set.size == 0) return false;
+
+  String current_name(required_set.data, 0);
+  String current_value(required_set.data, 0);
+  bool parsing_value = false;
+
+  for (size_t i = 0; i < required_set.size; ++i) {
+    char c = required_set.data[i];
+
+    if (!parsing_value) {
+      if (c == '=') {
+        current_value.data = required_set.data + i + 1;
+        current_value.size = 0;
+        parsing_value = true;
+      } else {
+        ++current_name.size;
+      }
+    } else {
+      if (c == ',') {
+        // The name and value were just parsed, so check the 'check_set' to see if it has it
+        if (!HasPropertyValue(check_set, current_name, current_value)) {
+          return false;
+        }
+
+        current_name.data = required_set.data + i + 1;
+        current_name.size = 0;
+        parsing_value = false;
+      } else {
+        ++current_value.size;
+      }
+    }
+  }
+
+  // It should never end while parsing a property name
+  assert(parsing_value);
+
+  return HasPropertyValue(check_set, current_name, current_value);
+}
+
 inline void ApplyMultipartModel(BlockModel& target_model, BlockModel& model) {
   if (target_model.element_count == 0) {
     memcpy(&target_model, &model, sizeof(BlockModel));
     return;
+  }
+
+  if (!model.ambient_occlusion) {
+    target_model.ambient_occlusion = false;
   }
 
   for (size_t i = 0; i < model.element_count; ++i) {
@@ -864,12 +920,45 @@ bool AssetParser::ResolveMultiparts(BitSet& element_set, ParsedBlockState* parse
       model_name.data += prefix_size;
       model_name.size -= prefix_size;
 
+      json_object_element_s* x_element = GetJsonObjectElement(apply_obj, POLY_STR("x"));
+      json_object_element_s* y_element = GetJsonObjectElement(apply_obj, POLY_STR("y"));
+      json_object_element_s* z_element = GetJsonObjectElement(apply_obj, POLY_STR("z"));
+      json_object_element_s* uvlock_element = GetJsonObjectElement(apply_obj, POLY_STR("uvlock"));
+
+      bool has_variant_rotation = x_element || y_element || z_element;
+      Vector3i rotation;
+
+      if (x_element) {
+        rotation.x = strtol(json_value_as_number(x_element->value)->number, nullptr, 10);
+      }
+
+      if (y_element) {
+        rotation.y = strtol(json_value_as_number(y_element->value)->number, nullptr, 10);
+      }
+
+      if (z_element) {
+        rotation.z = strtol(json_value_as_number(z_element->value)->number, nullptr, 10);
+      }
+
       if (!when_element) {
         // Apply any unconditional multi-part models
         ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
 
         if (parsed_model && (*parsed_model)->parsed) {
+          size_t variant_start = registry->states[bid].model.element_count;
+
           ApplyMultipartModel(registry->states[bid].model, (*parsed_model)->model);
+
+          registry->states[bid].model.has_variant_rotation = 1;
+
+          for (size_t i = variant_start; i < registry->states[bid].model.element_count; ++i) {
+            registry->states[bid].model.elements[i].variant_rotation = rotation;
+
+            if (uvlock_element) {
+              registry->states[bid].model.elements[i].rotation.uvlock = true;
+            }
+          }
+
           element_set.Set(bid, 1);
         } else {
           printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
@@ -912,7 +1001,20 @@ bool AssetParser::ResolveMultiparts(BitSet& element_set, ParsedBlockState* parse
           ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
 
           if (parsed_model && (*parsed_model)->parsed) {
+            size_t variant_start = registry->states[bid].model.element_count;
+
             ApplyMultipartModel(registry->states[bid].model, (*parsed_model)->model);
+
+            registry->states[bid].model.has_variant_rotation = 1;
+
+            for (size_t i = variant_start; i < registry->states[bid].model.element_count; ++i) {
+              registry->states[bid].model.elements[i].variant_rotation = rotation;
+
+              if (uvlock_element) {
+                registry->states[bid].model.elements[i].rotation.uvlock = true;
+              }
+            }
+
             element_set.Set(bid, 1);
           } else {
             printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
@@ -962,8 +1064,7 @@ bool AssetParser::ResolveVariants(BitSet& element_set, ParsedBlockState* parsed_
 
       String* properties = &registry->properties[bid];
 
-      if ((variant_element->name->string_size == 0 && properties->size == 0) ||
-          (properties->size > 0 && poly_strcmp(variant_string, *properties) == 0) || variant_element->next == nullptr) {
+      if ((properties && HasPropertySet(*properties, variant_string)) || (variant_string.size == 0 && !properties)) {
         json_object_s* state_details = nullptr;
 
         if (variant_element->value->type == json_type_array) {
@@ -1023,30 +1124,35 @@ bool AssetParser::ResolveVariants(BitSet& element_set, ParsedBlockState* parsed_
 
             if (poly_strcmp(element_name, POLY_STR("x")) == 0) {
               assert(state_element->value->type == json_type_number);
-              float angle = (float)atof(json_value_as_number(state_element->value)->number);
-
-              angle = Radians(angle);
+              int angle = strtol(json_value_as_number(state_element->value)->number, nullptr, 10);
 
               registry->states[bid].model.has_variant_rotation = 1;
-              registry->states[bid].model.variant_rotation.x = angle;
+
+              for (size_t i = 0; i < registry->states[bid].model.element_count; ++i) {
+                registry->states[bid].model.elements[i].variant_rotation.x = angle;
+              }
             } else if (poly_strcmp(element_name, POLY_STR("y")) == 0) {
               assert(state_element->value->type == json_type_number);
-              float angle = (float)atof(json_value_as_number(state_element->value)->number);
-
-              angle = -Radians(angle);
+              int angle = strtol(json_value_as_number(state_element->value)->number, nullptr, 10);
 
               registry->states[bid].model.has_variant_rotation = 1;
-              registry->states[bid].model.variant_rotation.y = angle;
+
+              for (size_t i = 0; i < registry->states[bid].model.element_count; ++i) {
+                registry->states[bid].model.elements[i].variant_rotation.y = angle;
+              }
             } else if (poly_strcmp(element_name, POLY_STR("z")) == 0) {
               assert(state_element->value->type == json_type_number);
-              float angle = (float)atof(json_value_as_number(state_element->value)->number);
-
-              angle = Radians(angle);
+              int angle = strtol(json_value_as_number(state_element->value)->number, nullptr, 10);
 
               registry->states[bid].model.has_variant_rotation = 1;
-              registry->states[bid].model.variant_rotation.z = angle;
+
+              for (size_t i = 0; i < registry->states[bid].model.element_count; ++i) {
+                registry->states[bid].model.elements[i].variant_rotation.z = angle;
+              }
             } else if (poly_strcmp(element_name, POLY_STR("uvlock")) == 0) {
-              // TODO: impl
+              for (size_t i = 0; i < registry->states[bid].model.element_count; ++i) {
+                registry->states[bid].model.elements[i].rotation.uvlock = json_value_is_true(state_element->value);
+              }
             }
 
             state_element = state_element->next;

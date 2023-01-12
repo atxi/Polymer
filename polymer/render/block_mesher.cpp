@@ -109,8 +109,9 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
   bool to_is_transparent = !HasOccludableFace(*to, opposite_face);
 
   // TODO: Clean this up once rotation is settled.
-  if (to->element_count == 0 || to->has_variant_rotation || from->has_variant_rotation) return false;
-  if (to->has_leaves) return false;
+  if (to->element_count == 0) return false;
+  if (from->has_rotation || to->has_rotation || from->has_variant_rotation || to->has_variant_rotation) return false;
+  if (to->has_leaves || !to->has_shaded) return false;
 
   for (size_t i = 0; i < from->element_count; ++i) {
     RenderableFace& from_face = from->elements[i].GetFace(face);
@@ -132,6 +133,13 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
           to_end.x >= from_end.x && to_end.y >= from_end.y && to_end.z >= from_end.z) {
         if (to_is_transparent) {
           if (from_is_transparent) {
+            return true;
+          }
+          return false;
+        }
+
+        if (from_is_transparent) {
+          if (to_is_transparent) {
             return true;
           }
           return false;
@@ -253,6 +261,30 @@ struct FaceMesh {
   Vector2f tl_uv;
   Vector2f tr_uv;
 
+  bool uvlock;
+
+  inline void RotateUV(const Vector3f& axis, const Vector3f& origin, float angle, Vector2f& uv) {
+    if (axis.x > 0) {
+      Vector3f full_uv(0, uv.x, uv.y);
+
+      full_uv = Rotate(full_uv - origin, angle, axis) + origin;
+
+      uv = Vector2f(full_uv.y, full_uv.z);
+    } else if (axis.y > 0) {
+      Vector3f full_uv(uv.x, 0, uv.y);
+
+      full_uv = Rotate(full_uv - origin, angle, axis) + origin;
+
+      uv = Vector2f(full_uv.x, full_uv.z);
+    } else {
+      Vector3f full_uv(uv.x, uv.y, 0);
+
+      full_uv = Rotate(full_uv - origin, angle, axis) + origin;
+
+      uv = Vector2f(full_uv.x, full_uv.y);
+    }
+  }
+
   inline void PerformRotation(float angle, const Vector3f& axis, const Vector3f& origin) {
     bl_pos = Rotate(bl_pos - origin, angle, axis) + origin;
     br_pos = Rotate(br_pos - origin, angle, axis) + origin;
@@ -277,8 +309,8 @@ struct FaceMesh {
     if (model.has_variant_rotation) {
       Vector3f origin(0.5f, 0.5f, 0.5f);
 
-      if (model.variant_rotation.x) {
-        float angle = model.variant_rotation.x;
+      if (element.variant_rotation.x) {
+        float angle = Radians((float)element.variant_rotation.x);
         Vector3f axis(1, 0, 0);
 
         PerformRotation(angle, axis, origin);
@@ -287,8 +319,8 @@ struct FaceMesh {
         ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
       }
 
-      if (model.variant_rotation.y) {
-        float angle = model.variant_rotation.y;
+      if (element.variant_rotation.y) {
+        float angle = -Radians((float)element.variant_rotation.y);
         Vector3f axis(0, 1, 0);
 
         PerformRotation(angle, axis, origin);
@@ -297,8 +329,8 @@ struct FaceMesh {
         ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
       }
 
-      if (model.variant_rotation.z) {
-        float angle = model.variant_rotation.z;
+      if (element.variant_rotation.z) {
+        float angle = Radians((float)element.variant_rotation.z);
         Vector3f axis(0, 0, 1);
 
         PerformRotation(angle, axis, origin);
@@ -355,7 +387,7 @@ struct FaceMesh {
   inline u32 CalculateVertexLight(BorderedChunk* bordered_chunk, const Vector3f& relative_pos, Vector3f* lookups) {
     size_t indices[4];
 
-    indices[0] = GetIndex(relative_pos + this->direction);
+    indices[0] = GetIndex(relative_pos + Vector3f(0.5f, 0.5f, 0.5f) + this->direction);
 
     for (size_t i = 0; i < 3; ++i) {
       size_t index = GetIndex(relative_pos + lookups[i]);
@@ -380,7 +412,7 @@ struct FaceMesh {
     BlockModel* models[3];
 
     for (size_t i = 0; i < 3; ++i) {
-      size_t index = GetIndex(relative_pos + lookups[i]);
+      size_t index = GetIndex(relative_pos + Vector3f(0.5f, 0.5f, 0.5f) + lookups[i]);
       u32 bid = bordered_chunk.blocks[index];
       models[i] = &registry.states[bid].model;
     }
@@ -400,107 +432,174 @@ struct FaceMesh {
     return 3 - (value1 + value2 + value_corner);
   }
 
-  void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
-            BlockElement* element, const Vector3f& chunk_base, const Vector3f& relative_base, BlockFace direction) {
-    RenderableFace* face = element->faces + (size_t)direction;
-
-    if (!face->render) return;
-
-    const Vector3f& from = element->from;
-    const Vector3f& to = element->to;
-
+  inline void SetPositions(const Vector3f& from, const Vector3f& to, BlockFace direction) {
     switch (direction) {
     case BlockFace::Down: {
       bl_pos = Vector3f(to.x, from.y, from.z);
       br_pos = Vector3f(to.x, from.y, to.z);
       tl_pos = Vector3f(from.x, from.y, from.z);
       tr_pos = Vector3f(from.x, from.y, to.z);
-
-      bl_uv = Vector2f(face->uv_to.x, face->uv_to.y);
-      br_uv = Vector2f(face->uv_to.x, face->uv_from.y);
-      tr_uv = Vector2f(face->uv_from.x, face->uv_from.y);
-      tl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
     } break;
     case BlockFace::Up: {
       bl_pos = Vector3f(from.x, to.y, from.z);
       br_pos = Vector3f(from.x, to.y, to.z);
       tl_pos = Vector3f(to.x, to.y, from.z);
       tr_pos = Vector3f(to.x, to.y, to.z);
-
-      bl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
-      br_uv = Vector2f(face->uv_from.x, face->uv_to.y);
-      tr_uv = Vector2f(face->uv_to.x, face->uv_to.y);
-      tl_uv = Vector2f(face->uv_to.x, face->uv_from.y);
     } break;
     case BlockFace::North: {
       bl_pos = Vector3f(to.x, from.y, from.z);
       br_pos = Vector3f(from.x, from.y, from.z);
       tl_pos = Vector3f(to.x, to.y, from.z);
       tr_pos = Vector3f(from.x, to.y, from.z);
-
-      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
-      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
-      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
-      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
     } break;
     case BlockFace::South: {
       bl_pos = Vector3f(from.x, from.y, to.z);
       br_pos = Vector3f(to.x, from.y, to.z);
       tl_pos = Vector3f(from.x, to.y, to.z);
       tr_pos = Vector3f(to.x, to.y, to.z);
-
-      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
-      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
-      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
-      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
     } break;
     case BlockFace::West: {
       bl_pos = Vector3f(from.x, from.y, from.z);
       br_pos = Vector3f(from.x, from.y, to.z);
       tl_pos = Vector3f(from.x, to.y, from.z);
       tr_pos = Vector3f(from.x, to.y, to.z);
-
-      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
-      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
-      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
-      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
     } break;
     case BlockFace::East: {
       bl_pos = Vector3f(to.x, from.y, to.z);
       br_pos = Vector3f(to.x, from.y, from.z);
       tl_pos = Vector3f(to.x, to.y, to.z);
       tr_pos = Vector3f(to.x, to.y, from.z);
-
-      bl_uv = Vector2f(face->uv_from.x, face->uv_to.y);
-      br_uv = Vector2f(face->uv_to.x, face->uv_to.y);
-      tr_uv = Vector2f(face->uv_to.x, face->uv_from.y);
-      tl_uv = Vector2f(face->uv_from.x, face->uv_from.y);
     } break;
     }
+  }
+
+  inline void SetUVs(const Vector2f& uv_from, const Vector2f& uv_to, BlockFace direction) {
+    switch (direction) {
+    case BlockFace::Down: {
+      bl_uv = Vector2f(uv_to.x, uv_to.y);
+      br_uv = Vector2f(uv_to.x, uv_from.y);
+      tr_uv = Vector2f(uv_from.x, uv_from.y);
+      tl_uv = Vector2f(uv_from.x, uv_to.y);
+    } break;
+    case BlockFace::Up: {
+      bl_uv = Vector2f(uv_from.x, uv_from.y);
+      br_uv = Vector2f(uv_from.x, uv_to.y);
+      tr_uv = Vector2f(uv_to.x, uv_to.y);
+      tl_uv = Vector2f(uv_to.x, uv_from.y);
+    } break;
+    case BlockFace::North: {
+      bl_uv = Vector2f(uv_from.x, uv_to.y);
+      br_uv = Vector2f(uv_to.x, uv_to.y);
+      tr_uv = Vector2f(uv_to.x, uv_from.y);
+      tl_uv = Vector2f(uv_from.x, uv_from.y);
+    } break;
+    case BlockFace::South: {
+      bl_uv = Vector2f(uv_from.x, uv_to.y);
+      br_uv = Vector2f(uv_to.x, uv_to.y);
+      tr_uv = Vector2f(uv_to.x, uv_from.y);
+      tl_uv = Vector2f(uv_from.x, uv_from.y);
+    } break;
+    case BlockFace::West: {
+      bl_uv = Vector2f(uv_from.x, uv_to.y);
+      br_uv = Vector2f(uv_to.x, uv_to.y);
+      tr_uv = Vector2f(uv_to.x, uv_from.y);
+      tl_uv = Vector2f(uv_from.x, uv_from.y);
+    } break;
+    case BlockFace::East: {
+      bl_uv = Vector2f(uv_from.x, uv_to.y);
+      br_uv = Vector2f(uv_to.x, uv_to.y);
+      tr_uv = Vector2f(uv_to.x, uv_from.y);
+      tl_uv = Vector2f(uv_from.x, uv_from.y);
+    } break;
+    }
+  }
+
+  inline static void Rotate0(Vector2f& from, Vector2f& to) {
+    // Do nothing, already correct.
+  }
+
+  inline static void Rotate90(Vector2f& from, Vector2f& to) {
+    from.x = 1.0f - from.x;
+    to.x = 1.0f - to.x;
+  }
+
+  inline static void Rotate180(Vector2f& from, Vector2f& to) {
+    from.x = 1.0f - from.x;
+    from.y = 1.0f - from.y;
+    to.x = 1.0f - to.x;
+    to.y = 1.0f - to.y;
+  }
+
+  inline static void Rotate270(Vector2f& from, Vector2f& to) {
+    from.y = 1.0f - from.y;
+    to.y = 1.0f - to.y;
+  }
+
+  void CalculateLockedUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
+    int angle_x = element.variant_rotation.x;
+    int angle_y = element.variant_rotation.y;
+
+    int x_index = angle_x / 90;
+    int y_index = angle_y / 90;
+
+    size_t index = x_index * 6 * 4 + y_index * 6 + (size_t)direction;
+
+    typedef void (*RotateFunc)(Vector2f&, Vector2f&);
+    // Lookup table sorted by x, y, face for calculating locked uvs.
+    static const RotateFunc kRotators[] = {
+        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate270, Rotate90,
+        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate0,   Rotate0,
+        Rotate0,   Rotate0,   Rotate90,  Rotate270, Rotate0,   Rotate0,   Rotate0,   Rotate0,
+
+        Rotate0,   Rotate180, Rotate180, Rotate0,   Rotate270, Rotate90,  Rotate0,   Rotate180,
+        Rotate90,  Rotate90,  Rotate270, Rotate90,  Rotate0,   Rotate180, Rotate0,   Rotate180,
+        Rotate270, Rotate90,  Rotate0,   Rotate180, Rotate270, Rotate270, Rotate270, Rotate90,
+
+        Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate180, Rotate180, Rotate90,  Rotate270,
+        Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180,
+        Rotate180, Rotate180, Rotate270, Rotate90,  Rotate180, Rotate180, Rotate180, Rotate180,
+
+        Rotate180, Rotate0,   Rotate180, Rotate0,   Rotate90,  Rotate270, Rotate180, Rotate0,
+        Rotate270, Rotate270, Rotate90,  Rotate270, Rotate180, Rotate0,   Rotate0,   Rotate180,
+        Rotate90,  Rotate270, Rotate180, Rotate0,   Rotate90,  Rotate90,  Rotate90,  Rotate270,
+    };
+
+    Vector2f uv_from = face.uv_from;
+    Vector2f uv_to = face.uv_to;
+
+    kRotators[index](uv_from, uv_to);
+
+    SetUVs(uv_from, uv_to, direction);
+  }
+
+  void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
+            BlockElement* element, const Vector3f& chunk_base, const Vector3f& relative_base, BlockFace direction) {
+    RenderableFace* face = element->faces + (size_t)direction;
+
+    if (!face->render) return;
+
+    this->uvlock = element->rotation.uvlock;
+
+    SetPositions(element->from, element->to, direction);
 
     RotateFace(*model, *element, chunk_base + relative_base);
-
-    bool shaded_axis = this->direction.y < -0.5f || (fabsf(this->direction.x) > 0.5f && fabsf(this->direction.z) < 0.5f);
-
-    if (face->random_flip) {
-      u32 world_x = (u32)(chunk_base.x + relative_base.x);
-      u32 world_y = (u32)(chunk_base.y + relative_base.y);
-      u32 world_z = (u32)(chunk_base.z + relative_base.z);
-
-      RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
-    }
 
     int ele_ao_bl = 3;
     int ele_ao_br = 3;
     int ele_ao_tl = 3;
     int ele_ao_tr = 3;
 
-    if (element->shade) {
+    bool shaded_axis =
+        this->direction.y < -0.5f || (fabsf(this->direction.x) > 0.5f && fabsf(this->direction.z) < 0.5f);
+
+    if (model->ambient_occlusion) {
       ele_ao_bl = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, bl_lookups);
       ele_ao_br = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, br_lookups);
       ele_ao_tl = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, tl_lookups);
       ele_ao_tr = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, tr_lookups);
+    }
 
+    if (element->shade) {
       u32 l_bl = CalculateVertexLight(bordered_chunk, relative_base, bl_lookups);
       u32 l_br = CalculateVertexLight(bordered_chunk, relative_base, br_lookups);
       u32 l_tl = CalculateVertexLight(bordered_chunk, relative_base, tl_lookups);
@@ -518,6 +617,20 @@ struct FaceMesh {
       ele_ao_tl |= (shared_light << 2);
       ele_ao_tr |= (shared_light << 2);
       shaded_axis = false;
+    }
+
+    if (uvlock) {
+      CalculateLockedUVs(*element, *face, direction);
+    } else {
+      SetUVs(face->uv_from, face->uv_to, direction);
+    }
+
+    if (face->random_flip) {
+      u32 world_x = (u32)(chunk_base.x + relative_base.x);
+      u32 world_y = (u32)(chunk_base.y + relative_base.y);
+      u32 world_z = (u32)(chunk_base.z + relative_base.z);
+
+      RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
     }
 
     u16 bli = PushVertex(context, bl_pos, bl_uv, face, ele_ao_bl, shaded_axis);
@@ -657,11 +770,11 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
       FaceMesh face_mesh = {
-          {Vector3f(1, -1, 1), Vector3f(1, -1, 0), Vector3f(1, -1, 1)},
-          {Vector3f(1, -1, -1), Vector3f(1, -1, 0), Vector3f(1, -1, -1)},
+          {Vector3f(1, 0, 1), Vector3f(1, -1, 0), Vector3f(1, -1, 1)},
+          {Vector3f(1, -1, 0), Vector3f(1, 0, -1), Vector3f(1, -1, -1)},
 
-          {Vector3f(1, 1, 1), Vector3f(1, 1, 0), Vector3f(1, 1, 1)},
-          {Vector3f(1, 1, -1), Vector3f(1, 1, 0), Vector3f(1, 1, -1)},
+          {Vector3f(1, 1, 0), Vector3f(1, 0, 1), Vector3f(1, 1, 1)},
+          {Vector3f(1, 1, 0), Vector3f(1, 0, -1), Vector3f(1, 1, -1)},
 
           Vector3f(1, 0, 0),
       };

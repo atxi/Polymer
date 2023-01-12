@@ -51,7 +51,10 @@ struct ElementRotation {
   Vector3f origin;
   Vector3f axis;
   float angle;
-  bool rescale;
+
+  u8 rescale : 1;
+  u8 uvlock : 1;
+  u8 padding : 6;
 };
 
 struct BlockElement {
@@ -59,6 +62,7 @@ struct BlockElement {
   Vector3f from;
   Vector3f to;
 
+  Vector3i variant_rotation;
   ElementRotation rotation;
 
   struct {
@@ -77,15 +81,15 @@ struct BlockModel {
   size_t element_count;
   BlockElement elements[20];
 
-  Vector3f variant_rotation;
-
   u32 has_occluding : 1;
   u32 has_transparency : 1;
   u32 has_shaded : 1;
   u32 has_leaves : 1;
   u32 has_glass : 1;
+  u32 has_rotation : 1;
   u32 has_variant_rotation : 1;
-  u32 padding : 26;
+  u32 ambient_occlusion : 1;
+  u32 padding : 24;
 
   inline bool HasOccluding() const {
     return has_occluding;

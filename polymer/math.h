@@ -370,6 +370,107 @@ inline Vector3f Normalize(const Vector3f& v) {
   return v;
 }
 
+struct Vector3i {
+  union {
+    struct {
+      int x;
+      int y;
+      int z;
+    };
+    int values[3];
+  };
+
+  Vector3i() : x(0), y(0), z(0) {}
+  Vector3i(int x, int y, int z) : x(x), y(y), z(z) {}
+  Vector3i(const Vector3i& other) : x(other.x), y(other.y), z(other.z) {}
+
+  Vector3i& operator=(const Vector3i& other) {
+    x = other.x;
+    y = other.y;
+    z = other.z;
+
+    return *this;
+  }
+
+  inline bool operator==(const Vector3i& other) {
+    return x == other.x && y == other.y && z == other.z;
+  }
+
+  inline bool operator!=(const Vector3i& other) {
+    return !(x == other.x && y == other.y && z == other.z);
+  }
+
+  inline int& operator[](size_t index) {
+    return values[index];
+  }
+
+  inline int operator[](size_t index) const {
+    return values[index];
+  }
+
+  inline Vector3i& operator+=(int value) {
+    x += value;
+    y += value;
+    z += value;
+    return *this;
+  }
+
+  inline Vector3i& operator-=(int value) {
+    x -= value;
+    y -= value;
+    z -= value;
+    return *this;
+  }
+
+  inline Vector3i& operator+=(const Vector3i& other) {
+    x += other.x;
+    y += other.y;
+    z += other.z;
+    return *this;
+  }
+
+  inline Vector3i& operator-=(const Vector3i& other) {
+    x -= other.x;
+    y -= other.y;
+    z -= other.z;
+    return *this;
+  }
+
+  inline Vector3i& operator*=(int value) {
+    x *= value;
+    y *= value;
+    z *= value;
+    return *this;
+  }
+
+  inline Vector3i& operator/=(int value) {
+    x /= value;
+    y /= value;
+    z /= value;
+    return *this;
+  }
+
+  inline Vector3i operator+(const Vector3i& other) const {
+    return Vector3i(x + other.x, y + other.y, z + other.z);
+  }
+
+  inline Vector3i operator-(const Vector3i& other) const {
+    return Vector3i(x - other.x, y - other.y, z - other.z);
+  }
+
+  inline Vector3i operator-() const {
+    return Vector3i(-x, -y, -z);
+  }
+
+  inline Vector3i operator*(int value) const {
+    return Vector3i(x * value, y * value, z * value);
+  }
+
+  inline Vector3i operator/(int value) const {
+    return Vector3i(x / value, y / value, z / value);
+  }
+};
+
 struct Vector4f {
   union {
     struct {
