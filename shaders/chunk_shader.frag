@@ -34,7 +34,7 @@ vec3 hsv2rgb(vec3 c) {
 
 // TODO: Move to post-processing and figure out the actual post effects used.
 const float saturation = 1.1;
-const float brightness = 0.8;
+const float brightness = 0.9;
 
 void main() {
   vec4 diffuse = texture(texSampler, vec3(fragTexCoord, fragTexId));

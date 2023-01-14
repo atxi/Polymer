@@ -96,7 +96,11 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
 
   camera.near = 0.1f;
   camera.far = 1024.0f;
-  camera.fov = Radians(80.0f);
+
+  // Fov seems to be off by 10%, maybe due to some post effects
+  constexpr const float kFovMultiplier = 1.1f;
+
+  camera.fov = Radians(80.0f) * kFovMultiplier;
 
   position_sync_timer = 0.0f;
   animation_accumulator = 0.0f;

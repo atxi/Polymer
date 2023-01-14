@@ -33,6 +33,8 @@ struct RenderableFace {
   Vector2f uv_from;
   Vector2f uv_to;
 
+  int rotation;
+
   u32 texture_id;
   u32 frame_count;
 
@@ -50,7 +52,7 @@ struct RenderableFace {
 struct ElementRotation {
   Vector3f origin;
   Vector3f axis;
-  float angle;
+  int angle;
 
   u8 rescale : 1;
   u8 uvlock : 1;

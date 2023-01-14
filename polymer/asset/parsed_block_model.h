@@ -25,7 +25,7 @@ struct ParsedRenderableFace {
   Vector2f uv_from;
   Vector2f uv_to;
 
-  float rotation;
+  int rotation;
 
   char texture_name[64];
   size_t texture_name_size;

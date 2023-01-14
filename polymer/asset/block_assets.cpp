@@ -581,6 +581,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
       model_face->render_layer = parsed_face->render_layer;
       model_face->random_flip = parsed_face->random_flip;
       model_face->tintindex = parsed_face->tintindex;
+      model_face->rotation = parsed_face->rotation;
       model_face->texture_id = 0;
       model_face->frame_count = 0;
 
@@ -590,16 +591,16 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
 
         switch (side) {
         case BlockFace::Down: {
-          model_face->uv_from = Vector2f(element->to.x, element->from.z);
-          model_face->uv_to = Vector2f(element->from.x, element->to.z);
+          model_face->uv_from = Vector2f(element->from.x, element->from.z);
+          model_face->uv_to = Vector2f(element->to.x, element->to.z);
         } break;
         case BlockFace::Up: {
           model_face->uv_from = Vector2f(element->from.x, element->from.z);
           model_face->uv_to = Vector2f(element->to.x, element->to.z);
         } break;
         case BlockFace::North: {
-          model_face->uv_from = Vector2f(element->to.x, element->from.y);
-          model_face->uv_to = Vector2f(element->from.x, element->to.y);
+          model_face->uv_to = Vector2f(element->to.x, element->to.y);
+          model_face->uv_from = Vector2f(element->from.x, element->from.y);
         } break;
         case BlockFace::South: {
           model_face->uv_from = Vector2f(element->from.x, element->from.y);
@@ -610,8 +611,8 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
           model_face->uv_to = Vector2f(element->to.z, element->to.y);
         } break;
         case BlockFace::East: {
-          model_face->uv_from = Vector2f(element->to.z, element->from.y);
-          model_face->uv_to = Vector2f(element->from.z, element->to.y);
+          model_face->uv_from = Vector2f(element->from.z, element->from.y);
+          model_face->uv_to = Vector2f(element->to.z, element->to.y);
         } break;
         }
       }

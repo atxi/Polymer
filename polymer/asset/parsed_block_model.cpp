@@ -169,7 +169,7 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
     ParsedBlockElement* element = elements + element_count;
 
     element->shade = true;
-    element->rotation.angle = 0.0f;
+    element->rotation.angle = 0;
     element->rotation.rescale = false;
 
     json_object_element_s* element_property = element_obj->start;
@@ -208,7 +208,7 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
 
             element->rotation.origin = origin;
           } else if (poly_strcmp(rotation_element_name, POLY_STR("angle")) == 0) {
-            element->rotation.angle = Radians((float)atof(json_value_as_number(rotation_obj_element->value)->number));
+            element->rotation.angle = strtol(json_value_as_number(rotation_obj_element->value)->number, nullptr, 10);
           } else if (poly_strcmp(rotation_element_name, POLY_STR("axis")) == 0) {
             assert(rotation_obj_element->value->type == json_type_string);
             json_string_s* axis_str = json_value_as_string(rotation_obj_element->value);
@@ -243,7 +243,7 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
           face->tintindex = 0xFFFF;
           face->cullface = 6;
           face->render_layer = 0;
-          face->rotation = 0.0f;
+          face->rotation = 0;
 
           while (face_element) {
             String face_property(face_element->name->string, face_element->name->string_size);
@@ -281,7 +281,7 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
 
               face->cullface = face_index;
             } else if (poly_strcmp(face_property, POLY_STR("rotation")) == 0) {
-              face->rotation = (float)atof(json_value_as_number(face_element->value)->number);
+              face->rotation = strtol(json_value_as_number(face_element->value)->number, nullptr, 10);
             }
 
             face_element = face_element->next;

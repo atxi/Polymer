@@ -83,7 +83,7 @@ void main() {
 
   // Convert back down into correct brightness
   if (tintindex <= WATER_TINTINDEX) {
-    fragColorMod.rgb *= (1.0 / 0.8);
+    fragColorMod.rgb *= (1.0 / 0.9);
   }
 
   float skylight_percent = (float(skylight_value) / 60.0) * ubo.sunlight * 0.85;

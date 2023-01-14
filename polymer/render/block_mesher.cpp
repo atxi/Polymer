@@ -263,28 +263,6 @@ struct FaceMesh {
 
   bool uvlock;
 
-  inline void RotateUV(const Vector3f& axis, const Vector3f& origin, float angle, Vector2f& uv) {
-    if (axis.x > 0) {
-      Vector3f full_uv(0, uv.x, uv.y);
-
-      full_uv = Rotate(full_uv - origin, angle, axis) + origin;
-
-      uv = Vector2f(full_uv.y, full_uv.z);
-    } else if (axis.y > 0) {
-      Vector3f full_uv(uv.x, 0, uv.y);
-
-      full_uv = Rotate(full_uv - origin, angle, axis) + origin;
-
-      uv = Vector2f(full_uv.x, full_uv.z);
-    } else {
-      Vector3f full_uv(uv.x, uv.y, 0);
-
-      full_uv = Rotate(full_uv - origin, angle, axis) + origin;
-
-      uv = Vector2f(full_uv.x, full_uv.y);
-    }
-  }
-
   inline void PerformRotation(float angle, const Vector3f& axis, const Vector3f& origin) {
     bl_pos = Rotate(bl_pos - origin, angle, axis) + origin;
     br_pos = Rotate(br_pos - origin, angle, axis) + origin;
@@ -341,7 +319,7 @@ struct FaceMesh {
     }
 
     if (element.rotation.angle != 0.0f) {
-      float angle = element.rotation.angle;
+      float angle = Radians((float)element.rotation.angle);
 
       bl_pos = Rotate(bl_pos - ele_origin, angle, ele_axis) + ele_origin;
       br_pos = Rotate(br_pos - ele_origin, angle, ele_axis) + ele_origin;
@@ -563,9 +541,32 @@ struct FaceMesh {
     Rotate90(direction, from, to, bl, br, tl, tr);
   }
 
-  void CalculateLockedUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
+  void CalculateUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
     int angle_x = element.variant_rotation.x;
     int angle_y = element.variant_rotation.y;
+
+    if (element.rotation.axis.x > 0) {
+      angle_x += element.rotation.angle;
+    } else if (element.rotation.axis.y > 0) {
+      angle_y += element.rotation.angle;
+    }
+
+    if (face.rotation > 0) {
+      switch (direction) {
+      case BlockFace::Down: {
+        angle_y -= face.rotation;
+      } break;
+      case BlockFace::Up: {
+        angle_y += face.rotation;
+      } break;
+      case BlockFace::North: {
+        angle_x -= face.rotation;
+      } break;
+      case BlockFace::South: {
+        angle_x += face.rotation;
+      } break;
+      }
+    }
 
     int x_index = angle_x / 90;
     int y_index = angle_y / 90;
@@ -573,29 +574,40 @@ struct FaceMesh {
     size_t index = x_index * 6 * 4 + y_index * 6 + (size_t)direction;
 
     typedef void (*RotateFunc)(BlockFace, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&);
+
     // Lookup table sorted by x, y, face for calculating locked uvs.
+    // TODO: Most of these need to be verified
     static const RotateFunc kRotators[] = {
-        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate270, Rotate90,
-        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate0,   Rotate0,
-        Rotate0,   Rotate0,   Rotate90,  Rotate270, Rotate0,   Rotate0,   Rotate0,   Rotate0,
+        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y0
+        Rotate270, Rotate90,  Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y90
+        Rotate180, Rotate180, Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y180
+        Rotate90,  Rotate270, Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y270
 
-        Rotate0,   Rotate180, Rotate180, Rotate0,   Rotate270, Rotate90,  Rotate0,   Rotate180,
-        Rotate90,  Rotate90,  Rotate270, Rotate90,  Rotate0,   Rotate180, Rotate0,   Rotate180,
-        Rotate270, Rotate90,  Rotate0,   Rotate180, Rotate270, Rotate270, Rotate270, Rotate90,
+        Rotate90,  Rotate180, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y0
+        Rotate90,  Rotate180, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y90
+        Rotate0,   Rotate90,  Rotate0,   Rotate180, Rotate270, Rotate90,  // X90   Y180
+        Rotate0,   Rotate90,  Rotate270, Rotate270, Rotate270, Rotate90,  // X90   Y270
 
-        Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate180, Rotate180, Rotate90,  Rotate270,
-        Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180,
-        Rotate180, Rotate180, Rotate270, Rotate90,  Rotate180, Rotate180, Rotate180, Rotate180,
+        Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y0
+        Rotate90,  Rotate270, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y90
+        Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y180
+        Rotate270, Rotate90,  Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y270
 
-        Rotate180, Rotate0,   Rotate180, Rotate0,   Rotate90,  Rotate270, Rotate180, Rotate0,
-        Rotate270, Rotate270, Rotate90,  Rotate270, Rotate180, Rotate0,   Rotate0,   Rotate180,
-        Rotate90,  Rotate270, Rotate180, Rotate0,   Rotate90,  Rotate90,  Rotate90,  Rotate270,
+        Rotate180, Rotate0,   Rotate180, Rotate0,   Rotate90,  Rotate270, // X270 Y0
+        Rotate180, Rotate0,   Rotate270, Rotate270, Rotate90,  Rotate270, // X270 Y90
+        Rotate180, Rotate0,   Rotate0,   Rotate180, Rotate90,  Rotate270, // X270 Y180
+        Rotate180, Rotate0,   Rotate90,  Rotate90,  Rotate90,  Rotate270, // X270 Y270
     };
 
-    Vector2f uv_from = face.uv_from;
-    Vector2f uv_to = face.uv_to;
+    Vector2f from = face.uv_from;
+    Vector2f to = face.uv_to;
 
-    kRotators[index](direction, uv_from, uv_to, bl_uv, br_uv, tl_uv, tr_uv);
+    if (!uvlock) {
+      BlockFace rotated = GetDirectionFace(this->direction);
+      kRotators[index](rotated, from, to, bl_uv, br_uv, tl_uv, tr_uv);
+    } else {
+      kRotators[index](direction, from, to, bl_uv, br_uv, tl_uv, tr_uv);
+    }
   }
 
   void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
@@ -645,11 +657,7 @@ struct FaceMesh {
       shaded_axis = false;
     }
 
-    if (uvlock) {
-      CalculateLockedUVs(*element, *face, direction);
-    } else {
-      SetUVs(face->uv_from, face->uv_to, direction, bl_uv, br_uv, tl_uv, tr_uv);
-    }
+    CalculateUVs(*element, *face, direction);
 
     if (face->random_flip) {
       u32 world_x = (u32)(chunk_base.x + relative_base.x);
@@ -671,6 +679,23 @@ struct FaceMesh {
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
+  }
+
+  inline static BlockFace GetDirectionFace(const Vector3f& direction) {
+    if (direction.y < -0.5f) {
+      return BlockFace::Down;
+    } else if (direction.y >= 0.5f) {
+      return BlockFace::Up;
+    } else if (direction.x < -0.5f) {
+      return BlockFace::West;
+    } else if (direction.x >= 0.5f) {
+      return BlockFace::East;
+    } else if (direction.z < -0.5f) {
+      return BlockFace::North;
+    } else if (direction.z >= 0.5f) {
+      return BlockFace::South;
+    }
+    return BlockFace::Down;
   }
 };
 
