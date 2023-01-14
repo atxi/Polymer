@@ -494,24 +494,28 @@ struct FaceMesh {
   }
 
   inline static void Rotate0(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                             Vector2f& tl, Vector2f& tr) {
-    SetUVs(from, to, direction, bl, br, tl, tr);
+                             Vector2f& tl, Vector2f& tr, bool set_uvs) {
+    if (set_uvs) {
+      SetUVs(from, to, direction, bl, br, tl, tr);
+    }
   }
 
   inline static void Rotate90(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                              Vector2f& tl, Vector2f& tr) {
-    float temp = from.x;
+                              Vector2f& tl, Vector2f& tr, bool set_uvs) {
+    if (set_uvs) {
+      float temp = from.x;
 
-    from.x = 1.0f - from.y;
-    from.y = to.x;
-    to.x = 1.0f - to.y;
-    to.y = temp;
+      from.x = 1.0f - from.y;
+      from.y = to.x;
+      to.x = 1.0f - to.y;
+      to.y = temp;
 
-    Vector2f t = to;
-    to = from;
-    from = t;
+      Vector2f t = to;
+      to = from;
+      from = t;
 
-    SetUVs(from, to, direction, bl, br, tl, tr);
+      SetUVs(from, to, direction, bl, br, tl, tr);
+    }
 
     Vector2f obl = bl;
 
@@ -522,23 +526,52 @@ struct FaceMesh {
   }
 
   inline static void Rotate180(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                               Vector2f& tl, Vector2f& tr) {
-    from.x = 1.0f - from.x;
-    from.y = 1.0f - from.y;
-    to.x = 1.0f - to.x;
-    to.y = 1.0f - to.y;
+                               Vector2f& tl, Vector2f& tr, bool set_uvs) {
+    if (set_uvs) {
+      from.x = 1.0f - from.x;
+      from.y = 1.0f - from.y;
+      to.x = 1.0f - to.x;
+      to.y = 1.0f - to.y;
 
-    SetUVs(from, to, direction, bl, br, tl, tr);
+      SetUVs(from, to, direction, bl, br, tl, tr);
+    }
   }
 
   inline static void Rotate270(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                               Vector2f& tl, Vector2f& tr) {
-    from.x = 1.0f - from.x;
-    from.y = 1.0f - from.y;
-    to.x = 1.0f - to.x;
-    to.y = 1.0f - to.y;
+                               Vector2f& tl, Vector2f& tr, bool set_uvs) {
+    if (set_uvs) {
+      from.x = 1.0f - from.x;
+      from.y = 1.0f - from.y;
+      to.x = 1.0f - to.x;
+      to.y = 1.0f - to.y;
+    }
 
-    Rotate90(direction, from, to, bl, br, tl, tr);
+    Rotate90(direction, from, to, bl, br, tl, tr, set_uvs);
+  }
+
+  inline static void Rotate270_f(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
+                                 Vector2f& tl, Vector2f& tr, bool set_uvs) {
+    if (set_uvs) {
+      float temp = from.x;
+
+      from.x = 1.0f - from.y;
+      from.y = to.x;
+      to.x = 1.0f - to.y;
+      to.y = temp;
+
+      Vector2f t = to;
+      to = from;
+      from = t;
+
+      SetUVs(from, to, direction, bl, br, tl, tr);
+    }
+
+    Vector2f obl = bl;
+
+    bl = br;
+    br = tr;
+    tr = tl;
+    tl = obl;
   }
 
   void CalculateUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
@@ -551,33 +584,22 @@ struct FaceMesh {
       angle_y += element.rotation.angle;
     }
 
-    if (face.rotation > 0) {
-      switch (direction) {
-      case BlockFace::Down: {
-        angle_y -= face.rotation;
-      } break;
-      case BlockFace::Up: {
-        angle_y += face.rotation;
-      } break;
-      case BlockFace::North: {
-        angle_x -= face.rotation;
-      } break;
-      case BlockFace::South: {
-        angle_x += face.rotation;
-      } break;
-      }
-    }
+    if (angle_x < 0) angle_x += 360;
+    if (angle_y < 0) angle_y += 360;
+    if (angle_x >= 360) angle_x -= 360;
+    if (angle_y >= 360) angle_y -= 360;
 
     int x_index = angle_x / 90;
     int y_index = angle_y / 90;
 
     size_t index = x_index * 6 * 4 + y_index * 6 + (size_t)direction;
 
-    typedef void (*RotateFunc)(BlockFace, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&);
+    typedef void (*RotateFunc)(BlockFace, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&, bool);
 
     // Lookup table sorted by x, y, face for calculating locked uvs.
     // TODO: Most of these need to be verified
-    static const RotateFunc kRotators[] = {
+    static const RotateFunc kLockedRotators[] = {
+        // Down    Up         North      South      West       East
         Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y0
         Rotate270, Rotate90,  Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y90
         Rotate180, Rotate180, Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y180
@@ -599,14 +621,55 @@ struct FaceMesh {
         Rotate180, Rotate0,   Rotate90,  Rotate90,  Rotate90,  Rotate270, // X270 Y270
     };
 
+    static const RotateFunc kRotators[] = {
+        // Down    Up         North      South      West       East
+        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y0
+        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y90
+        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y180
+        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y270
+
+        Rotate90,  Rotate90, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y0
+        Rotate90,  Rotate90, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y90
+        Rotate0,   Rotate90,  Rotate0,   Rotate180, Rotate270, Rotate90,  // X90   Y180
+        Rotate0,   Rotate90,  Rotate270, Rotate270, Rotate270, Rotate90,  // X90   Y270
+
+        Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y0
+        Rotate90,  Rotate270, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y90
+        Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y180
+        Rotate270, Rotate90,  Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y270
+
+        Rotate180, Rotate0,   Rotate180, Rotate0,   Rotate90,  Rotate270, // X270 Y0
+        Rotate180, Rotate0,   Rotate270, Rotate270, Rotate90,  Rotate270, // X270 Y90
+        Rotate180, Rotate0,   Rotate0,   Rotate180, Rotate90,  Rotate270, // X270 Y180
+        Rotate180, Rotate0,   Rotate90,  Rotate90,  Rotate90,  Rotate270, // X270 Y270
+    };
+
     Vector2f from = face.uv_from;
     Vector2f to = face.uv_to;
 
-    if (!uvlock) {
-      BlockFace rotated = GetDirectionFace(this->direction);
-      kRotators[index](rotated, from, to, bl_uv, br_uv, tl_uv, tr_uv);
+    BlockFace rotated = direction;
+
+    if (uvlock) {
+      kLockedRotators[index](direction, from, to, bl_uv, br_uv, tl_uv, tr_uv, true);
     } else {
-      kRotators[index](direction, from, to, bl_uv, br_uv, tl_uv, tr_uv);
+      rotated = GetDirectionFace(this->direction);
+
+      kRotators[index](rotated, from, to, bl_uv, br_uv, tl_uv, tr_uv, true);
+    }
+
+    if (face.rotation > 0) {
+      static const RotateFunc kFaceRotators[] = {
+          // Down    Up         North      South      West       East
+          Rotate0,   Rotate0,   Rotate0,     Rotate0,     Rotate0,     Rotate0,     // Rot0
+          Rotate90,  Rotate90,  Rotate270_f, Rotate270_f, Rotate270_f, Rotate270_f, // Rot90
+          Rotate180, Rotate180, Rotate180,   Rotate180,   Rotate180,   Rotate180,   // Rot180
+          Rotate270, Rotate270, Rotate90,    Rotate90,    Rotate90,    Rotate90,    // Rot270
+      };
+
+      size_t rot_index = (face.rotation / 90) * 6 + (size_t)rotated;
+      assert(rot_index < polymer_array_count(kFaceRotators));
+
+      kFaceRotators[rot_index](rotated, from, to, bl_uv, br_uv, tl_uv, tr_uv, false);
     }
   }
 
