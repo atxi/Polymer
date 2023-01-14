@@ -1,7 +1,7 @@
 #ifndef POLYMER_WORLD_H_
 #define POLYMER_WORLD_H_
 
-#include <polymer/render/render.h>
+#include <polymer/render/chunk_renderer.h>
 #include <polymer/types.h>
 
 namespace polymer {

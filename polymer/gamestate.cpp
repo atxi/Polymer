@@ -22,6 +22,58 @@ using polymer::world::kChunkColumnCount;
 
 namespace polymer {
 
+void OnSwapchainCreate(render::Swapchain& swapchain, void* user_data) {
+  GameState* gamestate = (GameState*)user_data;
+
+  VkCommandBufferAllocateInfo alloc_info = {};
+
+  alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  alloc_info.commandPool = gamestate->renderer->command_pool;
+  alloc_info.commandBufferCount = 2;
+
+  vkAllocateCommandBuffers(swapchain.device, &alloc_info, gamestate->command_buffers);
+
+  // Create main render pass
+  VkAttachmentDescription color_attachment = {};
+
+  color_attachment.format = swapchain.format;
+  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+  VkAttachmentDescription depth_attachment = {};
+  depth_attachment.format = VK_FORMAT_D32_SFLOAT;
+  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+  depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+  gamestate->render_pass.CreateSimple(swapchain, color_attachment, depth_attachment);
+
+  gamestate->font_renderer.render_pass = &gamestate->render_pass;
+  gamestate->chunk_renderer.render_pass = &gamestate->render_pass;
+
+  gamestate->font_renderer.OnSwapchainCreate(*gamestate->trans_arena, swapchain, gamestate->renderer->descriptor_pool);
+  gamestate->chunk_renderer.OnSwapchainCreate(*gamestate->trans_arena, swapchain, gamestate->renderer->descriptor_pool);
+}
+
+void OnSwapchainCleanup(render::Swapchain& swapchain, void* user_data) {
+  GameState* gamestate = (GameState*)user_data;
+
+  gamestate->render_pass.Destroy(swapchain);
+
+  gamestate->font_renderer.OnSwapchainDestroy(swapchain.device);
+  gamestate->chunk_renderer.OnSwapchainDestroy(swapchain.device);
+}
+
 GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
     : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer),
       block_registry(*perm_arena), block_mesher(*trans_arena) {
@@ -50,16 +102,36 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
   animation_accumulator = 0.0f;
   time_accumulator = 0.0f;
   world_tick = 0;
+
+  renderer->swapchain.RegisterCreateCallback(this, OnSwapchainCreate);
+  renderer->swapchain.RegisterCleanupCallback(this, OnSwapchainCleanup);
 }
 
 void GameState::Update(float dt, InputState* input) {
   ProcessMovement(dt, input);
 
+  float sunlight = GetSunlight();
+
+  VkClearValue clears[] = {{0.71f * sunlight, 0.816f * sunlight, 1.0f * sunlight, 1.0f}, {1.0f, 0}};
+
+  VkCommandBufferBeginInfo begin_info = {};
+
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = 0;
+  begin_info.pInheritanceInfo = nullptr;
+
+  VkCommandBuffer command_buffer = command_buffers[renderer->current_frame];
+
+  vkBeginCommandBuffer(command_buffer, &begin_info);
+
+  render_pass.BeginPass(command_buffer, renderer->GetExtent(), renderer->current_image, clears,
+                        polymer_array_count(clears));
+
   if (input->display_players) {
-    player_manager.RenderPlayerList(*renderer);
+    player_manager.RenderPlayerList(font_renderer);
   }
 
-  chat_manager.Update(*renderer, dt);
+  chat_manager.Update(font_renderer, dt);
 
   animation_accumulator += dt;
   time_accumulator += dt;
@@ -77,7 +149,42 @@ void GameState::Update(float dt, InputState* input) {
   }
 
   ProcessBuildQueue();
-  RenderFrame();
+
+  u32 anim_frame = (u32)(animation_accumulator * 8.0f);
+  chunk_renderer.Draw(command_buffer, renderer->current_frame, world, camera, anim_frame, sunlight);
+}
+
+void GameState::SubmitFrame() {
+  VkCommandBuffer command_buffer = command_buffers[renderer->current_frame];
+
+  render_pass.EndPass(command_buffer);
+
+  vkEndCommandBuffer(command_buffer);
+
+  VkSubmitInfo submit_info = {};
+  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+  VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+  VkSemaphore wait_semaphore = renderer->image_available_semaphores[renderer->current_frame];
+  VkSemaphore signal_semaphore = renderer->render_complete_semaphores[renderer->current_frame];
+
+  submit_info.waitSemaphoreCount = 1;
+  submit_info.pWaitSemaphores = &wait_semaphore;
+  submit_info.pWaitDstStageMask = waitStages;
+
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &command_buffer;
+
+  submit_info.signalSemaphoreCount = 1;
+  submit_info.pSignalSemaphores = &signal_semaphore;
+
+  VkFence fence = renderer->frame_fences[renderer->current_frame];
+
+  vkResetFences(renderer->device, 1, &fence);
+  if (vkQueueSubmit(renderer->graphics_queue, 1, &submit_info, fence) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to submit draw command buffer.\n");
+  }
 }
 
 void GameState::ProcessMovement(float dt, InputState* input) {
@@ -152,96 +259,6 @@ void GameState::ProcessBuildQueue() {
       build_queue.data[i] = build_queue.data[--build_queue.count];
     } else {
       ++i;
-    }
-  }
-}
-
-void GameState::RenderFrame() {
-  camera.aspect_ratio = (float)renderer->swap_extent.width / renderer->swap_extent.height;
-
-  render::ChunkRenderUBO ubo;
-  void* data = nullptr;
-
-  ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
-  ubo.frame = (u32)(animation_accumulator * 8.0f);
-  ubo.sunlight = GetSunlight();
-  ubo.alpha_discard = true;
-
-  render::ChunkRenderer& chunk_renderer = renderer->chunk_renderer;
-
-  chunk_renderer.sunlight = ubo.sunlight;
-
-  vmaMapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame], &data);
-  memcpy(data, &ubo, sizeof(ubo));
-  vmaUnmapMemory(renderer->allocator, chunk_renderer.uniform_allocations[renderer->current_frame]);
-
-  ubo.alpha_discard = false;
-
-  vmaMapMemory(renderer->allocator, chunk_renderer.alpha_renderer.uniform_allocations[renderer->current_frame], &data);
-  memcpy(data, &ubo, sizeof(ubo));
-  vmaUnmapMemory(renderer->allocator, chunk_renderer.alpha_renderer.uniform_allocations[renderer->current_frame]);
-
-  Frustum frustum = camera.GetViewFrustum();
-
-  VkDeviceSize offsets[] = {0};
-  VkDeviceSize offset = {};
-
-#if DISPLAY_PERF_STATS
-  stats.Reset();
-#endif
-
-  VkCommandBuffer buffers[] = {
-      renderer->chunk_renderer.block_renderer.command_buffers[renderer->current_frame],
-      renderer->chunk_renderer.flora_renderer.command_buffers[renderer->current_frame],
-      renderer->chunk_renderer.leaf_renderer.command_buffers[renderer->current_frame],
-      renderer->chunk_renderer.alpha_renderer.command_buffers[renderer->current_frame],
-  };
-
-  for (s32 chunk_z = 0; chunk_z < (s32)kChunkCacheSize; ++chunk_z) {
-    for (s32 chunk_x = 0; chunk_x < (s32)kChunkCacheSize; ++chunk_x) {
-      ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
-
-      if (!section_info->loaded) {
-        continue;
-      }
-
-      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
-
-      for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        ChunkMesh* mesh = meshes + chunk_y;
-
-        if ((section_info->bitmask & (1 << chunk_y))) {
-          Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f - 64.0f, section_info->z * 16.0f);
-          Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, section_info->z * 16.0f + 16.0f);
-
-          if (frustum.Intersects(chunk_min, chunk_max)) {
-#if DISPLAY_PERF_STATS
-            bool rendered = false;
-#endif
-            for (s32 i = 0; i < render::kRenderLayerCount; ++i) {
-              render::RenderMesh* layer_mesh = &mesh->meshes[i];
-
-              if (layer_mesh->vertex_count > 0) {
-                VkCommandBuffer command_buffer = buffers[i];
-
-                vkCmdBindVertexBuffers(command_buffer, 0, 1, &layer_mesh->vertex_buffer, offsets);
-                vkCmdBindIndexBuffer(command_buffer, layer_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
-                vkCmdDrawIndexed(command_buffer, layer_mesh->index_count, 1, 0, 0, 0);
-#if DISPLAY_PERF_STATS
-                stats.vertex_counts[i] += layer_mesh->vertex_count;
-                rendered = true;
-#endif
-              }
-            }
-
-#if DISPLAY_PERF_STATS
-            if (rendered) {
-              ++stats.chunk_render_count;
-            }
-#endif
-          }
-        }
-      }
     }
   }
 }
@@ -594,8 +611,8 @@ Player* PlayerManager::GetPlayerByUuid(const String& uuid) {
   return nullptr;
 }
 
-void PlayerManager::RenderPlayerList(render::VulkanRenderer& renderer) {
-  float center_x = renderer.swap_extent.width / 2.0f;
+void PlayerManager::RenderPlayerList(render::FontRenderer& font_renderer) {
+  float center_x = font_renderer.renderer->GetExtent().width / 2.0f;
 
   render::FontStyleFlags style = render::FontStyle_DropShadow;
 
@@ -606,7 +623,7 @@ void PlayerManager::RenderPlayerList(render::VulkanRenderer& renderer) {
     Player* player = players + i;
     String player_name(player->name);
 
-    float text_width = (float)renderer.font_renderer.GetTextWidth(player_name);
+    float text_width = (float)font_renderer.GetTextWidth(player_name);
 
     if (text_width > max_width) {
       max_width = text_width;
@@ -623,14 +640,14 @@ void PlayerManager::RenderPlayerList(render::VulkanRenderer& renderer) {
     float height = (i == player_count - 1) ? 18.0f : 16.0f;
 
     // Render the background with the size determined by the longest name. Add some horizontal padding.
-    renderer.font_renderer.RenderBackground(position + Vector3f(-4, 0, 0), Vector2f(max_width + 8, height));
-    renderer.font_renderer.RenderText(position, player_name, style);
+    font_renderer.RenderBackground(position + Vector3f(-4, 0, 0), Vector2f(max_width + 8, height));
+    font_renderer.RenderText(position, player_name, style);
 
     position.y += 16;
   }
 }
 
-void ChatManager::Update(render::VulkanRenderer& renderer, float dt) {
+void ChatManager::Update(render::FontRenderer& font_renderer, float dt) {
   constexpr size_t kChatMessageQueueSize = polymer_array_count(chat_message_queue);
 
   for (int i = 0; i < polymer_array_count(chat_message_queue); ++i) {
@@ -651,7 +668,7 @@ void ChatManager::Update(render::VulkanRenderer& renderer, float dt) {
       continue;
     }
 
-    float y = (float)(renderer.swap_extent.height - 24 - i * 18);
+    float y = (float)(font_renderer.renderer->GetExtent().height - 24 - i * 18);
     Vector3f position(8, y, 0);
 
     render::FontStyleFlags style = render::FontStyle_DropShadow;
@@ -666,12 +683,12 @@ void ChatManager::Update(render::VulkanRenderer& renderer, float dt) {
     Vector4f bg_color(0, 0, 0, 0.4f * alpha);
 
     float background_width = 660;
-    if (position.x + background_width > renderer.swap_extent.width) {
-      background_width = (float)renderer.swap_extent.width - 8;
+    if (position.x + background_width > font_renderer.renderer->GetExtent().width) {
+      background_width = (float)font_renderer.renderer->GetExtent().width - 8;
     }
 
-    renderer.font_renderer.RenderBackground(position + Vector3f(-4, 0, 0), Vector2f(background_width, 18), bg_color);
-    renderer.font_renderer.RenderText(position, String(popup->message, popup->message_size), style, color);
+    font_renderer.RenderBackground(position + Vector3f(-4, 0, 0), Vector2f(background_width, 18), bg_color);
+    font_renderer.RenderText(position, String(popup->message, popup->message_size), style, color);
   }
 }
 

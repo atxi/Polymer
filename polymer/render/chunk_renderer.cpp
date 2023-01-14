@@ -1,6 +1,7 @@
 #include <polymer/render/chunk_renderer.h>
 
 #include <polymer/render/render.h>
+#include <polymer/world/world.h>
 
 #include <stdio.h>
 
@@ -14,107 +15,7 @@ const char* kRenderLayerNames[kRenderLayerCount] = {"opaque", "flora", "leaf", "
 static const char* kChunkVertShader = "shaders/chunk_vert.spv";
 static const char* kChunkFragShader = "shaders/chunk_frag.spv";
 
-void BlockRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
-  VkAttachmentDescription color_attachment = {};
-
-  color_attachment.format = swap_format;
-  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-  VkAttachmentDescription depth_attachment = {};
-  depth_attachment.format = VK_FORMAT_D32_SFLOAT;
-  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-  CreateRenderPassType(device, swap_format, &render_pass, color_attachment, depth_attachment);
-}
-
-void FloraRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
-  VkAttachmentDescription color_attachment = {};
-
-  color_attachment.format = swap_format;
-  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  color_attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-  VkAttachmentDescription depth_attachment = {};
-  depth_attachment.format = VK_FORMAT_D32_SFLOAT;
-  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-  depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-  CreateRenderPassType(device, swap_format, &render_pass, color_attachment, depth_attachment);
-}
-
-void LeafRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
-  VkAttachmentDescription color_attachment = {};
-
-  color_attachment.format = swap_format;
-  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  color_attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-  VkAttachmentDescription depth_attachment = {};
-  depth_attachment.format = VK_FORMAT_D32_SFLOAT;
-  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-  depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-  CreateRenderPassType(device, swap_format, &render_pass, color_attachment, depth_attachment);
-}
-
-void AlphaRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
-  VkAttachmentDescription color_attachment = {};
-
-  color_attachment.format = swap_format;
-  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  color_attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-  VkAttachmentDescription depth_attachment = {};
-  depth_attachment.format = VK_FORMAT_D32_SFLOAT;
-  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-  depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-  CreateRenderPassType(device, swap_format, &render_pass, color_attachment, depth_attachment);
-}
-
-bool ChunkRenderPipeline::Create(VkDevice device) {
+bool ChunkRenderLayout::Create(VkDevice device) {
   VkDescriptorSetLayoutBinding ubo_binding = {};
   ubo_binding.binding = 0;
   ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -155,17 +56,12 @@ bool ChunkRenderPipeline::Create(VkDevice device) {
   return true;
 }
 
-void ChunkRenderPipeline::Cleanup(VkDevice device) {
+void ChunkRenderLayout::Shutdown(VkDevice device) {
   vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
   vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
 }
 
-void ChunkRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
-  block_renderer.CreateRenderPass(device, swap_format);
-  flora_renderer.CreateRenderPass(device, swap_format);
-  leaf_renderer.CreateRenderPass(device, swap_format);
-  alpha_renderer.CreateRenderPass(device, swap_format);
-
+void ChunkRenderer::CreateSamplers(VkDevice device) {
   {
     VkSamplerCreateInfo sampler_info = {};
     sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -185,7 +81,7 @@ void ChunkRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
     sampler_info.minLod = 0.0f;
     sampler_info.maxLod = 1.0f;
 
-    if (vkCreateSampler(device, &sampler_info, nullptr, &flora_renderer.sampler) != VK_SUCCESS) {
+    if (vkCreateSampler(device, &sampler_info, nullptr, &flora_sampler) != VK_SUCCESS) {
       fprintf(stderr, "Failed to create texture sampler.\n");
     }
   }
@@ -209,7 +105,7 @@ void ChunkRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
     sampler_info.minLod = 0.0f;
     sampler_info.maxLod = (float)block_textures->mips;
 
-    if (vkCreateSampler(device, &sampler_info, nullptr, &leaf_renderer.sampler) != VK_SUCCESS) {
+    if (vkCreateSampler(device, &sampler_info, nullptr, &leaf_sampler) != VK_SUCCESS) {
       fprintf(stderr, "Failed to create texture sampler.\n");
     }
   }
@@ -380,37 +276,23 @@ void ChunkRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, Vk
   pipeline_info.pDepthStencilState = &depth_stencil;
   pipeline_info.pColorBlendState = &blend;
   pipeline_info.pDynamicState = nullptr;
-  pipeline_info.layout = pipeline.pipeline_layout;
-  pipeline_info.renderPass = block_renderer.render_pass;
+  pipeline_info.layout = this->layout.pipeline_layout;
+  pipeline_info.renderPass = render_pass->render_pass;
   pipeline_info.subpass = 0;
   pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
   pipeline_info.basePipelineIndex = -1;
 
-  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &block_renderer.pipeline) !=
-      VK_SUCCESS) {
-    fprintf(stderr, "Failed to create graphics pipeline.\n");
-  }
-
-  pipeline_info.renderPass = flora_renderer.render_pass;
-
-  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &flora_renderer.pipeline) !=
-      VK_SUCCESS) {
-    fprintf(stderr, "Failed to create graphics pipeline.\n");
-  }
-
-  pipeline_info.renderPass = leaf_renderer.render_pass;
-
-  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &leaf_renderer.pipeline) !=
-      VK_SUCCESS) {
-    fprintf(stderr, "Failed to create graphics pipeline.\n");
+  for (size_t i = 0; i < kRenderLayerCount - 1; ++i) {
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, pipelines + i) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create graphics pipeline.\n");
+    }
   }
 
   depth_stencil.depthWriteEnable = VK_FALSE;
-
   blend_attachment.blendEnable = VK_TRUE;
-  pipeline_info.renderPass = alpha_renderer.render_pass;
 
-  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &alpha_renderer.pipeline) !=
+  size_t alpha_index = (size_t)RenderLayer::Alpha;
+  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, pipelines + alpha_index) !=
       VK_SUCCESS) {
     fprintf(stderr, "Failed to create alpha pipeline.\n");
   }
@@ -419,59 +301,13 @@ void ChunkRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, Vk
   vkDestroyShaderModule(device, frag_shader, nullptr);
 }
 
-void ChunkRenderer::CreateCommandBuffers(VkDevice device, VkCommandPool command_pool) {
-  VkCommandBufferAllocateInfo alloc_info = {};
-
-  alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  alloc_info.commandPool = command_pool;
-  alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  alloc_info.commandBufferCount = polymer_array_count(block_renderer.command_buffers);
-
-  if (vkAllocateCommandBuffers(device, &alloc_info, block_renderer.command_buffers) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate command buffers.\n");
-  }
-
-  if (vkAllocateCommandBuffers(device, &alloc_info, flora_renderer.command_buffers) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate command buffers.\n");
-  }
-
-  if (vkAllocateCommandBuffers(device, &alloc_info, leaf_renderer.command_buffers) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate command buffers.\n");
-  }
-
-  if (vkAllocateCommandBuffers(device, &alloc_info, alpha_renderer.command_buffers) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate command buffers.\n");
-  }
-}
-
-void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool) {
-  VkBufferCreateInfo buffer_info = {};
-
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = sizeof(ChunkRenderUBO);
-  buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  VmaAllocationCreateInfo alloc_create_info = {};
-  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-  alloc_create_info.flags = 0;
-
-  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    if (vmaCreateBuffer(renderer->allocator, &buffer_info, &alloc_create_info, uniform_buffers + i,
-                        uniform_allocations + i, nullptr) != VK_SUCCESS) {
-      printf("Failed to create ChunkRenderer uniform buffer.\n");
-    }
-
-    if (vmaCreateBuffer(renderer->allocator, &buffer_info, &alloc_create_info, alpha_renderer.uniform_buffers + i,
-                        alpha_renderer.uniform_allocations + i, nullptr) != VK_SUCCESS) {
-      printf("Failed to create ChunkRenderer alpha uniform buffer.\n");
-    }
-  }
+DescriptorSet ChunkRenderLayout::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool) {
+  DescriptorSet descriptors = {};
 
   VkDescriptorSetLayout layouts[kMaxFramesInFlight];
 
   for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
-    layouts[i] = pipeline.descriptor_layout;
+    layouts[i] = descriptor_layout;
   }
 
   VkDescriptorSetAllocateInfo alloc_info = {};
@@ -481,26 +317,27 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
   alloc_info.descriptorSetCount = kMaxFramesInFlight;
   alloc_info.pSetLayouts = layouts;
 
-  if (vkAllocateDescriptorSets(device, &alloc_info, flora_renderer.descriptors) != VK_SUCCESS) {
+  if (vkAllocateDescriptorSets(device, &alloc_info, descriptors.descriptors) != VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate descriptor sets.");
   }
 
-  if (vkAllocateDescriptorSets(device, &alloc_info, leaf_renderer.descriptors) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate descriptor sets.");
-  }
+  return descriptors;
+}
 
-  if (vkAllocateDescriptorSets(device, &alloc_info, block_renderer.descriptors) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate descriptor sets.");
-  }
+void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool) {
+  CreateSamplers(device);
 
-  if (vkAllocateDescriptorSets(device, &alloc_info, alpha_renderer.descriptors) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate descriptor sets.");
+  opaque_ubo.Create(renderer->allocator, sizeof(ChunkRenderUBO));
+  alpha_ubo.Create(renderer->allocator, sizeof(ChunkRenderUBO));
+
+  for (size_t i = 0; i < kRenderLayerCount; ++i) {
+    descriptor_sets[i] = layout.CreateDescriptors(device, descriptor_pool);
   }
 
   for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
     VkDescriptorBufferInfo buffer_info = {};
 
-    buffer_info.buffer = uniform_buffers[i];
+    buffer_info.buffer = opaque_ubo.uniform_buffers[i];
     buffer_info.offset = 0;
     buffer_info.range = sizeof(ChunkRenderUBO);
 
@@ -511,7 +348,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
 
     VkWriteDescriptorSet descriptor_writes[8] = {};
     descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[0].dstSet = block_renderer.descriptors[i];
+    descriptor_writes[0].dstSet = descriptor_sets[(size_t)RenderLayer::Standard].descriptors[i];
     descriptor_writes[0].dstBinding = 0;
     descriptor_writes[0].dstArrayElement = 0;
     descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -521,7 +358,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     descriptor_writes[0].pTexelBufferView = nullptr;
 
     descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[1].dstSet = block_renderer.descriptors[i];
+    descriptor_writes[1].dstSet = descriptor_sets[(size_t)RenderLayer::Standard].descriptors[i];
     descriptor_writes[1].dstBinding = 1;
     descriptor_writes[1].dstArrayElement = 0;
     descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -533,10 +370,10 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     VkDescriptorImageInfo flora_image_info = {};
     flora_image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     flora_image_info.imageView = block_textures->image_view;
-    flora_image_info.sampler = flora_renderer.sampler;
+    flora_image_info.sampler = flora_sampler;
 
     descriptor_writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[2].dstSet = flora_renderer.descriptors[i];
+    descriptor_writes[2].dstSet = descriptor_sets[(size_t)RenderLayer::Flora].descriptors[i];
     descriptor_writes[2].dstBinding = 0;
     descriptor_writes[2].dstArrayElement = 0;
     descriptor_writes[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -546,7 +383,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     descriptor_writes[2].pTexelBufferView = nullptr;
 
     descriptor_writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[3].dstSet = flora_renderer.descriptors[i];
+    descriptor_writes[3].dstSet = descriptor_sets[(size_t)RenderLayer::Flora].descriptors[i];
     descriptor_writes[3].dstBinding = 1;
     descriptor_writes[3].dstArrayElement = 0;
     descriptor_writes[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -558,10 +395,10 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     VkDescriptorImageInfo leaf_image_info = {};
     leaf_image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     leaf_image_info.imageView = block_textures->image_view;
-    leaf_image_info.sampler = leaf_renderer.sampler;
+    leaf_image_info.sampler = leaf_sampler;
 
     descriptor_writes[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[4].dstSet = leaf_renderer.descriptors[i];
+    descriptor_writes[4].dstSet = descriptor_sets[(size_t)RenderLayer::Leaves].descriptors[i];
     descriptor_writes[4].dstBinding = 0;
     descriptor_writes[4].dstArrayElement = 0;
     descriptor_writes[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -571,7 +408,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     descriptor_writes[4].pTexelBufferView = nullptr;
 
     descriptor_writes[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[5].dstSet = leaf_renderer.descriptors[i];
+    descriptor_writes[5].dstSet = descriptor_sets[(size_t)RenderLayer::Leaves].descriptors[i];
     descriptor_writes[5].dstBinding = 1;
     descriptor_writes[5].dstArrayElement = 0;
     descriptor_writes[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -582,12 +419,12 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
 
     VkDescriptorBufferInfo alpha_buffer_info = {};
 
-    alpha_buffer_info.buffer = alpha_renderer.uniform_buffers[i];
+    alpha_buffer_info.buffer = alpha_ubo.uniform_buffers[i];
     alpha_buffer_info.offset = 0;
     alpha_buffer_info.range = sizeof(ChunkRenderUBO);
 
     descriptor_writes[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[6].dstSet = alpha_renderer.descriptors[i];
+    descriptor_writes[6].dstSet = descriptor_sets[(size_t)RenderLayer::Alpha].descriptors[i];
     descriptor_writes[6].dstBinding = 0;
     descriptor_writes[6].dstArrayElement = 0;
     descriptor_writes[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -597,7 +434,7 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
     descriptor_writes[6].pTexelBufferView = nullptr;
 
     descriptor_writes[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[7].dstSet = alpha_renderer.descriptors[i];
+    descriptor_writes[7].dstSet = descriptor_sets[(size_t)RenderLayer::Alpha].descriptors[i];
     descriptor_writes[7].dstBinding = 1;
     descriptor_writes[7].dstArrayElement = 0;
     descriptor_writes[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -610,203 +447,143 @@ void ChunkRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descript
   }
 }
 
-bool ChunkRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t current_frame) {
-  VkPipelineLayout layout = pipeline.pipeline_layout;
-  VkDescriptorSet& descriptor = block_renderer.descriptors[current_frame];
+void ChunkRenderer::Draw(VkCommandBuffer command_buffer, size_t current_frame, world::World& world, Camera& camera,
+                         u32 animation_frame, float sunlight) {
+  const VkExtent2D& extent = renderer->GetExtent();
+  camera.aspect_ratio = (float)extent.width / extent.height;
 
-  VkCommandBuffer block_buffer = block_renderer.command_buffers[current_frame];
-  VkCommandBuffer flora_buffer = flora_renderer.command_buffers[current_frame];
-  VkCommandBuffer leaf_buffer = leaf_renderer.command_buffers[current_frame];
-  VkCommandBuffer alpha_buffer = alpha_renderer.command_buffers[current_frame];
+  render::ChunkRenderUBO ubo;
+  void* data = nullptr;
+
+  ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+  ubo.frame = animation_frame;
+  ubo.sunlight = sunlight;
+  ubo.alpha_discard = true;
+
+  opaque_ubo.Set(current_frame, &ubo, sizeof(ubo));
+
+  ubo.alpha_discard = false;
+
+  alpha_ubo.Set(current_frame, &ubo, sizeof(ubo));
+
+  Frustum frustum = camera.GetViewFrustum();
+
+  VkDeviceSize offsets[] = {0};
+  VkDeviceSize offset = {};
+
+#if DISPLAY_PERF_STATS
+  stats.Reset();
+#endif
+
+  ChunkFrameCommandBuffers& buffers = frame_command_buffers[current_frame];
+
+  VkCommandBufferInheritanceInfo inherit = {};
+  inherit.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+  inherit.renderPass = render_pass->render_pass;
+  inherit.framebuffer = render_pass->framebuffers.framebuffers[renderer->current_image];
 
   VkCommandBufferBeginInfo begin_info = {};
-
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = 0;
-  begin_info.pInheritanceInfo = nullptr;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+  begin_info.pInheritanceInfo = &inherit;
 
-  if (vkBeginCommandBuffer(block_buffer, &begin_info) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to begin recording command buffer.\n");
-    return false;
+  for (size_t i = 0; i < kRenderLayerCount; ++i) {
+    VkDescriptorSet descriptor = descriptor_sets[i].descriptors[current_frame];
+
+    vkBeginCommandBuffer(buffers.command_buffers[i], &begin_info);
+
+    vkCmdBindPipeline(buffers.command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
+    vkCmdBindDescriptorSets(buffers.command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, this->layout.pipeline_layout,
+                            0, 1, &descriptor, 0, nullptr);
   }
 
-  if (vkBeginCommandBuffer(flora_buffer, &begin_info) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to begin recording command buffer.\n");
-    return false;
-  }
+  for (s32 chunk_z = 0; chunk_z < (s32)world::kChunkCacheSize; ++chunk_z) {
+    for (s32 chunk_x = 0; chunk_x < (s32)world::kChunkCacheSize; ++chunk_x) {
+      world::ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
 
-  if (vkBeginCommandBuffer(leaf_buffer, &begin_info) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to begin recording command buffer.\n");
-    return false;
-  }
+      if (!section_info->loaded) {
+        continue;
+      }
 
-  if (vkBeginCommandBuffer(alpha_buffer, &begin_info) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to begin recording command buffer.\n");
-    return false;
-  }
+      world::ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
 
-  VkClearValue clears[] = {{0.71f * sunlight, 0.816f * sunlight, 1.0f * sunlight, 1.0f}, {1.0f, 0}};
+      for (s32 chunk_y = 0; chunk_y < world::kChunkColumnCount; ++chunk_y) {
+        world::ChunkMesh* mesh = meshes + chunk_y;
 
-  render_pass_info.renderPass = block_renderer.render_pass;
-  render_pass_info.clearValueCount = polymer_array_count(clears);
-  render_pass_info.pClearValues = clears;
+        if ((section_info->bitmask & (1 << chunk_y))) {
+          Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f - 64.0f, section_info->z * 16.0f);
+          Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, section_info->z * 16.0f + 16.0f);
 
-  vkCmdBeginRenderPass(block_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-  {
-    vkCmdBindPipeline(block_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, block_renderer.pipeline);
-    vkCmdBindDescriptorSets(block_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &descriptor, 0, nullptr);
-  }
+          if (frustum.Intersects(chunk_min, chunk_max)) {
+#if DISPLAY_PERF_STATS
+            bool rendered = false;
+#endif
+            for (s32 i = 0; i < render::kRenderLayerCount; ++i) {
+              render::RenderMesh* layer_mesh = &mesh->meshes[i];
 
-  render_pass_info.renderPass = flora_renderer.render_pass;
-  render_pass_info.clearValueCount = 0;
+              if (layer_mesh->vertex_count > 0) {
+                VkCommandBuffer current_buffer = buffers.command_buffers[i];
 
-  vkCmdBeginRenderPass(flora_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-  {
-    vkCmdBindPipeline(flora_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, flora_renderer.pipeline);
-    vkCmdBindDescriptorSets(flora_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
-                            flora_renderer.descriptors + current_frame, 0, nullptr);
-  }
+                vkCmdBindVertexBuffers(current_buffer, 0, 1, &layer_mesh->vertex_buffer, offsets);
+                vkCmdBindIndexBuffer(current_buffer, layer_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
+                vkCmdDrawIndexed(current_buffer, layer_mesh->index_count, 1, 0, 0, 0);
+#if DISPLAY_PERF_STATS
+                stats.vertex_counts[i] += layer_mesh->vertex_count;
+                rendered = true;
+#endif
+              }
+            }
 
-  render_pass_info.renderPass = leaf_renderer.render_pass;
-  render_pass_info.clearValueCount = 0;
-
-  vkCmdBeginRenderPass(leaf_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-  {
-    vkCmdBindPipeline(leaf_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, leaf_renderer.pipeline);
-    vkCmdBindDescriptorSets(leaf_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
-                            leaf_renderer.descriptors + current_frame, 0, nullptr);
-  }
-
-  render_pass_info.renderPass = alpha_renderer.render_pass;
-  render_pass_info.clearValueCount = 0;
-
-  vkCmdBeginRenderPass(alpha_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-  {
-    vkCmdBindPipeline(alpha_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, alpha_renderer.pipeline);
-    vkCmdBindDescriptorSets(alpha_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
-                            alpha_renderer.descriptors + current_frame, 0, nullptr);
-  }
-
-  return true;
-}
-
-VkSemaphore ChunkRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size_t current_frame,
-                                          VkSemaphore image_available_semaphore, VkFence frame_fence) {
-  VkCommandBuffer block_buffer = block_renderer.command_buffers[current_frame];
-  VkCommandBuffer flora_buffer = flora_renderer.command_buffers[current_frame];
-  VkCommandBuffer leaf_buffer = leaf_renderer.command_buffers[current_frame];
-  VkCommandBuffer alpha_buffer = alpha_renderer.command_buffers[current_frame];
-
-  vkCmdEndRenderPass(block_buffer);
-
-  if (vkEndCommandBuffer(block_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record command buffer.\n");
-  }
-
-  vkCmdEndRenderPass(flora_buffer);
-  if (vkEndCommandBuffer(flora_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record command buffer.\n");
-  }
-
-  vkCmdEndRenderPass(leaf_buffer);
-  if (vkEndCommandBuffer(leaf_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record command buffer.\n");
-  }
-
-  vkCmdEndRenderPass(alpha_buffer);
-  if (vkEndCommandBuffer(alpha_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record alpha command buffer.\n");
-  }
-
-  {
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = &image_available_semaphore;
-    submit_info.pWaitDstStageMask = waitStages;
-
-    VkCommandBuffer buffers[3] = {block_buffer, flora_buffer, leaf_buffer};
-
-    submit_info.commandBufferCount = polymer_array_count(buffers);
-    submit_info.pCommandBuffers = buffers;
-
-    VkSemaphore signal_semaphores[] = {block_finished_semaphores[current_frame]};
-
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = signal_semaphores;
-
-    if (vkQueueSubmit(graphics_queue, 1, &submit_info, (VkFence) nullptr) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to submit draw command buffer.\n");
+#if DISPLAY_PERF_STATS
+            if (rendered) {
+              ++stats.chunk_render_count;
+            }
+#endif
+          }
+        }
+      }
     }
   }
 
-  {
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  for (size_t i = 0; i < kRenderLayerCount; ++i) {
+    vkEndCommandBuffer(buffers.command_buffers[i]);
 
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-    // Wait for the opaque rendering to finish before submitting alpha rendering.
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = &block_finished_semaphores[current_frame];
-    submit_info.pWaitDstStageMask = waitStages;
-
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &alpha_buffer;
-
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = &block_finished_semaphores[current_frame];
-
-    if (vkQueueSubmit(graphics_queue, 1, &submit_info, (VkFence) nullptr) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to submit draw command buffer.\n");
-    }
+    vkCmdExecuteCommands(command_buffer, 1, buffers.command_buffers + i);
   }
-
-  return block_finished_semaphores[current_frame];
 }
 
-void ChunkRenderer::Destroy(VkDevice device, VkCommandPool command_pool) {
-  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, block_renderer.command_buffers);
-  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, flora_renderer.command_buffers);
-  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, leaf_renderer.command_buffers);
-  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, alpha_renderer.command_buffers);
+void ChunkRenderer::OnSwapchainCreate(MemoryArena& trans_arena, Swapchain& swapchain,
+                                      VkDescriptorPool descriptor_pool) {
+  CreateDescriptors(swapchain.device, descriptor_pool);
+  CreatePipeline(trans_arena, swapchain.device, swapchain.extent);
 
-  vkDestroySampler(device, flora_renderer.sampler, nullptr);
-  vkDestroySampler(device, leaf_renderer.sampler, nullptr);
-  vkDestroyPipeline(device, block_renderer.pipeline, nullptr);
-  vkDestroyPipeline(device, flora_renderer.pipeline, nullptr);
-  vkDestroyPipeline(device, leaf_renderer.pipeline, nullptr);
-  vkDestroyPipeline(device, alpha_renderer.pipeline, nullptr);
-  vkDestroyRenderPass(device, block_renderer.render_pass, nullptr);
-  vkDestroyRenderPass(device, flora_renderer.render_pass, nullptr);
-  vkDestroyRenderPass(device, leaf_renderer.render_pass, nullptr);
-  vkDestroyRenderPass(device, alpha_renderer.render_pass, nullptr);
-}
+  VkCommandBufferAllocateInfo alloc_info = {};
 
-void ChunkRenderer::CreateSyncObjects(VkDevice device) {
-  VkSemaphoreCreateInfo semaphore_info = {};
-
-  semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+  alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  alloc_info.commandPool = renderer->command_pool;
+  alloc_info.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+  alloc_info.commandBufferCount = polymer_array_count(frame_command_buffers[0].command_buffers);
 
   for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    if (vkCreateSemaphore(device, &semaphore_info, nullptr, block_finished_semaphores + i) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to create semaphore.\n");
-    }
+    vkAllocateCommandBuffers(swapchain.device, &alloc_info, frame_command_buffers[i].command_buffers);
   }
 }
 
-void ChunkRenderer::CleanupSwapchain(VkDevice device) {
-  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    vkDestroySemaphore(device, block_finished_semaphores[i], nullptr);
+void ChunkRenderer::OnSwapchainDestroy(VkDevice device) {
+  vkDestroySampler(device, flora_sampler, nullptr);
+  vkDestroySampler(device, leaf_sampler, nullptr);
+
+  for (size_t i = 0; i < kRenderLayerCount; ++i) {
+    vkDestroyPipeline(device, pipelines[i], nullptr);
   }
 
-  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
-    vmaDestroyBuffer(renderer->allocator, uniform_buffers[i], uniform_allocations[i]);
-    vmaDestroyBuffer(renderer->allocator, alpha_renderer.uniform_buffers[i], alpha_renderer.uniform_allocations[i]);
+  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
+    vkFreeCommandBuffers(device, renderer->command_pool, polymer_array_count(frame_command_buffers[0].command_buffers),
+                         frame_command_buffers[i].command_buffers);
   }
+
+  opaque_ubo.Destroy();
+  alpha_ubo.Destroy();
 }
 
 } // namespace render

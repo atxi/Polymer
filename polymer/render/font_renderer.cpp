@@ -9,6 +9,8 @@
 namespace polymer {
 namespace render {
 
+constexpr size_t kFontRenderMaxCharacters = 2048;
+
 static const char* kFontVertShader = "shaders/font_vert.spv";
 static const char* kFontFragShader = "shaders/font_frag.spv";
 
@@ -54,17 +56,17 @@ static void PushTextBackground(FontVertex* mapped_vertices, size_t& vertex_count
 }
 
 void FontRenderer::RenderBackground(const Vector3f& screen_position, const String& str, const Vector4f& color) {
-  FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
+  FontVertex* mapped_vertices = push_buffer.GetMapped();
   float width = (float)GetTextWidth(str);
   float height = 16;
 
-  PushTextBackground(mapped_vertices, vertex_count, screen_position, Vector2f(width, height), color);
+  PushTextBackground(mapped_vertices, push_buffer.vertex_count, screen_position, Vector2f(width, height), color);
 }
 
 void FontRenderer::RenderBackground(const Vector3f& screen_position, const Vector2f& size, const Vector4f& color) {
-  FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
+  FontVertex* mapped_vertices = push_buffer.GetMapped();
 
-  PushTextBackground(mapped_vertices, vertex_count, screen_position, size, color);
+  PushTextBackground(mapped_vertices, push_buffer.vertex_count, screen_position, size, color);
 }
 
 int FontRenderer::GetTextWidth(const String& str) {
@@ -126,7 +128,7 @@ static void TextOutput(FontVertex* mapped_vertices, u8* glyph_size_table, size_t
 // This is using the unicode page bitmap font instead.
 void FontRenderer::RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style,
                               const Vector4f& color) {
-  FontVertex* mapped_vertices = (FontVertex*)buffer_alloc_info.pMappedData;
+  FontVertex* mapped_vertices = push_buffer.GetMapped();
   Vector3f position = screen_position;
 
   u32 r = (u32)(color.x * 255);
@@ -148,7 +150,7 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
   }
 
   if (style & FontStyle_Background) {
-    PushTextBackground(mapped_vertices, vertex_count, position + Vector3f(-kHorizontalPadding, 0, 0),
+    PushTextBackground(mapped_vertices, push_buffer.vertex_count, position + Vector3f(-kHorizontalPadding, 0, 0),
                        Vector2f(width, 16), Vector4f(0.2f, 0.2f, 0.2f, 0.5f));
   }
 
@@ -160,13 +162,13 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
 
     u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
 
-    TextOutput(mapped_vertices, glyph_size_table, vertex_count, position + Vector3f(1, 1, 0), str, rgba);
+    TextOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, position + Vector3f(1, 1, 0), str, rgba);
   }
 
-  TextOutput(mapped_vertices, glyph_size_table, vertex_count, position, str, rgba);
+  TextOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, position, str, rgba);
 }
 
-bool FontRenderPipeline::Create(VkDevice device) {
+bool FontPipelineLayout::Create(VkDevice device) {
   VkDescriptorSetLayoutBinding ubo_binding = {};
   ubo_binding.binding = 0;
   ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -207,34 +209,31 @@ bool FontRenderPipeline::Create(VkDevice device) {
   return true;
 }
 
-void FontRenderPipeline::Cleanup(VkDevice device) {
+void FontPipelineLayout::Shutdown(VkDevice device) {
   vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
   vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
 }
 
-void FontRenderer::CreateRenderPass(VkDevice device, VkFormat swap_format) {
-  VkAttachmentDescription color_attachment = {};
+DescriptorSet FontPipelineLayout::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool) {
+  DescriptorSet descriptors = {};
+  VkDescriptorSetLayout layouts[kMaxFramesInFlight];
 
-  color_attachment.format = swap_format;
-  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  color_attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
+    layouts[i] = descriptor_layout;
+  }
 
-  VkAttachmentDescription depth_attachment = {};
-  depth_attachment.format = VK_FORMAT_D32_SFLOAT;
-  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-  depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-  depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  depth_attachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-  depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+  VkDescriptorSetAllocateInfo alloc_info = {};
 
-  CreateRenderPassType(device, swap_format, &render_pass, color_attachment, depth_attachment);
+  alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  alloc_info.descriptorPool = descriptor_pool;
+  alloc_info.descriptorSetCount = kMaxFramesInFlight;
+  alloc_info.pSetLayouts = layouts;
+
+  if (vkAllocateDescriptorSets(device, &alloc_info, descriptors.descriptors) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to allocate FontPipeline descriptor sets.");
+  }
+
+  return descriptors;
 }
 
 void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkExtent2D swap_extent) {
@@ -401,8 +400,8 @@ void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkE
   pipeline_info.pDepthStencilState = &depth_stencil;
   pipeline_info.pColorBlendState = &blend;
   pipeline_info.pDynamicState = nullptr;
-  pipeline_info.layout = pipeline.pipeline_layout;
-  pipeline_info.renderPass = render_pass;
+  pipeline_info.layout = this->layout.pipeline_layout;
+  pipeline_info.renderPass = render_pass->render_pass;
   pipeline_info.subpass = 0;
   pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
   pipeline_info.basePipelineIndex = -1;
@@ -415,59 +414,14 @@ void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkE
   vkDestroyShaderModule(device, frag_shader, nullptr);
 }
 
-void FontRenderer::CreateCommandBuffers(VulkanRenderer& renderer, VkDevice device, VkCommandPool command_pool) {
-  VkCommandBufferAllocateInfo alloc_info = {};
-
-  alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  alloc_info.commandPool = command_pool;
-  alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  alloc_info.commandBufferCount = polymer_array_count(command_buffers);
-
-  if (vkAllocateCommandBuffers(device, &alloc_info, command_buffers) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate command buffers.\n");
-  }
-}
-
 void FontRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool) {
-  VkBufferCreateInfo buffer_info = {};
-
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = sizeof(FontRenderUBO);
-  buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  VmaAllocationCreateInfo alloc_create_info = {};
-  alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-  alloc_create_info.flags = 0;
-
-  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    if (vmaCreateBuffer(renderer->allocator, &buffer_info, &alloc_create_info, uniform_buffers + i,
-                        uniform_allocations + i, nullptr) != VK_SUCCESS) {
-      printf("Failed to create FontRenderer uniform buffer.\n");
-    }
-  }
-
-  VkDescriptorSetLayout layouts[kMaxFramesInFlight];
-
-  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
-    layouts[i] = pipeline.descriptor_layout;
-  }
-
-  VkDescriptorSetAllocateInfo alloc_info = {};
-
-  alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  alloc_info.descriptorPool = descriptor_pool;
-  alloc_info.descriptorSetCount = kMaxFramesInFlight;
-  alloc_info.pSetLayouts = layouts;
-
-  if (vkAllocateDescriptorSets(device, &alloc_info, descriptors) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to allocate descriptor sets.");
-  }
+  uniform_buffer.Create(renderer->allocator, sizeof(FontRenderUBO));
+  descriptors = layout.CreateDescriptors(device, descriptor_pool);
 
   for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
     VkDescriptorBufferInfo buffer_info = {};
 
-    buffer_info.buffer = uniform_buffers[i];
+    buffer_info.buffer = uniform_buffer.uniform_buffers[i];
     buffer_info.offset = 0;
     buffer_info.range = sizeof(FontRenderUBO);
 
@@ -501,127 +455,82 @@ void FontRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descripto
   }
 }
 
-bool FontRenderer::BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t current_frame) {
-  VkPipelineLayout layout = pipeline.pipeline_layout;
+bool FontRenderer::BeginFrame(size_t current_frame) {
+  VkPipelineLayout layout = this->layout.pipeline_layout;
   VkDescriptorSet& descriptor = descriptors[current_frame];
 
   VkCommandBuffer command_buffer = command_buffers[current_frame];
 
+  VkCommandBufferInheritanceInfo inherit = {};
+  inherit.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+  inherit.renderPass = render_pass->render_pass;
+  inherit.framebuffer = render_pass->framebuffers.framebuffers[renderer->current_image];
+
   VkCommandBufferBeginInfo begin_info = {};
-
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = 0;
-  begin_info.pInheritanceInfo = nullptr;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+  begin_info.pInheritanceInfo = &inherit;
 
-  if (vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to begin recording command buffer.\n");
-    return false;
-  }
+  vkBeginCommandBuffer(command_buffer, &begin_info);
+  vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pipeline);
+  vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &descriptor, 0, nullptr);
 
-  VkClearValue clears[] = {{0.71f, 0.816f, 1.0f, 1.0f}, {1.0f, 0}};
+  push_buffer.vertex_count = 0;
 
-  render_pass_info.renderPass = render_pass;
-  render_pass_info.clearValueCount = 0;
-
-  vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-  {
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pipeline);
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &descriptor, 0, nullptr);
-  }
-
-  this->vertex_count = 0;
-
-  vmaMapMemory(allocator, buffer_alloc, &buffer_alloc_info.pMappedData);
+  vmaMapMemory(renderer->allocator, push_buffer.buffer_alloc, &push_buffer.buffer_alloc_info.pMappedData);
 
   return true;
 }
 
-VkSemaphore FontRenderer::SubmitCommands(VkDevice device, VkQueue graphics_queue, size_t current_frame,
-                                         VkSemaphore wait_semaphore) {
+void FontRenderer::Draw(VkCommandBuffer primary_buffer, size_t current_frame) {
   VkCommandBuffer command_buffer = command_buffers[current_frame];
 
-  if (vertex_count > 0) {
+  if (push_buffer.vertex_count > 0) {
     FontRenderUBO ubo;
     void* data = nullptr;
 
-    float width = (float)renderer->swap_extent.width;
-    float height = (float)renderer->swap_extent.height;
+    const VkExtent2D& extent = renderer->GetExtent();
+    float width = (float)extent.width;
+    float height = (float)extent.height;
     ubo.mvp = Orthographic(0, width, 0, height, -1.0f, 1.0f);
 
-    vmaMapMemory(allocator, uniform_allocations[renderer->current_frame], &data);
-    memcpy(data, &ubo, sizeof(FontRenderUBO));
-    vmaUnmapMemory(allocator, uniform_allocations[renderer->current_frame]);
+    uniform_buffer.Set(current_frame, &ubo, sizeof(ubo));
 
     VkDeviceSize offsets[] = {0};
 
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, &buffer, offsets);
-    vkCmdDraw(command_buffer, (u32)vertex_count, 1, 0, 0);
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, &push_buffer.buffer, offsets);
+    vkCmdDraw(command_buffer, (u32)push_buffer.vertex_count, 1, 0, 0);
   }
 
-  vkCmdEndRenderPass(command_buffer);
+  vkEndCommandBuffer(command_buffer);
+  vkCmdExecuteCommands(primary_buffer, 1, &command_buffer);
 
-  if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
-    fprintf(stderr, "Failed to record command buffer.\n");
-  }
-
-  {
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore waitSemaphores[] = {wait_semaphore};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = waitSemaphores;
-    submit_info.pWaitDstStageMask = waitStages;
-
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffer;
-
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = &finished_semaphores[current_frame];
-
-    if (vkQueueSubmit(graphics_queue, 1, &submit_info, (VkFence) nullptr) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to submit draw command buffer.\n");
-    }
-  }
-
-  vmaUnmapMemory(allocator, buffer_alloc);
-
-  return finished_semaphores[current_frame];
+  vmaUnmapMemory(renderer->allocator, push_buffer.buffer_alloc);
 }
 
-void FontRenderer::Destroy(VkDevice device, VkCommandPool command_pool) {
-  vkFreeCommandBuffers(device, command_pool, kMaxFramesInFlight, command_buffers);
+void FontRenderer::OnSwapchainCreate(MemoryArena& trans_arena, Swapchain& swapchain, VkDescriptorPool descriptor_pool) {
+  CreateDescriptors(swapchain.device, descriptor_pool);
+  CreatePipeline(trans_arena, swapchain.device, swapchain.extent);
 
+  VkCommandBufferAllocateInfo alloc_info = {};
+
+  alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  alloc_info.commandPool = renderer->command_pool;
+  alloc_info.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+  alloc_info.commandBufferCount = polymer_array_count(command_buffers);
+
+  vkAllocateCommandBuffers(swapchain.device, &alloc_info, command_buffers);
+}
+
+void FontRenderer::OnSwapchainDestroy(VkDevice device) {
   vkDestroyPipeline(device, render_pipeline, nullptr);
-  vkDestroyRenderPass(device, render_pass, nullptr);
-}
+  uniform_buffer.Destroy();
 
-void FontRenderer::CreateSyncObjects(VkDevice device) {
-  VkSemaphoreCreateInfo semaphore_info = {};
-
-  semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    if (vkCreateSemaphore(device, &semaphore_info, nullptr, finished_semaphores + i) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to create semaphore.\n");
-    }
-  }
-}
-
-void FontRenderer::CleanupSwapchain(VkDevice device) {
-  for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    vkDestroySemaphore(device, finished_semaphores[i], nullptr);
-  }
-
-  for (u32 i = 0; i < kMaxFramesInFlight; ++i) {
-    vmaDestroyBuffer(renderer->allocator, uniform_buffers[i], uniform_allocations[i]);
-  }
+  vkFreeCommandBuffers(device, renderer->command_pool, polymer_array_count(command_buffers), command_buffers);
 }
 
 void FontRenderer::CreateLayoutSet(VulkanRenderer& renderer, VkDevice device) {
-  pipeline.Create(device);
+  layout.Create(device);
 
   VkBufferCreateInfo buffer_info = {};
 
@@ -634,13 +543,12 @@ void FontRenderer::CreateLayoutSet(VulkanRenderer& renderer, VkDevice device) {
   alloc_create_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
   alloc_create_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-  if (vmaCreateBuffer(renderer.allocator, &buffer_info, &alloc_create_info, &buffer, &buffer_alloc,
-                      &buffer_alloc_info) != VK_SUCCESS) {
+  if (vmaCreateBuffer(renderer.allocator, &buffer_info, &alloc_create_info, &push_buffer.buffer,
+                      &push_buffer.buffer_alloc, &push_buffer.buffer_alloc_info) != VK_SUCCESS) {
     printf("Failed to create font buffer.\n");
   }
 
   this->renderer = &renderer;
-  this->allocator = renderer.allocator;
 }
 
 } // namespace render

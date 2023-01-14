@@ -213,9 +213,9 @@ int run() {
     printf("Asset time: %f\n", frame_time);
     fflush(stdout);
 
-    vk_render.chunk_renderer.block_textures = g_game->assets.block_assets->block_textures;
-    vk_render.font_renderer.glyph_page_texture = g_game->assets.glyph_page_texture;
-    vk_render.font_renderer.glyph_size_table = g_game->assets.glyph_size_table;
+    g_game->chunk_renderer.block_textures = g_game->assets.block_assets->block_textures;
+    g_game->font_renderer.glyph_page_texture = g_game->assets.glyph_page_texture;
+    g_game->font_renderer.glyph_size_table = g_game->assets.glyph_size_table;
 
     g_game->block_mesher.mapping.Initialize(g_game->block_registry);
   }
@@ -238,8 +238,8 @@ int run() {
 
   float frame_time = 0.0f;
 
-  vk_render.chunk_renderer.CreateLayoutSet(vk_render, vk_render.device);
-  vk_render.font_renderer.CreateLayoutSet(vk_render, vk_render.device);
+  g_game->chunk_renderer.CreateLayoutSet(vk_render, vk_render.device);
+  g_game->font_renderer.CreateLayoutSet(vk_render, vk_render.device);
   vk_render.RecreateSwapchain();
 
   ConnectResult connect_result = connection->Connect(kServerIp, kServerPort);
@@ -273,7 +273,7 @@ int run() {
 
   fflush(stdout);
 
-  DebugTextSystem debug(game->renderer->font_renderer);
+  DebugTextSystem debug(game->font_renderer);
 
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
@@ -287,7 +287,7 @@ int run() {
     }
 
     if (vk_render.BeginFrame()) {
-      int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
+      game->font_renderer.BeginFrame(vk_render.current_frame);
 
       game->Update(frame_time / 1000.0f, &g_input);
 
@@ -298,6 +298,7 @@ int run() {
 
       debug.color = Vector4f(1, 1, 1, 1);
 
+      int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
       debug.Write("fps: %d", fps);
       debug.Write("(%.02f, %.02f, %.02f)", g_game->camera.position.x, g_game->camera.position.y,
                   g_game->camera.position.z);
@@ -305,15 +306,17 @@ int run() {
       debug.Write("world tick: %u", game->world_tick);
 
 #if DISPLAY_PERF_STATS
-      debug.Write("chunks rendered: %u", g_game->stats.chunk_render_count);
+      debug.Write("chunks rendered: %u", g_game->chunk_renderer.stats.chunk_render_count);
 
       for (size_t i = 0; i < polymer::render::kRenderLayerCount; ++i) {
         const char* name = polymer::render::kRenderLayerNames[i];
 
-        debug.Write("%s vertices rendered: %llu", name, g_game->stats.vertex_counts[i]);
+        debug.Write("%s vertices rendered: %llu", name, g_game->chunk_renderer.stats.vertex_counts[i]);
       }
 #endif
 
+      game->font_renderer.Draw(game->command_buffers[vk_render.current_frame], vk_render.current_frame);
+      game->SubmitFrame();
       vk_render.Render();
     }
 
@@ -336,7 +339,10 @@ int run() {
   vkDeviceWaitIdle(vk_render.device);
   game->FreeMeshes();
 
-  vk_render.Cleanup();
+  game->font_renderer.Shutdown(vk_render.device);
+  game->chunk_renderer.Shutdown(vk_render.device);
+
+  vk_render.Shutdown();
 
   return 0;
 }

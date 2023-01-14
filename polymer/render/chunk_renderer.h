@@ -3,14 +3,18 @@
 
 #include <polymer/math.h>
 
-#define VK_USE_PLATFORM_WIN32_KHR
-#include <vulkan/vulkan.h>
-
-#include <polymer/render/vk_mem_alloc.h>
+#include <polymer/camera.h>
+#include <polymer/render/render.h>
 
 namespace polymer {
 
 struct MemoryArena;
+
+namespace world {
+
+struct World;
+
+} // namespace world
 
 namespace render {
 
@@ -27,7 +31,6 @@ constexpr size_t kRenderLayerCount = (size_t)RenderLayer::Count;
 extern const char* kRenderLayerNames[kRenderLayerCount];
 
 struct TextureArray;
-struct VulkanRenderer;
 
 struct ChunkRenderUBO {
   mat4 mvp;
@@ -45,102 +48,76 @@ struct ChunkVertex {
   u16 packed_uv;
 };
 
-struct BlockRenderer {
-  VkRenderPass render_pass;
-  VkPipeline pipeline;
-  VkCommandBuffer command_buffers[2];
-
-  VkDescriptorSet descriptors[2];
-
-  void CreateRenderPass(VkDevice device, VkFormat swap_format);
-};
-
-struct FloraRenderer {
-  VkRenderPass render_pass;
-  VkPipeline pipeline;
-
-  VkCommandBuffer command_buffers[2];
-  VkDescriptorSet descriptors[2];
-  VkSampler sampler;
-
-  void CreateRenderPass(VkDevice device, VkFormat swap_format);
-};
-
-struct LeafRenderer {
-  VkRenderPass render_pass;
-  VkPipeline pipeline;
-
-  VkCommandBuffer command_buffers[2];
-  VkDescriptorSet descriptors[2];
-  VkSampler sampler;
-
-  void CreateRenderPass(VkDevice device, VkFormat swap_format);
-};
-
-struct AlphaRenderer {
-  VkRenderPass render_pass;
-  VkPipeline pipeline;
-
-  VkCommandBuffer command_buffers[2];
-  VkDescriptorSet descriptors[2];
-
-  VkBuffer uniform_buffers[2];
-  VmaAllocation uniform_allocations[2];
-
-  void CreateRenderPass(VkDevice device, VkFormat swap_format);
-};
-
-struct ChunkRenderPipeline {
+struct ChunkRenderLayout {
   VkDescriptorSetLayout descriptor_layout;
   VkPipelineLayout pipeline_layout;
 
   bool Create(VkDevice device);
-  void Cleanup(VkDevice device);
+  void Shutdown(VkDevice device);
+
+  DescriptorSet CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool);
+};
+
+#define DISPLAY_PERF_STATS 1
+struct RenderStatistics {
+  u32 chunk_render_count;
+
+  u64 vertex_counts[render::kRenderLayerCount];
+
+  void Reset() {
+    chunk_render_count = 0;
+
+    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
+      vertex_counts[i] = 0;
+    }
+  }
+};
+
+struct ChunkFrameCommandBuffers {
+  VkCommandBuffer command_buffers[kRenderLayerCount];
 };
 
 struct ChunkRenderer {
   VulkanRenderer* renderer;
+  RenderPass* render_pass;
 
-  ChunkRenderPipeline pipeline;
+  ChunkRenderLayout layout;
+  VkPipeline pipelines[kRenderLayerCount];
+  DescriptorSet descriptor_sets[kRenderLayerCount];
 
-  VkBuffer uniform_buffers[2];
-  VmaAllocation uniform_allocations[2];
+  UniformBuffer opaque_ubo;
+  UniformBuffer alpha_ubo;
+
+  VkSampler flora_sampler;
+  VkSampler leaf_sampler;
+
+  ChunkFrameCommandBuffers frame_command_buffers[kMaxFramesInFlight];
 
   TextureArray* block_textures;
 
-  BlockRenderer block_renderer;
-  FloraRenderer flora_renderer;
-  LeafRenderer leaf_renderer;
-  AlphaRenderer alpha_renderer;
+#if DISPLAY_PERF_STATS
+  RenderStatistics stats;
+#endif
 
-  // TODO: Remove once skybox implemented
-  float sunlight;
-
-  VkSemaphore block_finished_semaphores[2];
-
-  bool BeginFrame(VkRenderPassBeginInfo render_pass_info, size_t current_frame);
-  VkSemaphore SubmitCommands(VkDevice device, VkQueue graphics_queue, size_t current_frame,
-                             VkSemaphore image_available_semaphore, VkFence frame_fence);
-
-  void CreateRenderPass(VkDevice device, VkFormat swap_format);
-  void CreatePipeline(MemoryArena& arena, VkDevice device, VkExtent2D swap_extent);
-  void CreateCommandBuffers(VkDevice device, VkCommandPool command_pool);
-
-  void CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool);
-
-  void Destroy(VkDevice device, VkCommandPool command_pool);
-
-  void CreateSyncObjects(VkDevice device);
-  void CleanupSwapchain(VkDevice device);
+  void Draw(VkCommandBuffer command_buffer, size_t current_frame, world::World& world, Camera& camera,
+            u32 animation_frame, float sunlight);
 
   void CreateLayoutSet(VulkanRenderer& renderer, VkDevice device) {
-    pipeline.Create(device);
+    layout.Create(device);
     this->renderer = &renderer;
   }
 
-  void Cleanup(VkDevice device) {
-    pipeline.Cleanup(device);
+  void OnSwapchainCreate(MemoryArena& trans_arena, Swapchain& swapchain, VkDescriptorPool descriptor_pool);
+  void OnSwapchainDestroy(VkDevice device);
+
+  void Shutdown(VkDevice device) {
+    layout.Shutdown(device);
   }
+
+private:
+  void CreateSamplers(VkDevice device);
+  void CreatePipeline(MemoryArena& arena, VkDevice device, VkExtent2D swap_extent);
+  void CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool);
 };
 
 } // namespace render

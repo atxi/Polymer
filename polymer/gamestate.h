@@ -5,7 +5,8 @@
 #include <polymer/camera.h>
 #include <polymer/connection.h>
 #include <polymer/render/block_mesher.h>
-#include <polymer/render/render.h>
+#include <polymer/render/chunk_renderer.h>
+#include <polymer/render/font_renderer.h>
 #include <polymer/types.h>
 #include <polymer/world/block.h>
 #include <polymer/world/dimension.h>
@@ -51,7 +52,7 @@ struct PlayerManager {
   void RemovePlayer(const String& uuid);
   Player* GetPlayerByUuid(const String& uuid);
 
-  void RenderPlayerList(render::VulkanRenderer& renderer);
+  void RenderPlayerList(render::FontRenderer& font_renderer);
 };
 
 // Temporary chat message display until a chat window is implemented.
@@ -72,29 +73,22 @@ struct ChatManager {
     chat_message_index = 0;
   }
 
-  void Update(render::VulkanRenderer& renderer, float dt);
+  void Update(render::FontRenderer& font_renderer, float dt);
   void PushMessage(const char* mesg, size_t mesg_size, float display_time);
-};
-
-#define DISPLAY_PERF_STATS 1
-struct PerformanceStatistics {
-  u32 chunk_render_count;
-
-  u64 vertex_counts[render::kRenderLayerCount];
-
-  void Reset() {
-    chunk_render_count = 0;
-
-    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
-      vertex_counts[i] = 0;
-    }
-  }
 };
 
 struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
+
   render::VulkanRenderer* renderer;
+  render::FontRenderer font_renderer;
+  render::ChunkRenderer chunk_renderer;
+
+  render::RenderPass render_pass;
+  // TODO: Clean this up
+  VkCommandBuffer command_buffers[2];
+
   asset::AssetSystem assets;
   world::DimensionCodec dimension_codec;
   world::DimensionType dimension;
@@ -111,10 +105,6 @@ struct GameState {
   float time_accumulator;
 
   u32 world_tick;
-
-#if DISPLAY_PERF_STATS
-  PerformanceStatistics stats;
-#endif
 
   render::ChunkBuildQueue build_queue;
   render::BlockMesher block_mesher;
@@ -138,7 +128,9 @@ struct GameState {
 
   void Update(float dt, InputState* input);
   void ProcessMovement(float dt, InputState* input);
-  void RenderFrame();
+
+  void SubmitFrame();
+
   void ProcessBuildQueue();
 
   void FreeMeshes();
