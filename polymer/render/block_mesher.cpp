@@ -262,6 +262,7 @@ struct FaceMesh {
   Vector2f tr_uv;
 
   bool uvlock;
+  bool reduced_ao = false;
 
   inline void PerformRotation(float angle, const Vector3f& axis, const Vector3f& origin) {
     bl_pos = Rotate(bl_pos - origin, angle, axis) + origin;
@@ -395,7 +396,13 @@ struct FaceMesh {
       models[i] = &registry.states[bid].model;
     }
 
-    return GetAmbientOcclusion(models[0], models[1], models[2]);
+    int result = GetAmbientOcclusion(models[0], models[1], models[2]);
+
+    if (reduced_ao && result < 3) {
+      ++result;
+    }
+
+    return result;
   }
 
   inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel* corner) {
@@ -812,6 +819,17 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
           {Vector3f(1, 1, 0), Vector3f(0, 1, 1), Vector3f(1, 1, 1)},
           Vector3f(0, 1, 0),
       };
+
+      if (mesher.mapping.dirt_path_range.Contains(bid)) {
+        face_mesh.reduced_ao = true;
+
+        for (size_t i = 0; i < 3; ++i) {
+          face_mesh.bl_lookups[i].y -= 1;
+          face_mesh.br_lookups[i].y -= 1;
+          face_mesh.tl_lookups[i].y -= 1;
+          face_mesh.tr_lookups[i].y -= 1;
+        }
+      }
 
       face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos, BlockFace::Up);
     }

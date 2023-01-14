@@ -144,6 +144,7 @@ struct BlockMesherMapping {
   world::BlockIdRange lily_pad_range;
   world::BlockIdRange cave_air_range;
   world::BlockIdRange void_air_range;
+  world::BlockIdRange dirt_path_range;
 
   void Initialize(world::BlockRegistry& registry) {
     Load(registry, POLY_STR("minecraft:water"), &water_range);
@@ -154,6 +155,7 @@ struct BlockMesherMapping {
     Load(registry, POLY_STR("minecraft:lily_pad"), &lily_pad_range);
     Load(registry, POLY_STR("minecraft:cave_air"), &cave_air_range);
     Load(registry, POLY_STR("minecraft:void_air"), &void_air_range);
+    Load(registry, POLY_STR("minecraft:dirt_path"), &dirt_path_range);
   }
 
 private:
