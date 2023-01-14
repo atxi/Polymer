@@ -34,6 +34,7 @@ struct TextureArray;
 
 struct ChunkRenderUBO {
   mat4 mvp;
+  Vector4f camera;
   u32 frame;
   float sunlight;
   u32 alpha_discard;

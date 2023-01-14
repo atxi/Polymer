@@ -456,6 +456,7 @@ void ChunkRenderer::Draw(VkCommandBuffer command_buffer, size_t current_frame, w
   void* data = nullptr;
 
   ubo.mvp = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+  ubo.camera = Vector4f(camera.position, 0);
   ubo.frame = animation_frame;
   ubo.sunlight = sunlight;
   ubo.alpha_discard = true;

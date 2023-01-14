@@ -3,6 +3,7 @@
 
 layout(binding = 0) uniform UniformBufferObject {
   mat4 mvp;
+  vec4 camera;
   uint frame;
   float sunlight;
   uint alpha_discard;

@@ -59,7 +59,7 @@ struct PushContext {
 };
 
 inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u16 light,
-                      bool shaded_axis = false) {
+                      u32 axis_data = 0) {
   render::ChunkVertex* vertex =
       (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->Allocate(sizeof(render::ChunkVertex), 1);
 
@@ -74,7 +74,7 @@ inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f
 
   u8 packed_anim = (ctx.anim_repeat << 7) | (u8)face->frame_count;
   u8 tintindex = (u8)face->tintindex;
-  light |= (shaded_axis << 15);
+  light |= (axis_data << 14);
 
   vertex->packed_light = (packed_anim << 24) | (tintindex << 16) | light;
 
@@ -574,7 +574,7 @@ struct FaceMesh {
     tl = obl;
   }
 
-  void CalculateUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
+  BlockFace CalculateUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
     int angle_x = element.variant_rotation.x;
     int angle_y = element.variant_rotation.y;
 
@@ -628,8 +628,8 @@ struct FaceMesh {
         Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y180
         Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y270
 
-        Rotate90,  Rotate90, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y0
-        Rotate90,  Rotate90, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y90
+        Rotate90,  Rotate90,  Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y0
+        Rotate90,  Rotate90,  Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y90
         Rotate0,   Rotate90,  Rotate0,   Rotate180, Rotate270, Rotate90,  // X90   Y180
         Rotate0,   Rotate90,  Rotate270, Rotate270, Rotate270, Rotate90,  // X90   Y270
 
@@ -671,6 +671,8 @@ struct FaceMesh {
 
       kFaceRotators[rot_index](rotated, from, to, bl_uv, br_uv, tl_uv, tr_uv, false);
     }
+
+    return rotated;
   }
 
   void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
@@ -684,14 +686,14 @@ struct FaceMesh {
     SetPositions(element->from, element->to, direction);
 
     RotateFace(*model, *element, chunk_base + relative_base);
+    BlockFace rotated_face = CalculateUVs(*element, *face, direction);
 
     int ele_ao_bl = 3;
     int ele_ao_br = 3;
     int ele_ao_tl = 3;
     int ele_ao_tr = 3;
 
-    bool shaded_axis =
-        this->direction.y < -0.5f || (fabsf(this->direction.x) > 0.5f && fabsf(this->direction.z) < 0.5f);
+    u32 axis_data = this->direction.y < -0.5f || (fabsf(this->direction.x) > 0.5f && fabsf(this->direction.z) < 0.5f);
 
     if (model->ambient_occlusion) {
       ele_ao_bl = GetAmbientOcclusion(registry, *bordered_chunk, relative_base, bl_lookups);
@@ -710,6 +712,11 @@ struct FaceMesh {
       ele_ao_br |= (l_br << 2);
       ele_ao_tl |= (l_tl << 2);
       ele_ao_tr |= (l_tr << 2);
+
+      // Set the plane as shadeable so it varies shading by height difference.
+      if (!model->has_leaves && (size_t)rotated_face >= (size_t)BlockFace::North) {
+        axis_data |= (1 << 1);
+      }
     } else {
       u32 shared_light = CalculateSharedLight(bordered_chunk, relative_base);
 
@@ -717,10 +724,8 @@ struct FaceMesh {
       ele_ao_br |= (shared_light << 2);
       ele_ao_tl |= (shared_light << 2);
       ele_ao_tr |= (shared_light << 2);
-      shaded_axis = false;
+      axis_data = 0;
     }
-
-    CalculateUVs(*element, *face, direction);
 
     if (face->random_flip) {
       u32 world_x = (u32)(chunk_base.x + relative_base.x);
@@ -730,10 +735,10 @@ struct FaceMesh {
       RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
     }
 
-    u16 bli = PushVertex(context, bl_pos, bl_uv, face, ele_ao_bl, shaded_axis);
-    u16 bri = PushVertex(context, br_pos, br_uv, face, ele_ao_br, shaded_axis);
-    u16 tri = PushVertex(context, tr_pos, tr_uv, face, ele_ao_tr, shaded_axis);
-    u16 tli = PushVertex(context, tl_pos, tl_uv, face, ele_ao_tl, shaded_axis);
+    u16 bli = PushVertex(context, bl_pos, bl_uv, face, ele_ao_bl, axis_data);
+    u16 bri = PushVertex(context, br_pos, br_uv, face, ele_ao_br, axis_data);
+    u16 tri = PushVertex(context, tr_pos, tr_uv, face, ele_ao_tr, axis_data);
+    u16 tli = PushVertex(context, tl_pos, tl_uv, face, ele_ao_tl, axis_data);
 
     PushIndex(context, face->render_layer, bli);
     PushIndex(context, face->render_layer, bri);

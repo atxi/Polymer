@@ -3,6 +3,7 @@
 
 layout(binding = 0) uniform UniformBufferObject {
   mat4 mvp;
+  vec4 camera;
   uint frame;
   float sunlight;
   uint alpha_discard;
@@ -90,7 +91,15 @@ void main() {
   float blocklight_percent = blocklight_value / 60.0;
   float light_intensity = max(blocklight_percent, skylight_percent) * 0.85 + 0.15;
 
-  uint shaded_axis = (inPackedLight >> 15) & 1;
+  uint shaded_axis = (inPackedLight >> 14) & 1;
+  uint vertical_face = (inPackedLight >> 15) & 1;
+
+  // Vary shading of vertical faces by difference between camera and the vertex.
+  if (vertical_face > 0) {
+      float height_difference = (ubo.camera.y - inPosition.y);
+      float shading_modifier = max((abs(height_difference) / 15.0), 1.0);
+      light_intensity *= max(1.0 - shading_modifier, 0.8);
+  }
 
   light_intensity *= 1.0 - (shaded_axis * 0.2);
 
