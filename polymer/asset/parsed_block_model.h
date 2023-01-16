@@ -30,6 +30,9 @@ struct ParsedRenderableFace {
   char texture_name[64];
   size_t texture_name_size;
 
+  u32 texture_id;
+  u32 frame_count;
+
   struct {
     u32 custom_uv : 1;
     u32 render : 1;

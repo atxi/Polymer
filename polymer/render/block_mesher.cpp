@@ -4,6 +4,7 @@
 #include <polymer/world/block.h>
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 
 using polymer::world::BlockElement;
@@ -110,7 +111,7 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
 
   // TODO: Clean this up once rotation is settled.
   if (to->element_count == 0) return false;
-  if (from->has_rotation || to->has_rotation || from->has_variant_rotation || to->has_variant_rotation) return false;
+  if (from->has_variant_rotation || to->has_variant_rotation) return false;
   if (to->has_leaves || !to->has_shaded) return false;
 
   for (size_t i = 0; i < from->element_count; ++i) {
@@ -244,11 +245,6 @@ inline u32 CalculateVertexLight(BorderedChunk* bordered_chunk, size_t* indices, 
 }
 
 struct FaceMesh {
-  Vector3f bl_lookups[3];
-  Vector3f br_lookups[3];
-  Vector3f tl_lookups[3];
-  Vector3f tr_lookups[3];
-
   Vector3f direction;
 
   Vector3f bl_pos;
@@ -264,101 +260,22 @@ struct FaceMesh {
   bool uvlock;
   bool reduced_ao = false;
 
-  inline void PerformRotation(float angle, const Vector3f& axis, const Vector3f& origin) {
-    bl_pos = Rotate(bl_pos - origin, angle, axis) + origin;
-    br_pos = Rotate(br_pos - origin, angle, axis) + origin;
-    tl_pos = Rotate(tl_pos - origin, angle, axis) + origin;
-    tr_pos = Rotate(tr_pos - origin, angle, axis) + origin;
-
-    this->direction = Rotate(this->direction, angle, axis);
-
-    for (size_t i = 0; i < 3; ++i) {
-      bl_lookups[i] = Rotate(bl_lookups[i], angle, axis);
-      br_lookups[i] = Rotate(br_lookups[i], angle, axis);
-      tl_lookups[i] = Rotate(tl_lookups[i], angle, axis);
-      tr_lookups[i] = Rotate(tr_lookups[i], angle, axis);
-    }
-  }
-
-  void RotateFace(const BlockModel& model, const BlockElement& element, const Vector3f& base) {
-    Vector3f ele_axis = element.rotation.axis;
-    Vector3f ele_origin = element.rotation.origin;
-
-    // Rotate the elements by the variant rotation before rotating the actual elements
-    if (model.has_variant_rotation) {
-      Vector3f origin(0.5f, 0.5f, 0.5f);
-
-      if (element.variant_rotation.x) {
-        float angle = Radians((float)element.variant_rotation.x);
-        Vector3f axis(1, 0, 0);
-
-        PerformRotation(angle, axis, origin);
-
-        ele_axis = Rotate(ele_axis, angle, axis);
-        ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
-      }
-
-      if (element.variant_rotation.y) {
-        float angle = -Radians((float)element.variant_rotation.y);
-        Vector3f axis(0, 1, 0);
-
-        PerformRotation(angle, axis, origin);
-
-        ele_axis = Rotate(ele_axis, angle, axis);
-        ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
-      }
-
-      if (element.variant_rotation.z) {
-        float angle = Radians((float)element.variant_rotation.z);
-        Vector3f axis(0, 0, 1);
-
-        PerformRotation(angle, axis, origin);
-
-        ele_axis = Rotate(ele_axis, angle, axis);
-        ele_origin = Rotate(ele_origin - origin, angle, axis) + origin;
-      }
-    }
-
-    if (element.rotation.angle != 0.0f) {
-      float angle = Radians((float)element.rotation.angle);
-
-      bl_pos = Rotate(bl_pos - ele_origin, angle, ele_axis) + ele_origin;
-      br_pos = Rotate(br_pos - ele_origin, angle, ele_axis) + ele_origin;
-      tl_pos = Rotate(tl_pos - ele_origin, angle, ele_axis) + ele_origin;
-      tr_pos = Rotate(tr_pos - ele_origin, angle, ele_axis) + ele_origin;
-
-      this->direction = Rotate(this->direction, angle, ele_axis);
-
-      for (size_t i = 0; i < 3; ++i) {
-        bl_lookups[i] = Rotate(bl_lookups[i], angle, ele_axis);
-        br_lookups[i] = Rotate(br_lookups[i], angle, ele_axis);
-        tl_lookups[i] = Rotate(tl_lookups[i], angle, ele_axis);
-        tr_lookups[i] = Rotate(tr_lookups[i], angle, ele_axis);
-      }
-    }
-
-    bl_pos += base;
-    br_pos += base;
-    tl_pos += base;
-    tr_pos += base;
-  }
-
   inline size_t GetIndex(Vector3f lookup) {
     int x = (int)floorf(lookup.x);
     int y = (int)floorf(lookup.y);
     int z = (int)floorf(lookup.z);
 
-    if (x < -1) ++x;
-    if (y < -1) ++y;
-    if (z < -1) ++z;
+    if (x < -1) x = -1;
+    if (y < -1) y = -1;
+    if (z < -1) z = -1;
 
-    if (x > 17) --x;
-    if (y > 17) --y;
-    if (z > 17) --z;
+    if (x > 16) x = 16;
+    if (y > 16) y = 16;
+    if (z > 16) z = 16;
 
-    assert(x >= -1 && x <= 17);
-    assert(y >= -1 && y <= 17);
-    assert(z >= -1 && z <= 17);
+    assert(x >= -1 && x <= 16);
+    assert(y >= -1 && y <= 16);
+    assert(z >= -1 && z <= 16);
 
     return (y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1);
   }
@@ -386,12 +303,15 @@ struct FaceMesh {
     return shared_light;
   }
 
+  // TODO: Point inclusion tests for the corner lookup
   inline int GetAmbientOcclusion(BlockRegistry& registry, BorderedChunk& bordered_chunk, const Vector3f& relative_pos,
                                  Vector3f* lookups) {
     BlockModel* models[3];
 
     for (size_t i = 0; i < 3; ++i) {
-      size_t index = GetIndex(relative_pos + Vector3f(0.5f, 0.5f, 0.5f) + lookups[i]);
+      size_t index = GetIndex(relative_pos + lookups[i]);
+      assert(index < polymer_array_count(bordered_chunk.blocks));
+
       u32 bid = bordered_chunk.blocks[index];
       models[i] = &registry.states[bid].model;
     }
@@ -406,9 +326,9 @@ struct FaceMesh {
   }
 
   inline int GetAmbientOcclusion(BlockModel* side1, BlockModel* side2, BlockModel* corner) {
-    int value1 = side1->HasOccluding() && !side1->has_glass && !side1->has_variant_rotation;
-    int value2 = side2->HasOccluding() && !side2->has_glass && !side2->has_variant_rotation;
-    int value_corner = corner->HasOccluding() && !corner->has_glass && !corner->has_variant_rotation;
+    int value1 = side1->HasOccluding() && !side1->has_glass;
+    int value2 = side2->HasOccluding() && !side2->has_glass;
+    int value_corner = corner->HasOccluding() && !corner->has_glass;
 
     if (value1 && value2) {
       return 0;
@@ -417,7 +337,16 @@ struct FaceMesh {
     return 3 - (value1 + value2 + value_corner);
   }
 
-  inline void SetPositions(const Vector3f& from, const Vector3f& to, BlockFace direction) {
+  inline void SetPositions(RenderableFace* face, const Vector3f& from, const Vector3f& to, BlockFace direction) {
+
+    if (face->quad) {
+      bl_pos = face->quad->bl_pos;
+      br_pos = face->quad->br_pos;
+      tl_pos = face->quad->tl_pos;
+      tr_pos = face->quad->tr_pos;
+      return;
+    }
+
     switch (direction) {
     case BlockFace::Down: {
       bl_pos = Vector3f(to.x, from.y, from.z);
@@ -500,186 +429,20 @@ struct FaceMesh {
     }
   }
 
-  inline static void Rotate0(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                             Vector2f& tl, Vector2f& tr, bool set_uvs) {
-    if (set_uvs) {
-      SetUVs(from, to, direction, bl, br, tl, tr);
+  void ComputeLookups(const Vector3f& vertex_pos, const Vector3f& pos2, Vector3f* lookups) {
+    Vector3f side1 = Normalize(vertex_pos - pos2);
+    Vector3f side2 = Normalize(Cross(direction, side1));
+    Vector3f corner = side1 + side2;
+
+    lookups[0] = side1 + direction;
+    lookups[1] = side2 + direction;
+    lookups[2] = corner + direction;
+
+    if (reduced_ao) {
+      for (size_t i = 0; i < 3; ++i) {
+        lookups[i].y -= 1;
+      }
     }
-  }
-
-  inline static void Rotate90(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                              Vector2f& tl, Vector2f& tr, bool set_uvs) {
-    if (set_uvs) {
-      float temp = from.x;
-
-      from.x = 1.0f - from.y;
-      from.y = to.x;
-      to.x = 1.0f - to.y;
-      to.y = temp;
-
-      Vector2f t = to;
-      to = from;
-      from = t;
-
-      SetUVs(from, to, direction, bl, br, tl, tr);
-    }
-
-    Vector2f obl = bl;
-
-    bl = tl;
-    tl = tr;
-    tr = br;
-    br = obl;
-  }
-
-  inline static void Rotate180(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                               Vector2f& tl, Vector2f& tr, bool set_uvs) {
-    if (set_uvs) {
-      from.x = 1.0f - from.x;
-      from.y = 1.0f - from.y;
-      to.x = 1.0f - to.x;
-      to.y = 1.0f - to.y;
-
-      SetUVs(from, to, direction, bl, br, tl, tr);
-    }
-  }
-
-  inline static void Rotate270(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                               Vector2f& tl, Vector2f& tr, bool set_uvs) {
-    if (set_uvs) {
-      from.x = 1.0f - from.x;
-      from.y = 1.0f - from.y;
-      to.x = 1.0f - to.x;
-      to.y = 1.0f - to.y;
-    }
-
-    Rotate90(direction, from, to, bl, br, tl, tr, set_uvs);
-  }
-
-  inline static void Rotate270_f(BlockFace direction, Vector2f& from, Vector2f& to, Vector2f& bl, Vector2f& br,
-                                 Vector2f& tl, Vector2f& tr, bool set_uvs) {
-    if (set_uvs) {
-      float temp = from.x;
-
-      from.x = 1.0f - from.y;
-      from.y = to.x;
-      to.x = 1.0f - to.y;
-      to.y = temp;
-
-      Vector2f t = to;
-      to = from;
-      from = t;
-
-      SetUVs(from, to, direction, bl, br, tl, tr);
-    }
-
-    Vector2f obl = bl;
-
-    bl = br;
-    br = tr;
-    tr = tl;
-    tl = obl;
-  }
-
-  BlockFace CalculateUVs(BlockElement& element, RenderableFace& face, BlockFace direction) {
-    int angle_x = element.variant_rotation.x;
-    int angle_y = element.variant_rotation.y;
-
-    if (element.rotation.axis.x > 0) {
-      angle_x += element.rotation.angle;
-    } else if (element.rotation.axis.y > 0) {
-      angle_y += element.rotation.angle;
-    }
-
-    if (angle_x < 0) angle_x += 360;
-    if (angle_y < 0) angle_y += 360;
-    if (angle_x >= 360) angle_x -= 360;
-    if (angle_y >= 360) angle_y -= 360;
-
-    int x_index = angle_x / 90;
-    int y_index = angle_y / 90;
-
-    size_t index = x_index * 6 * 4 + y_index * 6 + (size_t)direction;
-
-    typedef void (*RotateFunc)(BlockFace, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&, Vector2f&, bool);
-
-    // Lookup table sorted by x, y, face for calculating locked uvs.
-    // TODO: Most of these need to be verified
-    static const RotateFunc kLockedRotators[] = {
-        // Down    Up         North      South      West       East
-        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y0
-        Rotate270, Rotate90,  Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y90
-        Rotate180, Rotate180, Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y180
-        Rotate90,  Rotate270, Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y270
-
-        Rotate90,  Rotate180, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y0
-        Rotate90,  Rotate180, Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y90
-        Rotate0,   Rotate90,  Rotate0,   Rotate180, Rotate270, Rotate90,  // X90   Y180
-        Rotate0,   Rotate90,  Rotate270, Rotate270, Rotate270, Rotate90,  // X90   Y270
-
-        Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y0
-        Rotate90,  Rotate270, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y90
-        Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y180
-        Rotate270, Rotate90,  Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y270
-
-        Rotate180, Rotate0,   Rotate180, Rotate0,   Rotate90,  Rotate270, // X270 Y0
-        Rotate180, Rotate0,   Rotate270, Rotate270, Rotate90,  Rotate270, // X270 Y90
-        Rotate180, Rotate0,   Rotate0,   Rotate180, Rotate90,  Rotate270, // X270 Y180
-        Rotate180, Rotate0,   Rotate90,  Rotate90,  Rotate90,  Rotate270, // X270 Y270
-    };
-
-    static const RotateFunc kRotators[] = {
-        // Down    Up         North      South      West       East
-        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y0
-        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y90
-        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y180
-        Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0,   Rotate0, // X0     Y270
-
-        Rotate90,  Rotate90,  Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y0
-        Rotate90,  Rotate90,  Rotate90,  Rotate270, Rotate180, Rotate180, // X90   Y90
-        Rotate0,   Rotate90,  Rotate0,   Rotate180, Rotate270, Rotate90,  // X90   Y180
-        Rotate0,   Rotate90,  Rotate270, Rotate270, Rotate270, Rotate90,  // X90   Y270
-
-        Rotate0,   Rotate0,   Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y0
-        Rotate90,  Rotate270, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y90
-        Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y180
-        Rotate270, Rotate90,  Rotate180, Rotate180, Rotate180, Rotate180, // X180 Y270
-
-        Rotate180, Rotate0,   Rotate180, Rotate0,   Rotate90,  Rotate270, // X270 Y0
-        Rotate180, Rotate0,   Rotate270, Rotate270, Rotate90,  Rotate270, // X270 Y90
-        Rotate180, Rotate0,   Rotate0,   Rotate180, Rotate90,  Rotate270, // X270 Y180
-        Rotate180, Rotate0,   Rotate90,  Rotate90,  Rotate90,  Rotate270, // X270 Y270
-    };
-
-    Vector2f from = face.uv_from;
-    Vector2f to = face.uv_to;
-
-    BlockFace rotated = direction;
-
-    if (uvlock) {
-      kLockedRotators[index](direction, from, to, bl_uv, br_uv, tl_uv, tr_uv, true);
-    } else {
-      rotated = GetDirectionFace(this->direction);
-
-      kRotators[index](rotated, from, to, bl_uv, br_uv, tl_uv, tr_uv, true);
-    }
-
-    if (face.rotation > 0) {
-      static const RotateFunc kFaceRotators[] = {
-          // Down    Up         North      South      West       East
-          Rotate0,   Rotate0,   Rotate0,     Rotate0,     Rotate0,     Rotate0,     // Rot0
-          Rotate90,  Rotate90,  Rotate270_f, Rotate270_f, Rotate270_f, Rotate270_f, // Rot90
-          Rotate180, Rotate180, Rotate180,   Rotate180,   Rotate180,   Rotate180,   // Rot180
-          Rotate270, Rotate270, Rotate90,    Rotate90,    Rotate90,    Rotate90,    // Rot270
-      };
-
-      size_t rot_index = (face.rotation / 90) * 6 + (size_t)rotated;
-      assert(rot_index < polymer_array_count(kFaceRotators));
-
-      kFaceRotators[rot_index](rotated, from, to, bl_uv, br_uv, tl_uv, tr_uv, false);
-    }
-
-    return rotated;
   }
 
   void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
@@ -688,12 +451,31 @@ struct FaceMesh {
 
     if (!face->render) return;
 
-    this->uvlock = element->rotation.uvlock;
+    SetPositions(face, element->from, element->to, direction);
 
-    SetPositions(element->from, element->to, direction);
+    bl_pos += chunk_base + relative_base;
+    br_pos += chunk_base + relative_base;
+    tl_pos += chunk_base + relative_base;
+    tr_pos += chunk_base + relative_base;
 
-    RotateFace(*model, *element, chunk_base + relative_base);
-    BlockFace rotated_face = CalculateUVs(*element, *face, direction);
+    if (face->quad) {
+      bl_uv = face->quad->bl_uv;
+      br_uv = face->quad->br_uv;
+      tl_uv = face->quad->tl_uv;
+      tr_uv = face->quad->tr_uv;
+    } else {
+      SetUVs(face->uv_from, face->uv_to, direction, bl_uv, br_uv, tl_uv, tr_uv);
+    }
+
+    Vector3f bl_lookups[3];
+    Vector3f br_lookups[3];
+    Vector3f tl_lookups[3];
+    Vector3f tr_lookups[3];
+
+    ComputeLookups(bl_pos, br_pos, bl_lookups);
+    ComputeLookups(br_pos, tr_pos, br_lookups);
+    ComputeLookups(tl_pos, bl_pos, tl_lookups);
+    ComputeLookups(tr_pos, tl_pos, tr_lookups);
 
     int ele_ao_bl = 3;
     int ele_ao_br = 3;
@@ -721,7 +503,7 @@ struct FaceMesh {
       ele_ao_tr |= (l_tr << 2);
 
       // Set the plane as shadeable so it varies shading by height difference.
-      if (!model->has_leaves && (size_t)rotated_face >= (size_t)BlockFace::North) {
+      if (!model->has_leaves && (size_t)direction >= (size_t)BlockFace::North) {
         axis_data |= (1 << 1);
       }
     } else {
@@ -813,22 +595,11 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
       BlockElement* element = model->elements + i;
 
       FaceMesh face_mesh = {
-          {Vector3f(-1, 1, 0), Vector3f(0, 1, -1), Vector3f(-1, 1, -1)},
-          {Vector3f(-1, 1, 0), Vector3f(0, 1, 1), Vector3f(-1, 1, 1)},
-          {Vector3f(1, 1, 0), Vector3f(0, 1, -1), Vector3f(1, 1, -1)},
-          {Vector3f(1, 1, 0), Vector3f(0, 1, 1), Vector3f(1, 1, 1)},
           Vector3f(0, 1, 0),
       };
 
       if (mesher.mapping.dirt_path_range.Contains(bid)) {
         face_mesh.reduced_ao = true;
-
-        for (size_t i = 0; i < 3; ++i) {
-          face_mesh.bl_lookups[i].y -= 1;
-          face_mesh.br_lookups[i].y -= 1;
-          face_mesh.tl_lookups[i].y -= 1;
-          face_mesh.tr_lookups[i].y -= 1;
-        }
       }
 
       face_mesh.Mesh(block_registry, bordered_chunk, context, model, element, chunk_base, relative_pos, BlockFace::Up);
@@ -839,10 +610,6 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
       FaceMesh face_mesh = {
-          {Vector3f(0, -1, -1), Vector3f(1, -1, 0), Vector3f(1, -1, -1)},
-          {Vector3f(0, -1, 1), Vector3f(1, -1, 0), Vector3f(1, -1, 1)},
-          {Vector3f(0, -1, -1), Vector3f(-1, -1, 0), Vector3f(-1, -1, -1)},
-          {Vector3f(0, -1, 1), Vector3f(-1, -1, 0), Vector3f(-1, -1, 1)},
           Vector3f(0, -1, 0),
       };
 
@@ -855,10 +622,6 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
       FaceMesh face_mesh = {
-          {Vector3f(1, 0, -1), Vector3f(0, -1, -1), Vector3f(1, -1, -1)},
-          {Vector3f(-1, 0, -1), Vector3f(0, -1, -1), Vector3f(-1, -1, -1)},
-          {Vector3f(1, 0, -1), Vector3f(0, 1, -1), Vector3f(1, 1, -1)},
-          {Vector3f(-1, 0, -1), Vector3f(0, 1, -1), Vector3f(-1, 1, -1)},
           Vector3f(0, 0, -1),
       };
 
@@ -871,12 +634,6 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
       FaceMesh face_mesh = {
-          {Vector3f(-1, 0, 1), Vector3f(0, -1, 1), Vector3f(-1, -1, 1)},
-          {Vector3f(1, 0, 1), Vector3f(0, -1, 1), Vector3f(1, -1, 1)},
-
-          {Vector3f(-1, 0, 1), Vector3f(0, 1, 1), Vector3f(-1, 1, 1)},
-          {Vector3f(1, 0, 1), Vector3f(0, 1, 1), Vector3f(1, 1, 1)},
-
           Vector3f(0, 0, 1),
       };
 
@@ -889,12 +646,6 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
       FaceMesh face_mesh = {
-          {Vector3f(-1, -1, 0), Vector3f(-1, 0, -1), Vector3f(-1, -1, -1)},
-          {Vector3f(-1, -1, 0), Vector3f(-1, 0, 1), Vector3f(-1, -1, 1)},
-
-          {Vector3f(-1, 1, 0), Vector3f(-1, 0, -1), Vector3f(-1, 1, -1)},
-          {Vector3f(-1, 1, 0), Vector3f(-1, 0, 1), Vector3f(-1, 1, 1)},
-
           Vector3f(-1, 0, 0),
       };
 
@@ -907,12 +658,6 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     for (size_t i = 0; i < model->element_count; ++i) {
       BlockElement* element = model->elements + i;
       FaceMesh face_mesh = {
-          {Vector3f(1, 0, 1), Vector3f(1, -1, 0), Vector3f(1, -1, 1)},
-          {Vector3f(1, -1, 0), Vector3f(1, 0, -1), Vector3f(1, -1, -1)},
-
-          {Vector3f(1, 1, 0), Vector3f(1, 0, 1), Vector3f(1, 1, 1)},
-          {Vector3f(1, 1, 0), Vector3f(1, 0, -1), Vector3f(1, 1, -1)},
-
           Vector3f(1, 0, 0),
       };
 

@@ -42,7 +42,7 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
     perm_arena.Destroy();
   }
 
-  perm_arena = CreateArena(Megabytes(128));
+  perm_arena = CreateArena(Megabytes(256));
 
   MemoryArena trans_arena = CreateArena(Megabytes(128));
   BlockAssetLoader block_loader(perm_arena, trans_arena);

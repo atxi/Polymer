@@ -29,14 +29,24 @@ inline BlockFace GetOppositeFace(BlockFace face) {
   return BlockFace::Down;
 }
 
+struct FaceQuad {
+  Vector3f bl_pos;
+  Vector3f br_pos;
+  Vector3f tl_pos;
+  Vector3f tr_pos;
+
+  Vector2f bl_uv;
+  Vector2f br_uv;
+  Vector2f tl_uv;
+  Vector2f tr_uv;
+};
+
 struct RenderableFace {
   Vector2f uv_from;
   Vector2f uv_to;
-
-  int rotation;
+  FaceQuad* quad;
 
   u32 texture_id;
-  u32 frame_count;
 
   struct {
     u32 render : 1;
@@ -44,7 +54,7 @@ struct RenderableFace {
     u32 cullface : 3;
     u32 render_layer : 3;
     u32 random_flip : 1;
-    u32 padding : 7;
+    u32 frame_count : 7;
     u32 tintindex : 16;
   };
 };
@@ -63,9 +73,6 @@ struct BlockElement {
   RenderableFace faces[6];
   Vector3f from;
   Vector3f to;
-
-  Vector3i variant_rotation;
-  ElementRotation rotation;
 
   struct {
     u32 occluding : 1;
@@ -88,10 +95,9 @@ struct BlockModel {
   u32 has_shaded : 1;
   u32 has_leaves : 1;
   u32 has_glass : 1;
-  u32 has_rotation : 1;
   u32 has_variant_rotation : 1;
   u32 ambient_occlusion : 1;
-  u32 padding : 24;
+  u32 padding : 25;
 
   inline bool HasOccluding() const {
     return has_occluding;
