@@ -163,7 +163,6 @@ Face RotateFace(const ParsedBlockElement& element, const ParsedRenderableFace& p
         face.br_pos.z *= scale;
         face.tl_pos.z *= scale;
         face.tr_pos.z *= scale;
-
       } else if (fabsf(element.rotation.axis.y) >= 0.5f) {
         face.bl_pos.x *= scale;
         face.br_pos.x *= scale;

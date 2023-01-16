@@ -445,6 +445,22 @@ struct FaceMesh {
     }
   }
 
+  inline Vector3f GetRandomOffset(const Vector3f& p) {
+    int x = (int)floorf(p.x);
+    int y = 0;
+    int z = (int)floorf(p.z);
+
+    s64 index = ((s64)x * 3129871) ^ ((s64)z * 116129781L) ^ (s64)y;
+    index = index * index * 42317861L + index * 11L;
+
+    s64 x_rand = (index >> 16) & 15L;
+    s64 z_rand = (index >> 24) & 15L;
+    float x_offset = ((x_rand / 15.0f) - 0.5f) * 0.5f;
+    float z_offset = ((z_rand / 15.0f) - 0.5f) * 0.5f;
+
+    return Vector3f(x_offset, 0.0f, z_offset);
+  }
+
   void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
             BlockElement* element, const Vector3f& chunk_base, const Vector3f& relative_base, BlockFace direction) {
     RenderableFace* face = element->faces + (size_t)direction;
@@ -453,10 +469,19 @@ struct FaceMesh {
 
     SetPositions(face, element->from, element->to, direction);
 
-    bl_pos += chunk_base + relative_base;
-    br_pos += chunk_base + relative_base;
-    tl_pos += chunk_base + relative_base;
-    tr_pos += chunk_base + relative_base;
+    Vector3f coord = chunk_base + relative_base;
+
+    bl_pos += coord;
+    br_pos += coord;
+    tl_pos += coord;
+    tr_pos += coord;
+
+    if (model->random_offset) {
+      bl_pos += GetRandomOffset(coord);
+      br_pos += GetRandomOffset(coord);
+      tl_pos += GetRandomOffset(coord);
+      tr_pos += GetRandomOffset(coord);
+    }
 
     if (face->quad) {
       bl_uv = face->quad->bl_uv;

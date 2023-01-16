@@ -97,7 +97,8 @@ struct BlockModel {
   u32 has_glass : 1;
   u32 has_variant_rotation : 1;
   u32 ambient_occlusion : 1;
-  u32 padding : 25;
+  u32 random_offset : 1;
+  u32 padding : 24;
 
   inline bool HasOccluding() const {
     return has_occluding;

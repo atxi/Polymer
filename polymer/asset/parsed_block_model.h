@@ -68,6 +68,7 @@ public:
   ParsedBlockModel* parent;
   bool parsed;
   bool ambient_occlusion;
+  bool random_offset;
   world::BlockModel model;
 
   ParsedTextureName* texture_names;

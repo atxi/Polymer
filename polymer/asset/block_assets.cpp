@@ -82,12 +82,87 @@ struct AssetParser {
                        const String& blockstate_name);
 
   bool IsTransparentTexture(u32 texture_id);
+  void AssignModelRenderSettings(ParsedBlockModel& parsed_model);
 
   inline u8* GetTexture(size_t index) {
     assert(index < texture_count);
     return texture_images + index * kTextureSize;
   }
 };
+
+void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
+  BlockModel& model = parsed_model.model;
+
+  // TODO: All of these checks should be pulled into a system for managing texture-specific data.
+  String path(parsed_model.filename + kBlockModelAssetSkip);
+  bool is_prismarine = poly_strstr(path, "prismarine").data != nullptr;
+
+  bool is_leaves = poly_strstr(path, "leaves").data != nullptr;
+  bool is_spruce = false;
+  bool is_birch = false;
+
+  // TODO: This should be removed once biome data is handled correctly.
+  if (is_leaves) {
+    // Spruce and birch have hardcoded coloring so they go into their own tintindex.
+    is_spruce = poly_strstr(path, "spruce").data != nullptr;
+    is_birch = poly_strstr(path, "birch").data != nullptr;
+
+    model.has_leaves = 1;
+  }
+
+  for (size_t i = 0; i < model.element_count; ++i) {
+    BlockElement* element = model.elements + i;
+
+    element->occluding = element->from == Vector3f(0, 0, 0) && element->to == Vector3f(1, 1, 1);
+
+    if (element->occluding) {
+      model.has_occluding = 1;
+    }
+
+    if (element->shade) {
+      model.has_shaded = 1;
+    }
+
+    for (size_t j = 0; j < 6; ++j) {
+      element->faces[j].transparency = IsTransparentTexture(element->faces[j].texture_id);
+
+      if (element->faces[j].transparency) {
+        model.has_transparency = 1;
+      }
+
+      if (is_prismarine) {
+        // TODO: This should be removed once the meta files are processed
+        element->faces[j].frame_count = 1;
+      }
+
+      if (is_leaves) {
+        element->faces[j].tintindex = 1;
+
+        if (is_spruce) {
+          element->faces[j].tintindex = 2;
+        } else if (is_birch) {
+          element->faces[j].tintindex = 3;
+        }
+      }
+
+      parsed_model.elements[i].faces[j].transparency = element->faces[j].transparency;
+      parsed_model.elements[i].faces[j].frame_count = element->faces[j].frame_count;
+      parsed_model.elements[i].faces[j].tintindex = element->faces[j].tintindex;
+    }
+  }
+
+  bool is_glass = poly_contains(path, POLY_STR("/glass.json")) || poly_contains(path, POLY_STR("stained_glass.json"));
+  if (is_glass) {
+    model.has_glass = true;
+  }
+
+  if (parsed_model.parent) {
+    if (poly_contains(parsed_model.parent->filename, POLY_STR("/tinted_cross")) ||
+        poly_contains(parsed_model.parent->filename, POLY_STR("/cross"))) {
+      model.random_offset = 1;
+    }
+  }
+}
 
 static void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
   if (poly_contains(texture, POLY_STR("leaves"))) {
@@ -639,68 +714,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
     }
   }
 
-  // TODO: All of these checks should be pulled into a system for managing texture-specific data.
-  String path(parsed_model.filename + kBlockModelAssetSkip);
-  bool is_prismarine = poly_strstr(path, "prismarine").data != nullptr;
-
-  bool is_leaves = poly_strstr(path, "leaves").data != nullptr;
-  bool is_spruce = false;
-  bool is_birch = false;
-
-  // TODO: This should be removed once biome data is handled correctly.
-  if (is_leaves) {
-    // Spruce and birch have hardcoded coloring so they go into their own tintindex.
-    is_spruce = poly_strstr(path, "spruce").data != nullptr;
-    is_birch = poly_strstr(path, "birch").data != nullptr;
-
-    model.has_leaves = 1;
-  }
-
-  for (size_t i = 0; i < model.element_count; ++i) {
-    BlockElement* element = model.elements + i;
-
-    element->occluding = element->from == Vector3f(0, 0, 0) && element->to == Vector3f(1, 1, 1);
-
-    if (element->occluding) {
-      model.has_occluding = 1;
-    }
-
-    if (element->shade) {
-      model.has_shaded = 1;
-    }
-
-    for (size_t j = 0; j < 6; ++j) {
-      element->faces[j].transparency = IsTransparentTexture(element->faces[j].texture_id);
-
-      if (element->faces[j].transparency) {
-        model.has_transparency = 1;
-      }
-
-      if (is_prismarine) {
-        // TODO: This should be removed once the meta files are processed
-        element->faces[j].frame_count = 1;
-      }
-
-      if (is_leaves) {
-        element->faces[j].tintindex = 1;
-
-        if (is_spruce) {
-          element->faces[j].tintindex = 2;
-        } else if (is_birch) {
-          element->faces[j].tintindex = 3;
-        }
-      }
-
-      parsed_model.elements[i].faces[j].transparency = element->faces[j].transparency;
-      parsed_model.elements[i].faces[j].frame_count = element->faces[j].frame_count;
-      parsed_model.elements[i].faces[j].tintindex = element->faces[j].tintindex;
-    }
-  }
-
-  bool is_glass = poly_contains(path, POLY_STR("/glass.json")) || poly_contains(path, POLY_STR("stained_glass.json"));
-  if (is_glass) {
-    model.has_glass = true;
-  }
+  AssignModelRenderSettings(parsed_model);
 }
 
 inline json_object_element_s* GetJsonObjectElement(json_object_s* obj, const String& name) {
