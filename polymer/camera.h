@@ -24,7 +24,7 @@ struct Camera {
 
     Vector3f front(cosf(yaw) * cosf(pitch), sinf(pitch), sinf(yaw) * cosf(pitch));
 
-    return LookAt(position, position + front, kWorldUp);
+    return LookAt(Vector3f(0, 0, 0), front, kWorldUp);
   }
 
   inline mat4 GetProjectionMatrix() {

@@ -44,7 +44,7 @@ void main() {
   uint animCount = packed_anim & 0x7F;
   uint animRepeat = (packed_anim >> 7) & 1;
 
-  gl_Position = ubo.mvp * vec4(inPosition, 1.0);
+  gl_Position = ubo.mvp * vec4(inPosition - ubo.camera.xyz, 1.0);
   fragTexCoord.x = (inTexCoord >> 5) / 16.0;
   fragTexCoord.y = (inTexCoord & 0x1F) / 16.0;
 
