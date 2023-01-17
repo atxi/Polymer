@@ -29,6 +29,15 @@ inline BlockFace GetOppositeFace(BlockFace face) {
   return BlockFace::Down;
 }
 
+inline Vector3f GetFaceDirection(BlockFace face) {
+  static const Vector3f kDirections[] = {
+      Vector3f(0, -1, 0), Vector3f(0, 1, 0),  Vector3f(0, 0, -1),
+      Vector3f(0, 0, 1),  Vector3f(-1, 0, 0), Vector3f(1, 0, 0),
+  };
+
+  return kDirections[(size_t)face];
+}
+
 struct FaceQuad {
   Vector3f bl_pos;
   Vector3f br_pos;
@@ -88,7 +97,7 @@ struct BlockElement {
 
 struct BlockModel {
   size_t element_count;
-  BlockElement elements[20];
+  BlockElement elements[48];
 
   u32 has_occluding : 1;
   u32 has_transparency : 1;
@@ -97,8 +106,9 @@ struct BlockModel {
   u32 has_glass : 1;
   u32 has_variant_rotation : 1;
   u32 ambient_occlusion : 1;
-  u32 random_offset : 1;
-  u32 padding : 24;
+  u32 random_horizontal_offset : 1;
+  u32 random_vertical_offset : 1;
+  u32 padding : 23;
 
   inline bool HasOccluding() const {
     return has_occluding;

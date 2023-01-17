@@ -14,6 +14,7 @@ using polymer::world::BlockRegistry;
 using polymer::world::BlockState;
 using polymer::world::BlockStateInfo;
 using polymer::world::ChunkSection;
+using polymer::world::FaceQuad;
 using polymer::world::kChunkColumnCount;
 using polymer::world::RenderableFace;
 
@@ -101,6 +102,93 @@ inline bool HasOccludableFace(BlockModel& model, BlockFace face) {
   }
 
   return false;
+}
+
+FaceQuad GetFaceQuad(BlockElement& element, BlockFace direction) {
+  FaceQuad result = {};
+
+  const RenderableFace& face = element.faces[(size_t)direction];
+
+  if (face.quad) {
+    return *face.quad;
+  }
+
+  const Vector3f& from = element.from;
+  const Vector3f& to = element.to;
+
+  const Vector2f& uv_from = face.uv_from;
+  const Vector2f& uv_to = face.uv_to;
+
+  switch (direction) {
+  case BlockFace::Down: {
+    result.bl_pos = Vector3f(to.x, from.y, from.z);
+    result.br_pos = Vector3f(to.x, from.y, to.z);
+    result.tl_pos = Vector3f(from.x, from.y, from.z);
+    result.tr_pos = Vector3f(from.x, from.y, to.z);
+
+    result.bl_uv = Vector2f(uv_to.x, uv_to.y);
+    result.br_uv = Vector2f(uv_to.x, uv_from.y);
+    result.tr_uv = Vector2f(uv_from.x, uv_from.y);
+    result.tl_uv = Vector2f(uv_from.x, uv_to.y);
+  } break;
+  case BlockFace::Up: {
+    result.bl_pos = Vector3f(from.x, to.y, from.z);
+    result.br_pos = Vector3f(from.x, to.y, to.z);
+    result.tl_pos = Vector3f(to.x, to.y, from.z);
+    result.tr_pos = Vector3f(to.x, to.y, to.z);
+
+    result.bl_uv = Vector2f(uv_from.x, uv_from.y);
+    result.br_uv = Vector2f(uv_from.x, uv_to.y);
+    result.tr_uv = Vector2f(uv_to.x, uv_to.y);
+    result.tl_uv = Vector2f(uv_to.x, uv_from.y);
+  } break;
+  case BlockFace::North: {
+    result.bl_pos = Vector3f(to.x, from.y, from.z);
+    result.br_pos = Vector3f(from.x, from.y, from.z);
+    result.tl_pos = Vector3f(to.x, to.y, from.z);
+    result.tr_pos = Vector3f(from.x, to.y, from.z);
+
+    result.bl_uv = Vector2f(uv_from.x, uv_to.y);
+    result.br_uv = Vector2f(uv_to.x, uv_to.y);
+    result.tr_uv = Vector2f(uv_to.x, uv_from.y);
+    result.tl_uv = Vector2f(uv_from.x, uv_from.y);
+  } break;
+  case BlockFace::South: {
+    result.bl_pos = Vector3f(from.x, from.y, to.z);
+    result.br_pos = Vector3f(to.x, from.y, to.z);
+    result.tl_pos = Vector3f(from.x, to.y, to.z);
+    result.tr_pos = Vector3f(to.x, to.y, to.z);
+
+    result.bl_uv = Vector2f(uv_from.x, uv_to.y);
+    result.br_uv = Vector2f(uv_to.x, uv_to.y);
+    result.tr_uv = Vector2f(uv_to.x, uv_from.y);
+    result.tl_uv = Vector2f(uv_from.x, uv_from.y);
+  } break;
+  case BlockFace::West: {
+    result.bl_pos = Vector3f(from.x, from.y, from.z);
+    result.br_pos = Vector3f(from.x, from.y, to.z);
+    result.tl_pos = Vector3f(from.x, to.y, from.z);
+    result.tr_pos = Vector3f(from.x, to.y, to.z);
+
+    result.bl_uv = Vector2f(uv_from.x, uv_to.y);
+    result.br_uv = Vector2f(uv_to.x, uv_to.y);
+    result.tr_uv = Vector2f(uv_to.x, uv_from.y);
+    result.tl_uv = Vector2f(uv_from.x, uv_from.y);
+  } break;
+  case BlockFace::East: {
+    result.bl_pos = Vector3f(to.x, from.y, to.z);
+    result.br_pos = Vector3f(to.x, from.y, from.z);
+    result.tl_pos = Vector3f(to.x, to.y, to.z);
+    result.tr_pos = Vector3f(to.x, to.y, from.z);
+
+    result.bl_uv = Vector2f(uv_from.x, uv_to.y);
+    result.br_uv = Vector2f(uv_to.x, uv_to.y);
+    result.tr_uv = Vector2f(uv_to.x, uv_from.y);
+    result.tl_uv = Vector2f(uv_from.x, uv_from.y);
+  } break;
+  }
+
+  return result;
 }
 
 inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
@@ -246,18 +334,6 @@ inline u32 CalculateVertexLight(BorderedChunk* bordered_chunk, size_t* indices, 
 
 struct FaceMesh {
   Vector3f direction;
-
-  Vector3f bl_pos;
-  Vector3f br_pos;
-  Vector3f tl_pos;
-  Vector3f tr_pos;
-
-  Vector2f bl_uv;
-  Vector2f br_uv;
-  Vector2f tl_uv;
-  Vector2f tr_uv;
-
-  bool uvlock;
   bool reduced_ao = false;
 
   inline size_t GetIndex(Vector3f lookup) {
@@ -337,98 +413,6 @@ struct FaceMesh {
     return 3 - (value1 + value2 + value_corner);
   }
 
-  inline void SetPositions(RenderableFace* face, const Vector3f& from, const Vector3f& to, BlockFace direction) {
-
-    if (face->quad) {
-      bl_pos = face->quad->bl_pos;
-      br_pos = face->quad->br_pos;
-      tl_pos = face->quad->tl_pos;
-      tr_pos = face->quad->tr_pos;
-      return;
-    }
-
-    switch (direction) {
-    case BlockFace::Down: {
-      bl_pos = Vector3f(to.x, from.y, from.z);
-      br_pos = Vector3f(to.x, from.y, to.z);
-      tl_pos = Vector3f(from.x, from.y, from.z);
-      tr_pos = Vector3f(from.x, from.y, to.z);
-    } break;
-    case BlockFace::Up: {
-      bl_pos = Vector3f(from.x, to.y, from.z);
-      br_pos = Vector3f(from.x, to.y, to.z);
-      tl_pos = Vector3f(to.x, to.y, from.z);
-      tr_pos = Vector3f(to.x, to.y, to.z);
-    } break;
-    case BlockFace::North: {
-      bl_pos = Vector3f(to.x, from.y, from.z);
-      br_pos = Vector3f(from.x, from.y, from.z);
-      tl_pos = Vector3f(to.x, to.y, from.z);
-      tr_pos = Vector3f(from.x, to.y, from.z);
-    } break;
-    case BlockFace::South: {
-      bl_pos = Vector3f(from.x, from.y, to.z);
-      br_pos = Vector3f(to.x, from.y, to.z);
-      tl_pos = Vector3f(from.x, to.y, to.z);
-      tr_pos = Vector3f(to.x, to.y, to.z);
-    } break;
-    case BlockFace::West: {
-      bl_pos = Vector3f(from.x, from.y, from.z);
-      br_pos = Vector3f(from.x, from.y, to.z);
-      tl_pos = Vector3f(from.x, to.y, from.z);
-      tr_pos = Vector3f(from.x, to.y, to.z);
-    } break;
-    case BlockFace::East: {
-      bl_pos = Vector3f(to.x, from.y, to.z);
-      br_pos = Vector3f(to.x, from.y, from.z);
-      tl_pos = Vector3f(to.x, to.y, to.z);
-      tr_pos = Vector3f(to.x, to.y, from.z);
-    } break;
-    }
-  }
-
-  inline static void SetUVs(const Vector2f& uv_from, const Vector2f& uv_to, BlockFace direction, Vector2f& bl_uv,
-                            Vector2f& br_uv, Vector2f& tl_uv, Vector2f& tr_uv) {
-    switch (direction) {
-    case BlockFace::Down: {
-      bl_uv = Vector2f(uv_to.x, uv_to.y);
-      br_uv = Vector2f(uv_to.x, uv_from.y);
-      tr_uv = Vector2f(uv_from.x, uv_from.y);
-      tl_uv = Vector2f(uv_from.x, uv_to.y);
-    } break;
-    case BlockFace::Up: {
-      bl_uv = Vector2f(uv_from.x, uv_from.y);
-      br_uv = Vector2f(uv_from.x, uv_to.y);
-      tr_uv = Vector2f(uv_to.x, uv_to.y);
-      tl_uv = Vector2f(uv_to.x, uv_from.y);
-    } break;
-    case BlockFace::North: {
-      bl_uv = Vector2f(uv_from.x, uv_to.y);
-      br_uv = Vector2f(uv_to.x, uv_to.y);
-      tr_uv = Vector2f(uv_to.x, uv_from.y);
-      tl_uv = Vector2f(uv_from.x, uv_from.y);
-    } break;
-    case BlockFace::South: {
-      bl_uv = Vector2f(uv_from.x, uv_to.y);
-      br_uv = Vector2f(uv_to.x, uv_to.y);
-      tr_uv = Vector2f(uv_to.x, uv_from.y);
-      tl_uv = Vector2f(uv_from.x, uv_from.y);
-    } break;
-    case BlockFace::West: {
-      bl_uv = Vector2f(uv_from.x, uv_to.y);
-      br_uv = Vector2f(uv_to.x, uv_to.y);
-      tr_uv = Vector2f(uv_to.x, uv_from.y);
-      tl_uv = Vector2f(uv_from.x, uv_from.y);
-    } break;
-    case BlockFace::East: {
-      bl_uv = Vector2f(uv_from.x, uv_to.y);
-      br_uv = Vector2f(uv_to.x, uv_to.y);
-      tr_uv = Vector2f(uv_to.x, uv_from.y);
-      tl_uv = Vector2f(uv_from.x, uv_from.y);
-    } break;
-    }
-  }
-
   void ComputeLookups(const Vector3f& vertex_pos, const Vector3f& pos2, Vector3f* lookups) {
     Vector3f side1 = Normalize(vertex_pos - pos2);
     Vector3f side2 = Normalize(Cross(direction, side1));
@@ -445,7 +429,7 @@ struct FaceMesh {
     }
   }
 
-  inline Vector3f GetRandomOffset(const Vector3f& p) {
+  inline Vector3f GetRandomOffset(const Vector3f& p, bool vertical) {
     int x = (int)floorf(p.x);
     int y = 0;
     int z = (int)floorf(p.z);
@@ -454,11 +438,14 @@ struct FaceMesh {
     index = index * index * 42317861L + index * 11L;
 
     s64 x_rand = (index >> 16) & 15L;
+    s64 y_rand = (index >> 20) & 15L;
     s64 z_rand = (index >> 24) & 15L;
+
     float x_offset = ((x_rand / 15.0f) - 0.5f) * 0.5f;
+    float y_offset = ((y_rand / 15.0f) - 1.0f) * 0.2f;
     float z_offset = ((z_rand / 15.0f) - 0.5f) * 0.5f;
 
-    return Vector3f(x_offset, 0.0f, z_offset);
+    return Vector3f(x_offset, vertical ? y_offset : 0.0f, z_offset);
   }
 
   void Mesh(BlockRegistry& registry, BorderedChunk* bordered_chunk, PushContext& context, BlockModel* model,
@@ -467,29 +454,20 @@ struct FaceMesh {
 
     if (!face->render) return;
 
-    SetPositions(face, element->from, element->to, direction);
+    FaceQuad quad = GetFaceQuad(*element, direction);
 
     Vector3f coord = chunk_base + relative_base;
 
-    bl_pos += coord;
-    br_pos += coord;
-    tl_pos += coord;
-    tr_pos += coord;
+    quad.bl_pos += coord;
+    quad.br_pos += coord;
+    quad.tl_pos += coord;
+    quad.tr_pos += coord;
 
-    if (model->random_offset) {
-      bl_pos += GetRandomOffset(coord);
-      br_pos += GetRandomOffset(coord);
-      tl_pos += GetRandomOffset(coord);
-      tr_pos += GetRandomOffset(coord);
-    }
-
-    if (face->quad) {
-      bl_uv = face->quad->bl_uv;
-      br_uv = face->quad->br_uv;
-      tl_uv = face->quad->tl_uv;
-      tr_uv = face->quad->tr_uv;
-    } else {
-      SetUVs(face->uv_from, face->uv_to, direction, bl_uv, br_uv, tl_uv, tr_uv);
+    if (model->random_horizontal_offset || model->random_vertical_offset) {
+      quad.bl_pos += GetRandomOffset(coord, model->random_vertical_offset);
+      quad.br_pos += GetRandomOffset(coord, model->random_vertical_offset);
+      quad.tl_pos += GetRandomOffset(coord, model->random_vertical_offset);
+      quad.tr_pos += GetRandomOffset(coord, model->random_vertical_offset);
     }
 
     Vector3f bl_lookups[3];
@@ -497,10 +475,10 @@ struct FaceMesh {
     Vector3f tl_lookups[3];
     Vector3f tr_lookups[3];
 
-    ComputeLookups(bl_pos, br_pos, bl_lookups);
-    ComputeLookups(br_pos, tr_pos, br_lookups);
-    ComputeLookups(tl_pos, bl_pos, tl_lookups);
-    ComputeLookups(tr_pos, tl_pos, tr_lookups);
+    ComputeLookups(quad.bl_pos, quad.br_pos, bl_lookups);
+    ComputeLookups(quad.br_pos, quad.tr_pos, br_lookups);
+    ComputeLookups(quad.tl_pos, quad.bl_pos, tl_lookups);
+    ComputeLookups(quad.tr_pos, quad.tl_pos, tr_lookups);
 
     int ele_ao_bl = 3;
     int ele_ao_br = 3;
@@ -546,13 +524,13 @@ struct FaceMesh {
       u32 world_y = (u32)(chunk_base.y + relative_base.y);
       u32 world_z = (u32)(chunk_base.z + relative_base.z);
 
-      RandomizeFaceTexture(world_x, world_y, world_z, bl_uv, br_uv, tr_uv, tl_uv);
+      RandomizeFaceTexture(world_x, world_y, world_z, quad.bl_uv, quad.br_uv, quad.tr_uv, quad.tl_uv);
     }
 
-    u16 bli = PushVertex(context, bl_pos, bl_uv, face, ele_ao_bl, axis_data);
-    u16 bri = PushVertex(context, br_pos, br_uv, face, ele_ao_br, axis_data);
-    u16 tri = PushVertex(context, tr_pos, tr_uv, face, ele_ao_tr, axis_data);
-    u16 tli = PushVertex(context, tl_pos, tl_uv, face, ele_ao_tl, axis_data);
+    u16 bli = PushVertex(context, quad.bl_pos, quad.bl_uv, face, ele_ao_bl, axis_data);
+    u16 bri = PushVertex(context, quad.br_pos, quad.br_uv, face, ele_ao_br, axis_data);
+    u16 tri = PushVertex(context, quad.tr_pos, quad.tr_uv, face, ele_ao_tr, axis_data);
+    u16 tli = PushVertex(context, quad.tl_pos, quad.tl_uv, face, ele_ao_tl, axis_data);
 
     PushIndex(context, face->render_layer, bli);
     PushIndex(context, face->render_layer, bri);
@@ -561,23 +539,6 @@ struct FaceMesh {
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
-  }
-
-  inline static BlockFace GetDirectionFace(const Vector3f& direction) {
-    if (direction.y < -0.5f) {
-      return BlockFace::Down;
-    } else if (direction.y >= 0.5f) {
-      return BlockFace::Up;
-    } else if (direction.x < -0.5f) {
-      return BlockFace::West;
-    } else if (direction.x >= 0.5f) {
-      return BlockFace::East;
-    } else if (direction.z < -0.5f) {
-      return BlockFace::North;
-    } else if (direction.z >= 0.5f) {
-      return BlockFace::South;
-    }
-    return BlockFace::Down;
   }
 };
 

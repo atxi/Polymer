@@ -74,7 +74,7 @@ public:
   ParsedTextureName* texture_names;
 
   size_t element_count;
-  ParsedBlockElement elements[20];
+  ParsedBlockElement elements[48];
 
   char filename[256];
 

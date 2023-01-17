@@ -12,15 +12,6 @@ namespace asset {
 void CalculateUVs(const Vector3i& variant_rotation, const ElementRotation& element_rotation,
                   const ParsedRenderableFace& renderable_face, struct Face& face, BlockFace direction, bool uvlock);
 
-inline Vector3f GetFaceDirection(BlockFace face) {
-  static const Vector3f kDirections[] = {
-      Vector3f(0, -1, 0), Vector3f(0, 1, 0),  Vector3f(0, 0, -1),
-      Vector3f(0, 0, 1),  Vector3f(-1, 0, 0), Vector3f(1, 0, 0),
-  };
-
-  return kDirections[(size_t)face];
-}
-
 inline static bool GetDirectionFace(const Vector3f& direction, BlockFace* face) {
   if (direction.y < -0.9f) {
     *face = BlockFace::Down;

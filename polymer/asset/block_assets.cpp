@@ -76,6 +76,7 @@ struct AssetParser {
 
   void ResolveModel(ParsedBlockModel& model);
   void ResolveModels(MemoryArena& perm_arena);
+  void HandleMultipartApplyNode(MemoryArena& perm_arena, size_t bid, json_object_s* apply_obj, BitSet& element_set);
   bool ResolveMultiparts(MemoryArena& perm_arena, BitSet& element_set, ParsedBlockState* parsed_state,
                          const String& blockstate_name);
   bool ResolveVariants(MemoryArena& perm_arena, BitSet& element_set, ParsedBlockState* parsed_state,
@@ -156,11 +157,47 @@ void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
     model.has_glass = true;
   }
 
-  if (parsed_model.parent) {
-    if (poly_contains(parsed_model.parent->filename, POLY_STR("/tinted_cross")) ||
-        poly_contains(parsed_model.parent->filename, POLY_STR("/cross"))) {
-      model.random_offset = 1;
+  const static String kHorizontalOffsetNames[] = {
+      POLY_STR("/mangrove_propagule.json"),
+      POLY_STR("/grass.json"),
+      POLY_STR("/fern.json"),
+      POLY_STR("/dandelion.json"),
+      POLY_STR("/poppy.json"),
+      POLY_STR("/blue_orchid.json"),
+      POLY_STR("/allium.json"),
+      POLY_STR("/azure_bluet.json"),
+      POLY_STR("_tulip.json"),
+      POLY_STR("/oxeye_daisy.json"),
+      POLY_STR("/cornflower.json"),
+      POLY_STR("/lily_of_the_valley.json"),
+      POLY_STR("/bamboo_sapling.json"),
+      POLY_STR("/bamboo1_age"),
+      POLY_STR("/bamboo2_age"),
+      POLY_STR("/bamboo3_age"),
+      POLY_STR("/bamboo4_age"),
+      POLY_STR("/wither_rose.json"),
+      POLY_STR("/crimson_roots.json"),
+      POLY_STR("/warped_roots.json"),
+      POLY_STR("/nether_sprouts.json"),
+      POLY_STR("/tall_grass_"),
+      POLY_STR("/large_fern_"),
+      POLY_STR("/sunflower_"),
+      POLY_STR("/lilac_"),
+      POLY_STR("/rose_bush_"),
+      POLY_STR("/peony_"),
+  };
+
+  for (size_t i = 0; i < polymer_array_count(kHorizontalOffsetNames); ++i) {
+    if (poly_contains(parsed_model.filename, kHorizontalOffsetNames[i])) {
+      model.random_horizontal_offset = 1;
+      break;
     }
+  }
+
+  if (poly_contains(parsed_model.filename, POLY_STR("/grass.json"))) {
+    model.random_vertical_offset = 1;
+  } else if (poly_contains(parsed_model.filename, POLY_STR("/fern.json"))) {
+    model.random_vertical_offset = 1;
   }
 }
 
@@ -873,7 +910,54 @@ inline void ApplyMultipartModel(BlockModel& target_model, BlockModel& model) {
   for (size_t i = 0; i < model.element_count; ++i) {
     BlockElement* element = target_model.elements + target_model.element_count++;
 
+    assert(target_model.element_count <= polymer_array_count(model.elements));
+
     memcpy(element, model.elements + i, sizeof(BlockElement));
+  }
+}
+
+void AssetParser::HandleMultipartApplyNode(MemoryArena& perm_arena, size_t bid, json_object_s* apply_obj,
+                                           BitSet& element_set) {
+  json_object_element_s* model_element = GetJsonObjectElement(apply_obj, POLY_STR("model"));
+
+  if (!model_element) {
+    fprintf(stderr, "Invalid multipart. Apply element did not have a model to apply.\n");
+    return;
+  }
+
+  json_string_s* model_str = json_value_as_string(model_element->value);
+  String model_name(model_str->string, model_str->string_size);
+
+  size_t prefix_size = poly_contains(model_name, ':') ? 10 : 0;
+  model_name.data += prefix_size;
+  model_name.size -= prefix_size;
+
+  json_object_element_s* x_element = GetJsonObjectElement(apply_obj, POLY_STR("x"));
+  json_object_element_s* y_element = GetJsonObjectElement(apply_obj, POLY_STR("y"));
+  json_object_element_s* uvlock_element = GetJsonObjectElement(apply_obj, POLY_STR("uvlock"));
+
+  Vector3i rotation;
+
+  if (x_element) {
+    rotation.x = strtol(json_value_as_number(x_element->value)->number, nullptr, 10);
+  }
+
+  if (y_element) {
+    rotation.y = strtol(json_value_as_number(y_element->value)->number, nullptr, 10);
+  }
+
+  ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
+
+  if (parsed_model && (*parsed_model)->parsed) {
+    size_t variant_start = registry->states[bid].model.element_count;
+    ApplyMultipartModel(registry->states[bid].model, (*parsed_model)->model);
+    size_t variant_count = registry->states[bid].model.element_count - variant_start;
+    RotateVariant(perm_arena, registry->states[bid].model, **parsed_model, variant_start, variant_count, rotation,
+                  uvlock_element != nullptr);
+
+    element_set.Set(bid, 1);
+  } else {
+    printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
   }
 }
 
@@ -914,52 +998,23 @@ bool AssetParser::ResolveMultiparts(MemoryArena& perm_arena, BitSet& element_set
         continue;
       }
 
-      // TODO: apply can be an array, so it needs to be handled
-      if (apply_element->value->type != json_type_object) continue;
-
-      json_object_s* apply_obj = json_value_as_object(apply_element->value);
-      json_object_element_s* model_element = GetJsonObjectElement(apply_obj, POLY_STR("model"));
-
-      if (!model_element) {
-        fprintf(stderr, "Invalid multipart. Apply element did not have a model to apply.\n");
-        continue;
-      }
-
-      json_string_s* model_str = json_value_as_string(model_element->value);
-      String model_name(model_str->string, model_str->string_size);
-
-      size_t prefix_size = poly_contains(model_name, ':') ? 10 : 0;
-      model_name.data += prefix_size;
-      model_name.size -= prefix_size;
-
-      json_object_element_s* x_element = GetJsonObjectElement(apply_obj, POLY_STR("x"));
-      json_object_element_s* y_element = GetJsonObjectElement(apply_obj, POLY_STR("y"));
-      json_object_element_s* uvlock_element = GetJsonObjectElement(apply_obj, POLY_STR("uvlock"));
-
-      Vector3i rotation;
-
-      if (x_element) {
-        rotation.x = strtol(json_value_as_number(x_element->value)->number, nullptr, 10);
-      }
-
-      if (y_element) {
-        rotation.y = strtol(json_value_as_number(y_element->value)->number, nullptr, 10);
-      }
-
       if (!when_element) {
         // Apply any unconditional multi-part models
-        ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
+        if (apply_element->value->type == json_type_object) {
+          json_object_s* apply_obj = json_value_as_object(apply_element->value);
 
-        if (parsed_model && (*parsed_model)->parsed) {
-          size_t variant_start = registry->states[bid].model.element_count;
-          ApplyMultipartModel(registry->states[bid].model, (*parsed_model)->model);
-          size_t variant_count = registry->states[bid].model.element_count - variant_start;
-          RotateVariant(perm_arena, registry->states[bid].model, **parsed_model, variant_start, variant_count, rotation,
-                        uvlock_element != nullptr);
+          HandleMultipartApplyNode(perm_arena, bid, apply_obj, element_set);
+        } else if (apply_element->value->type == json_type_array) {
+          json_array_s* apply_array = json_value_as_array(apply_element->value);
 
-          element_set.Set(bid, 1);
-        } else {
-          printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
+          json_array_element_s* apply_array_ele = apply_array->start;
+          while (apply_array_ele) {
+            json_object_s* apply_obj = json_value_as_object(apply_array_ele->value);
+
+            HandleMultipartApplyNode(perm_arena, bid, apply_obj, element_set);
+
+            apply_array_ele = apply_array_ele->next;
+          }
         }
       } else {
         json_object_s* when_obj = json_value_as_object(when_element->value);
@@ -996,19 +1051,21 @@ bool AssetParser::ResolveMultiparts(MemoryArena& perm_arena, BitSet& element_set
         }
 
         if (matches) {
-          ParsedBlockModel** parsed_model = parsed_block_map.Find(MapStringKey(model_name.data, model_name.size));
+          if (apply_element->value->type == json_type_object) {
+            json_object_s* apply_obj = json_value_as_object(apply_element->value);
 
-          if (parsed_model && (*parsed_model)->parsed) {
-            size_t variant_start = registry->states[bid].model.element_count;
-            ApplyMultipartModel(registry->states[bid].model, (*parsed_model)->model);
-            size_t variant_count = registry->states[bid].model.element_count - variant_start;
+            HandleMultipartApplyNode(perm_arena, bid, apply_obj, element_set);
+          } else if (apply_element->value->type == json_type_array) {
+            json_array_s* apply_array = json_value_as_array(apply_element->value);
 
-            RotateVariant(perm_arena, registry->states[bid].model, **parsed_model, variant_start, variant_count,
-                          rotation, uvlock_element != nullptr);
+            json_array_element_s* apply_array_ele = apply_array->start;
+            while (apply_array_ele) {
+              json_object_s* apply_obj = json_value_as_object(apply_array_ele->value);
 
-            element_set.Set(bid, 1);
-          } else {
-            printf("Failed to find parsed_model %.*s\n", (u32)model_name.size, model_name.data);
+              HandleMultipartApplyNode(perm_arena, bid, apply_obj, element_set);
+
+              apply_array_ele = apply_array_ele->next;
+            }
           }
         }
       }
