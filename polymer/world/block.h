@@ -63,7 +63,8 @@ struct RenderableFace {
     u32 cullface : 3;
     u32 render_layer : 3;
     u32 random_flip : 1;
-    u32 frame_count : 7;
+    u32 frame_count : 6;
+    u32 full_occlusion : 1;
     u32 tintindex : 16;
   };
 };

@@ -669,6 +669,9 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
     model.elements[i].rescale = parsed_model.elements[i].rotation.rescale;
     model.elements[i].occluding = 1;
 
+    bool full_element = (model.elements[i].from == Vector3f(0, 0, 0) && model.elements[i].to == Vector3f(1, 1, 1)) ||
+                        (model.elements[i].from == Vector3f(1, 1, 1) && model.elements[i].to == Vector3f(0, 0, 0));
+
     for (size_t j = 0; j < 6; ++j) {
       ParsedRenderableFace* parsed_face = parsed_model.elements[i].faces + j;
       RenderableFace* model_face = model.elements[i].faces + j;
@@ -682,6 +685,9 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
       model_face->render_layer = parsed_face->render_layer;
       model_face->random_flip = parsed_face->random_flip;
       model_face->tintindex = parsed_face->tintindex;
+      if (full_element) {
+        model_face->full_occlusion = 1;
+      }
       model_face->texture_id = 0;
       model_face->frame_count = 0;
 

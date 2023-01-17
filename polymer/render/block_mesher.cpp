@@ -234,7 +234,9 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
           return false;
         }
 
-        return true;
+        if (from_face.full_occlusion && to_face.full_occlusion) {
+          return true;
+        }
       }
     }
   }
