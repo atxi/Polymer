@@ -199,7 +199,7 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
 
   // TODO: Clean this up once rotation is settled.
   if (to->element_count == 0) return false;
-  if (from->has_variant_rotation || to->has_variant_rotation) return false;
+  //if (from->has_variant_rotation || to->has_variant_rotation) return false;
   if (to->has_leaves || !to->has_shaded) return false;
 
   for (size_t i = 0; i < from->element_count; ++i) {
@@ -265,6 +265,22 @@ inline u32 xorshift(u32 seed) {
   seed ^= seed >> 17;
   seed ^= seed << 5;
   return seed;
+}
+
+static void RandomizeVerticalFaceTexture(u32 world_x, u32 world_y, u32 world_z, Vector2f& bl_uv, Vector2f& br_uv,
+                                         Vector2f& tr_uv, Vector2f& tl_uv) {
+  u32 xr = xorshift(world_x * 3917 + world_y * 3701 + world_z * 181) % 16;
+  u32 yr = xorshift(world_x * 1917 + world_y * 1559 + world_z * 381) % 16;
+  u32 zr = xorshift(world_x * 10191 + world_y * 1319 + world_z * 831) % 16;
+
+  float dv = (xr ^ zr ^ yr) / 6.0f;
+
+  Vector2f delta(0.0f, dv);
+
+  bl_uv += delta;
+  br_uv += delta;
+  tr_uv += delta;
+  tl_uv += delta;
 }
 
 static void RandomizeFaceTexture(u32 world_x, u32 world_y, u32 world_z, Vector2f& bl_uv, Vector2f& br_uv,
@@ -521,12 +537,16 @@ struct FaceMesh {
       axis_data = 0;
     }
 
-    if (face->random_flip) {
-      u32 world_x = (u32)(chunk_base.x + relative_base.x);
-      u32 world_y = (u32)(chunk_base.y + relative_base.y);
-      u32 world_z = (u32)(chunk_base.z + relative_base.z);
+    u32 world_x = (u32)(chunk_base.x + relative_base.x);
+    u32 world_y = (u32)(chunk_base.y + relative_base.y);
+    u32 world_z = (u32)(chunk_base.z + relative_base.z);
 
+    if (face->random_flip) {
       RandomizeFaceTexture(world_x, world_y, world_z, quad.bl_uv, quad.br_uv, quad.tr_uv, quad.tl_uv);
+    }
+
+    if (model->random_vertical_uv && (size_t)direction >= (size_t)BlockFace::North) {
+      RandomizeVerticalFaceTexture(world_x, world_y, world_z, quad.bl_uv, quad.br_uv, quad.tr_uv, quad.tl_uv);
     }
 
     u16 bli = PushVertex(context, quad.bl_pos, quad.bl_uv, face, ele_ao_bl, axis_data);

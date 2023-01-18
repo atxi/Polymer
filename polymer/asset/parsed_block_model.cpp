@@ -342,12 +342,12 @@ bool ParsedBlockModel::Parse(MemoryArena& trans_arena, const char* raw_filename,
   if (this->parsed) return true;
 
   this->texture_names = nullptr;
-  this->ambient_occlusion = true;
+  this->model.ambient_occlusion = 1;
 
   // Assign our texture_names to be equal to the parent so they can be resolved together
   if (parent) {
     this->texture_names = parent->texture_names;
-    this->ambient_occlusion = parent->ambient_occlusion;
+    this->model.ambient_occlusion = parent->model.ambient_occlusion;
   }
 
   strcpy(this->filename, raw_filename);
@@ -360,7 +360,7 @@ bool ParsedBlockModel::Parse(MemoryArena& trans_arena, const char* raw_filename,
     String element_name(root_element->name->string, root_element->name->string_size);
 
     if (poly_strcmp(element_name, POLY_STR("ambientocclusion")) == 0) {
-      this->ambient_occlusion = json_value_is_true(root_element->value);
+      this->model.ambient_occlusion = json_value_is_true(root_element->value);
     }
 
     root_element = root_element->next;

@@ -199,6 +199,20 @@ void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
   } else if (poly_contains(parsed_model.filename, POLY_STR("/fern.json"))) {
     model.random_vertical_offset = 1;
   }
+
+  const static String kBambooNames[] = {
+      POLY_STR("/bamboo1_age"),
+      POLY_STR("/bamboo2_age"),
+      POLY_STR("/bamboo3_age"),
+      POLY_STR("/bamboo4_age"),
+  };
+
+  for (size_t i = 0; i < polymer_array_count(kBambooNames); ++i) {
+    if (poly_contains(parsed_model.filename, kBambooNames[i])) {
+      model.random_vertical_uv = 1;
+      break;
+    }
+  }
 }
 
 static void AssignFaceRenderSettings(RenderableFace* face, const String& texture) {
@@ -657,7 +671,7 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
   BlockModel& model = parsed_model.model;
 
   model.element_count = parsed_model.element_count;
-  model.ambient_occlusion = parsed_model.ambient_occlusion;
+  model.ambient_occlusion = parsed_model.model.ambient_occlusion;
 
   for (size_t i = 0; i < parsed_model.element_count; ++i) {
     BlockElement* element = model.elements + i;
