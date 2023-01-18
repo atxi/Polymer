@@ -521,6 +521,16 @@ struct Vector4f {
   }
 };
 
+struct BoundingBox {
+  Vector3f min;
+  Vector3f max;
+
+  inline bool Intersects(const BoundingBox& b) const {
+    return (min.x <= b.max.x && max.x >= b.min.x && min.y <= b.max.y && max.y >= b.min.y && min.z <= b.max.z &&
+            max.z >= b.min.z);
+  }
+};
+
 // Column major matrix4x4
 struct mat4 {
   float data[4][4];

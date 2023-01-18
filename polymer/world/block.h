@@ -48,6 +48,31 @@ struct FaceQuad {
   Vector2f br_uv;
   Vector2f tl_uv;
   Vector2f tr_uv;
+
+  inline BoundingBox GetBoundsAt(const Vector3f& v) {
+    BoundingBox result;
+
+    result.min.x = ChooseMin(bl_pos.x, br_pos.x, tl_pos.x, tr_pos.x) + v.x;
+    result.min.y = ChooseMin(bl_pos.y, br_pos.y, tl_pos.y, tr_pos.y) + v.y;
+
+    result.max.x = ChooseMax(bl_pos.x, br_pos.x, tl_pos.x, tr_pos.x) + v.x;
+    result.max.y = ChooseMax(bl_pos.y, br_pos.y, tl_pos.y, tr_pos.y) + v.y;
+
+    return result;
+  }
+
+private:
+  inline static float ChooseMin(float x0, float x1, float x2, float x3) {
+    float m1 = x0 < x1 ? x0 : x1;
+    float m2 = x2 < x3 ? x2 : x3;
+    return m1 < m2 ? m1 : m2;
+  }
+
+  inline static float ChooseMax(float x0, float x1, float x2, float x3) {
+    float m1 = x0 > x1 ? x0 : x1;
+    float m2 = x2 > x3 ? x2 : x3;
+    return m1 > m2 ? m1 : m2;
+  }
 };
 
 struct RenderableFace {

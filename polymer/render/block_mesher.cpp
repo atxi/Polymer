@@ -194,12 +194,8 @@ FaceQuad GetFaceQuad(BlockElement& element, BlockFace direction) {
 inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
   BlockFace opposite_face = world::GetOppositeFace(face);
 
-  bool from_is_transparent = !HasOccludableFace(*from, face);
-  bool to_is_transparent = !HasOccludableFace(*to, opposite_face);
-
   // TODO: Clean this up once rotation is settled.
   if (to->element_count == 0) return false;
-  //if (from->has_variant_rotation || to->has_variant_rotation) return false;
   if (to->has_leaves || !to->has_shaded) return false;
 
   for (size_t i = 0; i < from->element_count; ++i) {
@@ -220,16 +216,16 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
       // Check if the element of the 'to' model fully occludes the 'from' face
       if (to_start.x <= from_start.x && to_start.y <= from_start.y && to_start.z <= from_start.z &&
           to_end.x >= from_end.x && to_end.y >= from_end.y && to_end.z >= from_end.z) {
-        if (to_is_transparent) {
-          if (from_is_transparent) {
-            return true;
+        if (to_face.transparency) {
+          if (from_face.transparency) {
+            return from_face.texture_id == to_face.texture_id;
           }
           return false;
         }
 
-        if (from_is_transparent) {
-          if (to_is_transparent) {
-            return true;
+        if (from_face.transparency) {
+          if (to_face.transparency) {
+            return from_face.texture_id == to_face.texture_id;
           }
           return false;
         }
