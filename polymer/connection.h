@@ -39,9 +39,9 @@ struct Connection {
 
   TickResult Tick();
 
-  void SendHandshake(u32 version, const char* address, u16 port, ProtocolState state_request);
+  void SendHandshake(u32 version, const String& address, u16 port, ProtocolState state_request);
   void SendPingRequest();
-  void SendLoginStart(const char* username);
+  void SendLoginStart(const String& username);
   void SendKeepAlive(u64 id);
   void SendTeleportConfirm(u64 id);
   void SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground);

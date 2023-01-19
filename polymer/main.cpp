@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "polymer/miniz.h"
+#include <polymer/miniz.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -23,9 +23,8 @@
 
 namespace polymer {
 
-constexpr const char* kServerIp = "127.0.0.1";
-constexpr u16 kServerPort = 25565;
 constexpr const char* kMinecraftJar = "1.19.3.jar";
+constexpr const char* kBlocksName = "blocks-1.19.3.json";
 
 // Window surface width
 constexpr u32 kWidth = 1280;
@@ -39,6 +38,143 @@ static MemoryArena* g_trans_arena = nullptr;
 static InputState g_input = {};
 
 static bool g_display_cursor = false;
+
+struct ArgPair {
+  String name;
+  String value;
+};
+
+struct ArgParser {
+  ArgPair args[16];
+  size_t arg_count;
+
+  inline bool HasValue(const String& name) const {
+    for (size_t i = 0; i < arg_count; ++i) {
+      if (poly_strcmp(name, args[i].name) == 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  inline bool HasValue(const String* lookups, size_t count) const {
+    for (size_t i = 0; i < count; ++i) {
+      bool result = HasValue(lookups[i]);
+
+      if (result) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  inline String GetValue(const String& name) const {
+    for (size_t i = 0; i < arg_count; ++i) {
+      if (poly_strcmp(name, args[i].name) == 0) {
+        return args[i].value;
+      }
+    }
+
+    return String();
+  }
+
+  inline String GetValue(const String* lookups, size_t count) const {
+    for (size_t i = 0; i < count; ++i) {
+      String result = GetValue(lookups[i]);
+
+      if (result.size > 0) {
+        return result;
+      }
+    }
+
+    return String();
+  }
+
+  static ArgParser Parse(int argc, char* argv[]) {
+    ArgParser result = {};
+
+    for (int i = 0; i < argc; ++i) {
+      char* current = argv[i];
+
+      if (current[0] == '-') {
+        ++current;
+
+        if (*current == '-') ++current;
+
+        ArgPair& pair = result.args[result.arg_count++];
+
+        pair.name = String(current);
+        pair.value = String();
+
+        if (i < argc - 1) {
+          char* next = argv[i + 1];
+
+          if (*next != '-') {
+            pair.value = String(argv[i + 1]);
+            ++i;
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+};
+
+struct LaunchArgs {
+  String username;
+  String server;
+  u16 server_port;
+  bool help;
+
+  static LaunchArgs Create(ArgParser& args) {
+    const String kUsernameArgs[] = {POLY_STR("username"), POLY_STR("user"), POLY_STR("u")};
+    const String kServerArgs[] = {POLY_STR("server"), POLY_STR("s")};
+    const String kHelpArgs[] = {POLY_STR("help"), POLY_STR("h")};
+
+    constexpr const char* kDefaultServerIp = "127.0.0.1";
+    constexpr u16 kDefaultServerPort = 25565;
+
+    constexpr const char* kDefaultUsername = "polymer";
+    constexpr size_t kMaxUsernameSize = 16;
+
+    LaunchArgs result = {};
+
+    result.username = args.GetValue(kUsernameArgs, polymer_array_count(kUsernameArgs));
+    result.server = args.GetValue(kServerArgs, polymer_array_count(kServerArgs));
+
+    if (result.username.size == 0) {
+      result.username = String((char*)kDefaultUsername);
+    }
+
+    if (result.username.size > kMaxUsernameSize) {
+      result.username.size = kMaxUsernameSize;
+    }
+
+    result.server_port = kDefaultServerPort;
+
+    if (result.server.size == 0) {
+      result.server = String((char*)kDefaultServerIp);
+    } else {
+      for (size_t i = 0; i < result.server.size; ++i) {
+        if (result.server.data[i] == ':') {
+          char* port_str = result.server.data + i + 1;
+
+          result.server_port = (u16)strtol(port_str, nullptr, 10);
+          result.server.size = i;
+          result.server.data[i] = 0;
+          break;
+        }
+      }
+    }
+
+    result.help = args.HasValue(kHelpArgs, polymer_array_count(kHelpArgs));
+
+    return result;
+  }
+};
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch (msg) {
@@ -130,10 +266,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   return 0;
 }
 
-int run() {
+void PrintUsage() {
+  printf("Polymer\n\n");
+  printf("Usage:\n\tpolymer.exe [OPTIONS]\n\n");
+  printf("OPTIONS:\n");
+  printf("\t-u, --user, --username\tOffline username. Default: polymer\n");
+  printf("\t-s, --server\t\tDirect server. Default: 127.0.0.1:25565\n");
+}
+
+int run(const LaunchArgs& args) {
   constexpr size_t kMirrorBufferSize = 65536 * 32;
   constexpr size_t kPermanentSize = Gigabytes(1);
   constexpr size_t kTransientSize = Megabytes(32);
+
+  if (args.help) {
+    PrintUsage();
+    return 0;
+  }
 
   u8* perm_memory = (u8*)VirtualAlloc(NULL, kPermanentSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
   u8* trans_memory = (u8*)VirtualAlloc(NULL, kTransientSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -147,6 +296,7 @@ int run() {
   vk_render.trans_arena = &trans_arena;
 
   printf("Polymer\n");
+  fflush(stdout);
 
   GameState* game = memory_arena_construct_type(&perm_arena, GameState, &vk_render, &perm_arena, &trans_arena);
   PacketInterpreter interpreter(game);
@@ -177,7 +327,7 @@ int run() {
 
   if (!RegisterClassEx(&wc)) {
     fprintf(stderr, "Failed to register window.\n");
-    exit(1);
+    return 1;
   }
 
   RECT rect = {0, 0, kWidth, kHeight};
@@ -192,7 +342,7 @@ int run() {
 
   if (!hwnd) {
     fprintf(stderr, "Failed to create window.\n");
-    exit(1);
+    return 1;
   }
 
   vk_render.Initialize(hwnd);
@@ -202,8 +352,8 @@ int run() {
     using ms_float = std::chrono::duration<float, std::milli>;
     auto start = std::chrono::high_resolution_clock::now();
 
-    if (!g_game->assets.Load(vk_render, kMinecraftJar, "blocks.json", &game->block_registry)) {
-      fprintf(stderr, "Failed to load minecraft assets. Requires blocks.json and %s.\n", kMinecraftJar);
+    if (!g_game->assets.Load(vk_render, kMinecraftJar, kBlocksName, &game->block_registry)) {
+      fprintf(stderr, "Failed to load minecraft assets. Requires %s and %s.\n", kBlocksName, kMinecraftJar);
       return 1;
     }
 
@@ -242,7 +392,11 @@ int run() {
   g_game->font_renderer.CreateLayoutSet(vk_render, vk_render.device);
   vk_render.RecreateSwapchain();
 
-  ConnectResult connect_result = connection->Connect(kServerIp, kServerPort);
+  printf("Connecting to '%.*s:%hu' with username '%.*s'.\n", (u32)args.server.size, args.server.data, args.server_port,
+         (u32)args.username.size, args.username.data);
+  fflush(stdout);
+
+  ConnectResult connect_result = connection->Connect(args.server.data, args.server_port);
 
   switch (connect_result) {
   case ConnectResult::ErrorSocket: {
@@ -267,9 +421,11 @@ int run() {
 
   constexpr u32 kProtocolVersion = 761;
 
-  connection->SendHandshake(kProtocolVersion, kServerIp, kServerPort, ProtocolState::Login);
-  connection->SendLoginStart("polymer");
-  strcpy(game->player_manager.client_name, "polymer");
+  connection->SendHandshake(kProtocolVersion, args.server, args.server_port, ProtocolState::Login);
+  connection->SendLoginStart(args.username);
+
+  memcpy(game->player_manager.client_name, args.username.data, args.username.size);
+  game->player_manager.client_name[args.username.size] = 0;
 
   fflush(stdout);
 
@@ -294,7 +450,7 @@ int run() {
       debug.position = Vector2f(8, 8);
       debug.color = Vector4f(1.0f, 0.67f, 0.0f, 1.0f);
 
-      debug.Write("Polymer");
+      debug.Write("Polymer [%s]", game->player_manager.client_name);
 
       debug.color = Vector4f(1, 1, 1, 1);
 
@@ -350,5 +506,13 @@ int run() {
 } // namespace polymer
 
 int main(int argc, char* argv[]) {
-  return polymer::run();
+  polymer::ArgParser arg_parser = polymer::ArgParser::Parse(argc, argv);
+  polymer::LaunchArgs args = polymer::LaunchArgs::Create(arg_parser);
+
+  int result = polymer::run(args);
+
+  fflush(stdout);
+  fflush(stderr);
+
+  return 0;
 }

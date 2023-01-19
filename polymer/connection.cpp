@@ -125,23 +125,18 @@ void Connection::SetBlocking(bool blocking) {
 #endif
 }
 
-void Connection::SendHandshake(u32 version, const char* address, u16 port, ProtocolState state_request) {
+void Connection::SendHandshake(u32 version, const String& address, u16 port, ProtocolState state_request) {
   RingBuffer& wb = write_buffer;
-
-  String sstr;
-  sstr.data = (char*)address;
-  sstr.size = strlen(address);
-
   u32 pid = 0;
 
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(version) + GetVarIntSize(sstr.size) + sstr.size + sizeof(u16) +
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(version) + GetVarIntSize(address.size) + address.size + sizeof(u16) +
                 GetVarIntSize((u64)state_request);
 
   wb.WriteVarInt(size);
   wb.WriteVarInt(pid);
 
   wb.WriteVarInt(version);
-  wb.WriteString(sstr);
+  wb.WriteString(address);
   wb.WriteU16(port);
   wb.WriteVarInt((u64)state_request);
 
@@ -158,19 +153,15 @@ void Connection::SendPingRequest() {
   wb.WriteVarInt(pid);
 }
 
-void Connection::SendLoginStart(const char* username) {
+void Connection::SendLoginStart(const String& username) {
   RingBuffer& wb = write_buffer;
 
-  String sstr;
-  sstr.data = (char*)username;
-  sstr.size = strlen(username);
-
   u32 pid = 0;
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(sstr.size) + sstr.size + 1;
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(username.size) + username.size + 1;
 
   wb.WriteVarInt(size);
   wb.WriteVarInt(pid);
-  wb.WriteString(sstr);
+  wb.WriteString(username);
   wb.WriteU8(0); // HasPlayerUUID
 }
 

@@ -42,7 +42,7 @@ struct PlayerManager {
   size_t player_count = 0;
 
   Player* client_player = nullptr;
-  char client_name[16];
+  char client_name[17];
 
   void SetClientPlayer(Player* player) {
     client_player = player;

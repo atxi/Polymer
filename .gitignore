@@ -21,7 +21,7 @@ bench_results
 /out/build/x64-Debug cxx-17
 /extras/bazel_usage_example/bazel-*
 /clang
-blocks.json
+blocks*.json
 /x64
 *.spv
 *.jar

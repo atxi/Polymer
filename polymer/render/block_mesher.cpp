@@ -196,6 +196,7 @@ inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
 
   // TODO: Clean this up once rotation is settled.
   if (to->element_count == 0) return false;
+  if (from->has_variant_rotation || to->has_variant_rotation) return false;
   if (to->has_leaves || !to->has_shaded) return false;
 
   for (size_t i = 0; i < from->element_count; ++i) {

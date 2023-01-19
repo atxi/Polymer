@@ -16,8 +16,10 @@ const char* const kValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
 
 #ifdef NDEBUG
 constexpr bool kEnableValidationLayers = false;
+constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions) - 1;
 #else
 constexpr bool kEnableValidationLayers = true;
+constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions);
 #endif
 
 static VkBool32 VKAPI_PTR DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -1039,7 +1041,7 @@ bool VulkanRenderer::CreateInstance() {
   inst_info.pNext = NULL;
   inst_info.flags = 0;
   inst_info.pApplicationInfo = &app_info;
-  inst_info.enabledExtensionCount = polymer_array_count(kRequiredExtensions);
+  inst_info.enabledExtensionCount = kRequiredExtensionCount;
   inst_info.ppEnabledExtensionNames = kRequiredExtensions;
   if (kEnableValidationLayers) {
     inst_info.enabledLayerCount = polymer_array_count(kValidationLayers);

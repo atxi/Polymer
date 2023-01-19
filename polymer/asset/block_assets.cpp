@@ -533,6 +533,11 @@ static u32 GetHighestStateId(json_object_s* root) {
 
 bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filename) {
   FILE* f = fopen(blocks_filename, "r");
+
+  if (!f) {
+    return false;
+  }
+
   fseek(f, 0, SEEK_END);
   long file_size = ftell(f);
   fseek(f, 0, SEEK_SET);
