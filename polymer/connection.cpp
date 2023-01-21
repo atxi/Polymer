@@ -211,6 +211,61 @@ void Connection::SendPlayerPositionAndRotation(const Vector3f& position, float y
   wb.WriteU8(on_ground);
 }
 
+void Connection::SendChatCommand(const String& message) {
+  u64 timestamp = 0;
+  u64 salt = 0;
+  u64 array_length = 0;
+  u64 message_count = 0;
+
+  RingBuffer& wb = write_buffer;
+  u32 pid = 0x04;
+
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize(message.size) + message.size + sizeof(u64) +
+                sizeof(u64) + GetVarIntSize(array_length) + GetVarIntSize(message_count) + 3;
+
+  wb.WriteVarInt(size);
+  wb.WriteVarInt(0);
+  wb.WriteVarInt(pid);
+
+  wb.WriteString(message);
+  wb.WriteU64(timestamp);
+  wb.WriteU64(salt);
+  wb.WriteVarInt(array_length);
+  wb.WriteVarInt(message_count);
+  // TODO: This doesn't match what wiki says, maybe because it's unclear about its mixed usage of BitSet term.
+  // Seems to work fine for insecure chatting.
+  wb.WriteU8(0);
+  wb.WriteU8(0);
+  wb.WriteU8(0);
+}
+
+void Connection::SendChatMessage(const String& message) {
+  u64 timestamp = 0;
+  u64 salt = 0;
+  u64 message_count = 0;
+
+  RingBuffer& wb = write_buffer;
+  u32 pid = 0x05;
+
+  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize(message.size) + message.size + sizeof(u64) +
+                sizeof(u64) + 1 + GetVarIntSize(message_count) + 3;
+
+  wb.WriteVarInt(size);
+  wb.WriteVarInt(0);
+  wb.WriteVarInt(pid);
+
+  wb.WriteString(message);
+  wb.WriteU64(timestamp);
+  wb.WriteU64(salt);
+  wb.WriteU8(0);
+  wb.WriteVarInt(message_count);
+  // TODO: This doesn't match what wiki says, maybe because it's unclear about its mixed usage of BitSet term.
+  // Seems to work fine for insecure chatting.
+  wb.WriteU8(0);
+  wb.WriteU8(0);
+  wb.WriteU8(0);
+}
+
 void Connection::SendClientStatus(ClientStatusAction action) {
   RingBuffer& wb = write_buffer;
   u32 pid = 0x06;

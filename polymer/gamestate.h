@@ -8,6 +8,7 @@
 #include <polymer/render/chunk_renderer.h>
 #include <polymer/render/font_renderer.h>
 #include <polymer/types.h>
+#include <polymer/ui/chat_window.h>
 #include <polymer/world/block.h>
 #include <polymer/world/dimension.h>
 #include <polymer/world/world.h>
@@ -55,28 +56,6 @@ struct PlayerManager {
   void RenderPlayerList(render::FontRenderer& font_renderer);
 };
 
-// Temporary chat message display until a chat window is implemented.
-// TODO: Remove
-struct ChatMessagePopup {
-  char message[1024];
-  size_t message_size;
-  float remaining_time;
-};
-struct ChatManager {
-  ChatMessagePopup chat_message_queue[5];
-  size_t chat_message_index;
-
-  ChatManager() {
-    for (size_t i = 0; i < polymer_array_count(chat_message_queue); ++i) {
-      chat_message_queue[i].remaining_time = 0.0f;
-    }
-    chat_message_index = 0;
-  }
-
-  void Update(render::FontRenderer& font_renderer, float dt);
-  void PushMessage(const char* mesg, size_t mesg_size, float display_time);
-};
-
 struct GameState {
   MemoryArena* perm_arena;
   MemoryArena* trans_arena;
@@ -98,7 +77,7 @@ struct GameState {
   world::World world;
 
   PlayerManager player_manager;
-  ChatManager chat_manager;
+  ui::ChatWindow chat_window;
 
   float position_sync_timer;
   float animation_accumulator;

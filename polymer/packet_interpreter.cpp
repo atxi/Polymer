@@ -109,7 +109,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       printf("%s\n", output_text);
 
-      game->chat_manager.PushMessage(output_text, output_size, 10.0f);
+      game->chat_window.PushMessage(output_text, output_size);
     }
 
     u64 timestamp = rb->ReadU64();

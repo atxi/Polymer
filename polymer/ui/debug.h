@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 namespace polymer {
+namespace ui {
 
 enum class DebugTextAlignment { Left, Right, Center };
 
@@ -35,6 +36,7 @@ struct DebugTextSystem {
   }
 };
 
+} // namespace ui
 } // namespace polymer
 
 #endif

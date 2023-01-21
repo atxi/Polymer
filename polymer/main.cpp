@@ -5,8 +5,8 @@
 #include <polymer/packet_interpreter.h>
 #include <polymer/types.h>
 
-#include <polymer/Debug.h>
 #include <polymer/render/render.h>
+#include <polymer/ui/debug.h>
 
 #include <chrono>
 
@@ -38,6 +38,11 @@ static MemoryArena* g_trans_arena = nullptr;
 static InputState g_input = {};
 
 static bool g_display_cursor = false;
+
+inline void ToggleCursor() {
+  g_display_cursor = !g_display_cursor;
+  ShowCursor(g_display_cursor);
+}
 
 struct ArgPair {
   String name;
@@ -187,11 +192,38 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   case WM_DESTROY: {
     PostQuitMessage(0);
   } break;
+  case WM_CHAR: {
+    if (g_game->chat_window.display_full) {
+      g_game->chat_window.OnInput((u32)wParam);
+    }
+  } break;
   case WM_KEYDOWN: {
-    if (wParam == 'T' || wParam == VK_ESCAPE) {
-      g_display_cursor = !g_display_cursor;
+    if (wParam == VK_ESCAPE) {
+      ToggleCursor();
 
-      ShowCursor(g_display_cursor);
+      g_game->chat_window.ToggleDisplay();
+      memset(&g_input, 0, sizeof(g_input));
+    }
+
+    if ((wParam == 'T' || wParam == VK_OEM_2) && !g_game->chat_window.display_full) {
+      ToggleCursor();
+
+      g_game->chat_window.ToggleDisplay();
+      memset(&g_input, 0, sizeof(g_input));
+
+      if (wParam == VK_OEM_2) {
+        g_game->chat_window.input.active = true;
+      }
+    }
+
+    if (g_game->chat_window.display_full) {
+      if (wParam == VK_RETURN) {
+        ToggleCursor();
+
+        g_game->chat_window.SendInput(g_game->connection);
+        g_game->chat_window.ToggleDisplay();
+      }
+      break;
     }
 
     if (wParam == 'W') {
@@ -429,7 +461,7 @@ int run(const LaunchArgs& args) {
 
   fflush(stdout);
 
-  DebugTextSystem debug(game->font_renderer);
+  ui::DebugTextSystem debug(game->font_renderer);
 
   while (connection->connected) {
     auto start = std::chrono::high_resolution_clock::now();
