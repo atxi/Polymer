@@ -202,6 +202,21 @@ void RingBuffer::WriteString(const String& str) {
   }
 }
 
+void RingBuffer::WriteRawString(const String& str) {
+  size_t remaining = this->GetFreeSize();
+  char* data = str.data;
+  size_t size = str.size;
+
+  if (remaining >= size) {
+    memcpy(this->data + this->write_offset, data, size);
+    this->write_offset = (write_offset + size) % this->size;
+  } else {
+    memcpy(this->data + this->write_offset, data, remaining);
+    memcpy(this->data, data + remaining, size - remaining);
+    this->write_offset = size - remaining;
+  }
+}
+
 u8 RingBuffer::ReadU8() {
   u8 result = this->data[this->read_offset];
 

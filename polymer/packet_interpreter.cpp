@@ -810,6 +810,7 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
   } break;
   case LoginProtocol::SetCompression: {
     compression = true;
+    connection->builder.flags &= ~(PacketBuilder::BuildFlag_OmitCompress);
   } break;
   default:
     break;

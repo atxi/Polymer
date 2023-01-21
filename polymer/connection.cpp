@@ -16,7 +16,8 @@
 
 namespace polymer {
 
-Connection::Connection(MemoryArena& arena) : read_buffer(arena, 0), write_buffer(arena, 0), interpreter(nullptr) {}
+Connection::Connection(MemoryArena& arena)
+    : read_buffer(arena, 0), write_buffer(arena, 0), interpreter(nullptr), builder(arena) {}
 
 Connection::TickResult Connection::Tick() {
   RingBuffer* rb = &read_buffer;
@@ -126,89 +127,49 @@ void Connection::SetBlocking(bool blocking) {
 }
 
 void Connection::SendHandshake(u32 version, const String& address, u16 port, ProtocolState state_request) {
-  RingBuffer& wb = write_buffer;
-  u32 pid = 0;
+  builder.WriteVarInt(version);
+  builder.WriteString(address);
+  builder.WriteU16(port);
+  builder.WriteVarInt((u64)state_request);
 
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(version) + GetVarIntSize(address.size) + address.size + sizeof(u16) +
-                GetVarIntSize((u64)state_request);
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(pid);
-
-  wb.WriteVarInt(version);
-  wb.WriteString(address);
-  wb.WriteU16(port);
-  wb.WriteVarInt((u64)state_request);
+  builder.Commit(write_buffer, 0x00);
 
   this->protocol_state = state_request;
 }
 
 void Connection::SendPingRequest() {
-  RingBuffer& wb = write_buffer;
-
-  u32 pid = 0;
-  size_t size = GetVarIntSize(pid);
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(pid);
+  builder.Commit(write_buffer, 0x00);
 }
 
 void Connection::SendLoginStart(const String& username) {
-  RingBuffer& wb = write_buffer;
+  builder.WriteString(username);
+  builder.WriteU8(0); // HasPlayerUUID
 
-  u32 pid = 0;
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(username.size) + username.size + 1;
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(pid);
-  wb.WriteString(username);
-  wb.WriteU8(0); // HasPlayerUUID
+  builder.Commit(write_buffer, 0x00);
 }
 
 void Connection::SendKeepAlive(u64 id) {
-  RingBuffer& wb = write_buffer;
+  builder.WriteU64(id);
 
-  u32 pid = 0x11;
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + sizeof(id);
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(0); // compression
-  wb.WriteVarInt(pid);
-
-  wb.WriteU64(id);
+  builder.Commit(write_buffer, 0x11);
 }
 
 void Connection::SendTeleportConfirm(u64 id) {
-  RingBuffer& wb = write_buffer;
-  u32 pid = 0x00;
+  builder.WriteVarInt(id);
 
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize(id);
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(0);
-  wb.WriteVarInt(pid);
-
-  wb.WriteVarInt(id);
+  builder.Commit(write_buffer, 0x00);
 }
 
 void Connection::SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground) {
-  RingBuffer& wb = write_buffer;
-  u32 pid = 0x14;
+  builder.WriteDouble(position.x);
+  builder.WriteDouble(position.y);
+  builder.WriteDouble(position.z);
 
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + sizeof(double) + sizeof(double) + sizeof(double) +
-                sizeof(float) + sizeof(float) + 1;
+  builder.WriteFloat(yaw);
+  builder.WriteFloat(pitch);
+  builder.WriteU8(on_ground);
 
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(0);
-  wb.WriteVarInt(pid);
-
-  wb.WriteDouble(position.x);
-  wb.WriteDouble(position.y);
-  wb.WriteDouble(position.z);
-
-  wb.WriteFloat(yaw);
-  wb.WriteFloat(pitch);
-  wb.WriteU8(on_ground);
+  builder.Commit(write_buffer, 0x14);
 }
 
 void Connection::SendChatCommand(const String& message) {
@@ -217,26 +178,18 @@ void Connection::SendChatCommand(const String& message) {
   u64 array_length = 0;
   u64 message_count = 0;
 
-  RingBuffer& wb = write_buffer;
-  u32 pid = 0x04;
-
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize(message.size) + message.size + sizeof(u64) +
-                sizeof(u64) + GetVarIntSize(array_length) + GetVarIntSize(message_count) + 3;
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(0);
-  wb.WriteVarInt(pid);
-
-  wb.WriteString(message);
-  wb.WriteU64(timestamp);
-  wb.WriteU64(salt);
-  wb.WriteVarInt(array_length);
-  wb.WriteVarInt(message_count);
+  builder.WriteString(message);
+  builder.WriteU64(timestamp);
+  builder.WriteU64(salt);
+  builder.WriteVarInt(array_length);
+  builder.WriteVarInt(message_count);
   // TODO: This doesn't match what wiki says, maybe because it's unclear about its mixed usage of BitSet term.
   // Seems to work fine for insecure chatting.
-  wb.WriteU8(0);
-  wb.WriteU8(0);
-  wb.WriteU8(0);
+  builder.WriteU8(0);
+  builder.WriteU8(0);
+  builder.WriteU8(0);
+
+  builder.Commit(write_buffer, 0x04);
 }
 
 void Connection::SendChatMessage(const String& message) {
@@ -244,39 +197,24 @@ void Connection::SendChatMessage(const String& message) {
   u64 salt = 0;
   u64 message_count = 0;
 
-  RingBuffer& wb = write_buffer;
-  u32 pid = 0x05;
-
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize(message.size) + message.size + sizeof(u64) +
-                sizeof(u64) + 1 + GetVarIntSize(message_count) + 3;
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(0);
-  wb.WriteVarInt(pid);
-
-  wb.WriteString(message);
-  wb.WriteU64(timestamp);
-  wb.WriteU64(salt);
-  wb.WriteU8(0);
-  wb.WriteVarInt(message_count);
+  builder.WriteString(message);
+  builder.WriteU64(timestamp);
+  builder.WriteU64(salt);
+  builder.WriteU8(0);
+  builder.WriteVarInt(message_count);
   // TODO: This doesn't match what wiki says, maybe because it's unclear about its mixed usage of BitSet term.
   // Seems to work fine for insecure chatting.
-  wb.WriteU8(0);
-  wb.WriteU8(0);
-  wb.WriteU8(0);
+  builder.WriteU8(0);
+  builder.WriteU8(0);
+  builder.WriteU8(0);
+
+  builder.Commit(write_buffer, 0x05);
 }
 
 void Connection::SendClientStatus(ClientStatusAction action) {
-  RingBuffer& wb = write_buffer;
-  u32 pid = 0x06;
+  builder.WriteVarInt((u64)action);
 
-  size_t size = GetVarIntSize(pid) + GetVarIntSize(0) + GetVarIntSize((u64)action);
-
-  wb.WriteVarInt(size);
-  wb.WriteVarInt(0);
-  wb.WriteVarInt(pid);
-
-  wb.WriteVarInt((u64)action);
+  builder.Commit(write_buffer, 0x06);
 }
 
 #ifdef _WIN32
