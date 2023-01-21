@@ -72,10 +72,34 @@ void ChatWindow::Update(render::FontRenderer& font_renderer) {
     font_renderer.RenderBackground(Vector3f(4, bottom, 0), Vector2f(background_width, kLineHeight), bg_color);
     font_renderer.RenderText(Vector3f(8, bottom, 0), String(input.message, input.size), style, color);
 
+    u64 now_ms = GetNow() / (1000 * 1000);
+
+    if (now_ms % 500 < 250) {
+      float text_width = (float)font_renderer.GetTextWidth(String(input.message, input_cursor_index));
+      float left_spacing = 12;
+
+      if (input_cursor_index >= input.size) {
+        if (input_cursor_index == 0) {
+          left_spacing = 8;
+        }
+        font_renderer.RenderText(Vector3f(left_spacing + text_width, bottom, 0), POLY_STR("_"), style, color);
+      } else {
+        font_renderer.RenderText(Vector3f(left_spacing - 4 + text_width, bottom, 0), POLY_STR("|"), style, color);
+      }
+    }
+
     input.active = true;
   } else {
     RenderSlice(font_renderer, message_index, 10, true);
   }
+}
+
+void ChatWindow::OnDelete() {
+  if (input_cursor_index >= input.size || input.size == 0) return;
+
+  memmove(input.message + input_cursor_index, input.message + input_cursor_index + 1, input.size - input_cursor_index);
+
+  --input.size;
 }
 
 void ChatWindow::SendInput(Connection& connection) {
@@ -89,6 +113,7 @@ void ChatWindow::SendInput(Connection& connection) {
     connection.SendChatMessage(String(input.message, input.size));
   }
 
+  input_cursor_index = 0;
   input.Clear();
 }
 
@@ -98,16 +123,50 @@ void ChatWindow::OnInput(u32 codepoint) {
 
   if (!input.active) return;
 
-  if (input.size > 0 && codepoint == 0x08) {
+  if (input_cursor_index > 0 && codepoint == 0x08) {
     // Backspace
-    input.message[--input.size] = 0;
+    memmove(input.message + input_cursor_index - 1, input.message + input_cursor_index,
+            input.size - input_cursor_index);
+    --input.size;
+    --input_cursor_index;
+    input.message[input.size] = 0;
   }
 
   if (codepoint < 0x20 || codepoint > 0x7E) return;
 
   if (input.size < polymer_array_count(input.message)) {
-    input.message[input.size++] = (char)codepoint;
+    InsertCodepoint(codepoint);
   }
+}
+
+void ChatWindow::MoveCursor(ChatMoveDirection direction) {
+  if (direction == ChatMoveDirection::Left) {
+    if (input_cursor_index > 0) {
+      --input_cursor_index;
+    }
+  } else if (direction == ChatMoveDirection::Right) {
+    if (input_cursor_index < input.size) {
+      ++input_cursor_index;
+    }
+  } else if (direction == ChatMoveDirection::Home) {
+    input_cursor_index = 0;
+  } else if (direction == ChatMoveDirection::End) {
+    input_cursor_index = input.size;
+  }
+}
+
+void ChatWindow::InsertCodepoint(u32 codepoint) {
+  if (input.size >= polymer_array_count(input.message)) return;
+
+  if (input_cursor_index < input.size) {
+    memmove(input.message + input_cursor_index + 1, input.message + input_cursor_index,
+            input.size - input_cursor_index);
+  }
+
+  input.message[input_cursor_index] = (char)codepoint;
+
+  ++input_cursor_index;
+  ++input.size;
 }
 
 bool ChatWindow::ToggleDisplay() {
@@ -115,6 +174,7 @@ bool ChatWindow::ToggleDisplay() {
 
   if (display_full) {
     input.Clear();
+    input_cursor_index = 0;
   } else {
     input.active = false;
   }
@@ -137,7 +197,7 @@ void ChatWindow::PushMessage(const char* mesg, size_t mesg_size) {
     mesg_size = polymer_array_count(chat_message->message);
   }
 
-  memcpy(chat_message, mesg, mesg_size);
+  memcpy(chat_message->message, mesg, mesg_size);
   chat_message->message_size = mesg_size;
   chat_message->timestamp = GetNow();
 }

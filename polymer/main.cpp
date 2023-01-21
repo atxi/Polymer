@@ -222,6 +222,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         g_game->chat_window.SendInput(g_game->connection);
         g_game->chat_window.ToggleDisplay();
+      } else if (wParam == VK_LEFT) {
+        g_game->chat_window.MoveCursor(ui::ChatMoveDirection::Left);
+      } else if (wParam == VK_RIGHT) {
+        g_game->chat_window.MoveCursor(ui::ChatMoveDirection::Right);
+      } else if (wParam == VK_HOME) {
+        g_game->chat_window.MoveCursor(ui::ChatMoveDirection::Home);
+      } else if (wParam == VK_END) {
+        g_game->chat_window.MoveCursor(ui::ChatMoveDirection::End);
+      } else if (wParam == VK_DELETE) {
+        g_game->chat_window.OnDelete();
       }
       break;
     }
