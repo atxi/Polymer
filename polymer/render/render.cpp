@@ -231,7 +231,7 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
   sampler_info.unnormalizedCoordinates = VK_FALSE;
   sampler_info.compareEnable = VK_FALSE;
   sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
-  if (enable_mips) {
+  if (enable_mips && swapchain.supports_linear_mipmap) {
     sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
   } else {
     sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;

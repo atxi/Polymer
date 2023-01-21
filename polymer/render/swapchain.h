@@ -47,6 +47,8 @@ struct Swapchain {
   VkImageView image_views[kMaxSwapImages];
   VkFence image_fences[kMaxSwapImages];
 
+  bool supports_linear_mipmap;
+
   void Create(MemoryArena& trans_arena, VkPhysicalDevice physical_device, VkDevice device, VkSurfaceKHR surface,
               VkExtent2D extent, struct QueueFamilyIndices& indices);
   void Cleanup();
@@ -66,7 +68,8 @@ private:
   void CreateDepthBuffer();
 
   VkPresentModeKHR ChooseSwapPresentMode(VkPresentModeKHR* present_modes, u32 present_mode_count);
-  VkSurfaceFormatKHR ChooseSwapSurfaceFormat(VkSurfaceFormatKHR* formats, u32 format_count);
+  VkSurfaceFormatKHR ChooseSwapSurfaceFormat(VkPhysicalDevice physical_device, VkSurfaceFormatKHR* formats,
+                                             u32 format_count);
 
   struct CallbackRegistration {
     void* user_data;

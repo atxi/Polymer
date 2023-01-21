@@ -76,7 +76,8 @@ void ChunkRenderer::CreateSamplers(VkDevice device) {
     sampler_info.unnormalizedCoordinates = VK_FALSE;
     sampler_info.compareEnable = VK_FALSE;
     sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
-    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_info.mipmapMode =
+        renderer->swapchain.supports_linear_mipmap ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
     sampler_info.mipLodBias = 0.5f;
     sampler_info.minLod = 0.0f;
     sampler_info.maxLod = 1.0f;
@@ -100,7 +101,8 @@ void ChunkRenderer::CreateSamplers(VkDevice device) {
     sampler_info.unnormalizedCoordinates = VK_FALSE;
     sampler_info.compareEnable = VK_FALSE;
     sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
-    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_info.mipmapMode =
+        renderer->swapchain.supports_linear_mipmap ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
     sampler_info.mipLodBias = 0.5f;
     sampler_info.minLod = 0.0f;
     sampler_info.maxLod = (float)block_textures->mips;

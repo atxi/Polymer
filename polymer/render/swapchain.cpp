@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 namespace polymer {
 namespace render {
@@ -15,10 +16,27 @@ void Swapchain::Create(MemoryArena& trans_arena, VkPhysicalDevice physical_devic
 
   SwapChainSupportDetails swapchain_support = QuerySwapChainSupport(trans_arena, physical_device, surface);
 
+  if (swapchain_support.format_count == 0) {
+    fprintf(stderr, "Failed to initialize swapchain. No formats supported.\n");
+    fflush(stderr);
+    exit(1);
+  }
+
   VkSurfaceFormatKHR surface_format =
-      ChooseSwapSurfaceFormat(swapchain_support.formats, swapchain_support.format_count);
+      ChooseSwapSurfaceFormat(physical_device, swapchain_support.formats, swapchain_support.format_count);
   VkPresentModeKHR present_mode =
       ChooseSwapPresentMode(swapchain_support.present_modes, swapchain_support.present_mode_count);
+
+  VkFormatProperties format_properties;
+  vkGetPhysicalDeviceFormatProperties(physical_device, surface_format.format, &format_properties);
+
+  this->supports_linear_mipmap =
+      (format_properties.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
+
+  if (!this->supports_linear_mipmap) {
+    printf("Chose surface format without support for linear mipmap filtering.\n");
+    fflush(stdout);
+  }
 
   if (swapchain_support.capabilities.currentExtent.width != UINT32_MAX) {
     extent = swapchain_support.capabilities.currentExtent;
@@ -240,21 +258,27 @@ VkPresentModeKHR Swapchain::ChooseSwapPresentMode(VkPresentModeKHR* present_mode
   return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkSurfaceFormatKHR Swapchain::ChooseSwapSurfaceFormat(VkSurfaceFormatKHR* formats, u32 format_count) {
+VkSurfaceFormatKHR Swapchain::ChooseSwapSurfaceFormat(VkPhysicalDevice physical_device, VkSurfaceFormatKHR* formats,
+                                                      u32 format_count) {
+  size_t best_index = 0;
+
   for (u32 i = 0; i < format_count; ++i) {
     VkSurfaceFormatKHR* format = formats + i;
 
-    if (format->format == VK_FORMAT_B8G8R8A8_UNORM) {
-      return *format;
+    VkFormatProperties properties;
+    vkGetPhysicalDeviceFormatProperties(physical_device, format->format, &properties);
+
+    if (format->format == VK_FORMAT_B8G8R8A8_UNORM || format->format == VK_FORMAT_R8G8B8A8_UNORM) {
+      if (properties.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) {
+        best_index = i;
+        break;
+      }
+
+      best_index = i;
     }
-#if 0
-    if (format->format == VK_FORMAT_B8G8R8A8_SRGB && format->colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-      return *format;
-    }
-#endif
   }
 
-  return formats[0];
+  return formats[best_index];
 }
 
 void Swapchain::RegisterCreateCallback(void* user_data, SwapchainCallback callback) {
