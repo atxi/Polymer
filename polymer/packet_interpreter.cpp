@@ -5,6 +5,7 @@
 #include <polymer/miniz.h>
 #include <polymer/nbt.h>
 #include <polymer/protocol.h>
+#include <polymer/unicode.h>
 
 #include <assert.h>
 #include <stdio.h>
@@ -98,18 +99,31 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     message.size = rb->ReadString(&message);
 
     if (message.size > 0) {
-      char output_text[1024];
-      size_t output_size = 0;
+      wchar output_text[1024];
+      size_t output_length = 0;
 
       if (sender) {
-        output_size = sprintf(output_text, "<%s> %.*s", sender->name, (int)message.size, message.data);
-      } else {
-        output_size = sprintf(output_text, "%.*s", (int)message.size, message.data);
+        size_t namelen = strlen(sender->name);
+
+        output_text[0] = '<';
+
+        for (size_t i = 0; i < namelen; ++i) {
+          output_text[i + 1] = sender->name[i];
+        }
+
+        output_text[namelen + 1] = '>';
+        output_text[namelen + 2] = ' ';
+
+        output_length += namelen + 3;
       }
 
-      printf("%s\n", output_text);
+      WString wmessage = Unicode::FromUTF8(*trans_arena, message);
 
-      game->chat_window.PushMessage(output_text, output_size);
+      for (size_t i = 0; i < wmessage.length; ++i) {
+        output_text[output_length++] = wmessage.data[i];
+      }
+
+      game->chat_window.PushMessage(output_text, output_length);
     }
 
     u64 timestamp = rb->ReadU64();

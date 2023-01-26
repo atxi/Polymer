@@ -2,7 +2,9 @@
 
 #include <polymer/connection.h>
 #include <polymer/math.h>
+#include <polymer/memory.h>
 #include <polymer/render/font_renderer.h>
+#include <polymer/unicode.h>
 
 #include <chrono>
 
@@ -54,7 +56,7 @@ void ChatWindow::RenderSlice(render::FontRenderer& font_renderer, size_t start_i
     }
 
     font_renderer.RenderBackground(position + Vector3f(-4, 0, 0), Vector2f(background_width, kLineHeight), bg_color);
-    font_renderer.RenderText(position, String(chat_message->message, chat_message->message_size), style, color);
+    font_renderer.RenderText(position, WString(chat_message->message, chat_message->message_length), style, color);
   }
 }
 
@@ -70,15 +72,17 @@ void ChatWindow::Update(render::FontRenderer& font_renderer) {
     Vector4f bg_color(0, 0, 0, 0.4f);
 
     font_renderer.RenderBackground(Vector3f(4, bottom, 0), Vector2f(background_width, kLineHeight), bg_color);
-    font_renderer.RenderText(Vector3f(8, bottom, 0), String(input.message, input.size), style, color);
+    if (input.length > 0) {
+      font_renderer.RenderText(Vector3f(8, bottom, 0), WString(input.message, input.length), style, color);
+    }
 
     u64 now_ms = GetNow() / (1000 * 1000);
 
     if (now_ms % 500 < 250) {
-      float text_width = (float)font_renderer.GetTextWidth(String(input.message, input_cursor_index));
+      float text_width = (float)font_renderer.GetTextWidth(WString(input.message, input_cursor_index));
       float left_spacing = 12;
 
-      if (input_cursor_index >= input.size) {
+      if (input_cursor_index >= input.length) {
         if (input_cursor_index == 0) {
           left_spacing = 8;
         }
@@ -95,29 +99,32 @@ void ChatWindow::Update(render::FontRenderer& font_renderer) {
 }
 
 void ChatWindow::OnDelete() {
-  if (input_cursor_index >= input.size || input.size == 0) return;
+  if (input_cursor_index >= input.length || input.length == 0) return;
 
-  memmove(input.message + input_cursor_index, input.message + input_cursor_index + 1, input.size - input_cursor_index);
+  memmove(input.message + input_cursor_index, input.message + input_cursor_index + 1,
+          (input.length - input_cursor_index) * sizeof(wchar));
 
-  --input.size;
+  --input.length;
 }
 
 void ChatWindow::SendInput(Connection& connection) {
-  if (input.size <= 0) return;
+  if (input.length <= 0) return;
+
+  String utf8 = Unicode::ToUTF8(trans_arena, WString(input.message, input.length));
 
   if (input.message[0] == '/') {
-    if (input.size > 1) {
-      connection.SendChatCommand(String(input.message + 1, input.size - 1));
+    if (input.length > 1) {
+      connection.SendChatCommand(String(utf8.data + 1, utf8.size - 1));
     }
   } else {
-    connection.SendChatMessage(String(input.message, input.size));
+    connection.SendChatMessage(utf8);
   }
 
   input_cursor_index = 0;
   input.Clear();
 }
 
-void ChatWindow::OnInput(u32 codepoint) {
+void ChatWindow::OnInput(wchar codepoint) {
   // TODO: Handle more than ascii
   // TODO: Remove magic numbers
 
@@ -126,15 +133,15 @@ void ChatWindow::OnInput(u32 codepoint) {
   if (input_cursor_index > 0 && codepoint == 0x08) {
     // Backspace
     memmove(input.message + input_cursor_index - 1, input.message + input_cursor_index,
-            input.size - input_cursor_index);
-    --input.size;
+            (input.length - input_cursor_index) * sizeof(wchar));
+    --input.length;
     --input_cursor_index;
-    input.message[input.size] = 0;
+    input.message[input.length] = 0;
   }
 
-  if (codepoint < 0x20 || codepoint > 0x7E) return;
+  if (codepoint < 0x20) return;
 
-  if (input.size < polymer_array_count(input.message)) {
+  if (input.length < polymer_array_count(input.message)) {
     InsertCodepoint(codepoint);
   }
 }
@@ -145,28 +152,28 @@ void ChatWindow::MoveCursor(ChatMoveDirection direction) {
       --input_cursor_index;
     }
   } else if (direction == ChatMoveDirection::Right) {
-    if (input_cursor_index < input.size) {
+    if (input_cursor_index < input.length) {
       ++input_cursor_index;
     }
   } else if (direction == ChatMoveDirection::Home) {
     input_cursor_index = 0;
   } else if (direction == ChatMoveDirection::End) {
-    input_cursor_index = input.size;
+    input_cursor_index = input.length;
   }
 }
 
-void ChatWindow::InsertCodepoint(u32 codepoint) {
-  if (input.size >= polymer_array_count(input.message)) return;
+void ChatWindow::InsertCodepoint(wchar codepoint) {
+  if (input.length >= polymer_array_count(input.message)) return;
 
-  if (input_cursor_index < input.size) {
+  if (input_cursor_index < input.length) {
     memmove(input.message + input_cursor_index + 1, input.message + input_cursor_index,
-            input.size - input_cursor_index);
+            (input.length - input_cursor_index) * sizeof(wchar));
   }
 
-  input.message[input_cursor_index] = (char)codepoint;
+  input.message[input_cursor_index] = codepoint;
 
   ++input_cursor_index;
-  ++input.size;
+  ++input.length;
 }
 
 bool ChatWindow::ToggleDisplay() {
@@ -182,7 +189,7 @@ bool ChatWindow::ToggleDisplay() {
   return display_full;
 }
 
-void ChatWindow::PushMessage(const char* mesg, size_t mesg_size) {
+void ChatWindow::PushMessage(const wchar* mesg, size_t mesg_length) {
   ChatMessage* chat_message = nullptr;
 
   if (message_count < polymer_array_count(messages)) {
@@ -193,12 +200,12 @@ void ChatWindow::PushMessage(const char* mesg, size_t mesg_size) {
 
   message_index = (message_index + 1) % polymer_array_count(messages);
 
-  if (mesg_size > polymer_array_count(chat_message->message)) {
-    mesg_size = polymer_array_count(chat_message->message);
+  if (mesg_length > polymer_array_count(chat_message->message)) {
+    mesg_length = polymer_array_count(chat_message->message);
   }
 
-  memcpy(chat_message->message, mesg, mesg_size);
-  chat_message->message_size = mesg_size;
+  memcpy(chat_message->message, mesg, mesg_length * sizeof(wchar));
+  chat_message->message_length = mesg_length;
   chat_message->timestamp = GetNow();
 }
 

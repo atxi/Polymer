@@ -77,6 +77,9 @@ struct FontRenderer {
   void RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style = FontStyle_None,
                   const Vector4f& color = Vector4f(1, 1, 1, 1));
 
+  void RenderText(const Vector3f& screen_position, const WString& wstr, FontStyleFlags style = FontStyle_None,
+                  const Vector4f& color = Vector4f(1, 1, 1, 1));
+
   void RenderBackground(const Vector3f& screen_position, const String& str,
                         const Vector4f& color = Vector4f(0.2f, 0.2f, 0.2f, 0.5f));
 
@@ -84,6 +87,7 @@ struct FontRenderer {
                         const Vector4f& color = Vector4f(0.2f, 0.2f, 0.2f, 0.5f));
 
   int GetTextWidth(const String& str);
+  int GetTextWidth(const WString& wstr);
 
   bool BeginFrame(size_t current_frame);
   void Draw(VkCommandBuffer command_buffer, size_t current_frame);

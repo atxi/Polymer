@@ -4,6 +4,8 @@
 
 #include <stdio.h>
 
+// TODO: String and WString paths should be unified.
+
 #pragma warning(disable : 26812) // disable unscoped enum warning
 
 namespace polymer {
@@ -92,35 +94,54 @@ int FontRenderer::GetTextWidth(const String& str) {
   return width - 2;
 }
 
-static void TextOutput(FontVertex* mapped_vertices, u8* glyph_size_table, size_t& vertex_count, Vector3f pos,
-                       const String& str, u32 rgba) {
-  // TODO: Implement the rest such as scaling
-  // TODO: Should probably use index buffer
-  // TODO: Very inefficient
-  for (size_t i = 0; i < str.size; ++i) {
+int FontRenderer::GetTextWidth(const WString& str) {
+  int width = 0;
+
+  if (str.length == 0) return width;
+
+  for (size_t i = 0; i < str.length; ++i) {
     if (str.data[i] != ' ') {
-      u16 glyph_id = str.data[i];
+      u32 glyph_id = str.data[i];
       u8 size_entry = glyph_size_table[glyph_id];
 
-      int start = (size_entry >> 4);
-      int end = (size_entry & 0x0F) + 1;
+      int start_raw = (size_entry >> 4);
+      int end_raw = (size_entry & 0x0F) + 1;
 
-      float width = (float)(end - start);
-      constexpr float height = 16;
-
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), PACK_UV(start, 0), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), PACK_UV(start, 1), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), PACK_UV(end, 0), rgba, str.data[i]);
-
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), PACK_UV(end, 0), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), PACK_UV(start, 1), rgba, str.data[i]);
-      PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), PACK_UV(end, 1), rgba, str.data[i]);
-
-      pos.x += width + 2;
+      width += end_raw - start_raw + 2;
     } else {
-      constexpr float kSpaceSkip = 6;
-      pos.x += kSpaceSkip;
+      width += 6;
     }
+  }
+
+  // Cut off the trailing width
+  return width - 2;
+}
+
+static inline void GlyphOutput(FontVertex* mapped_vertices, u8* glyph_size_table, size_t& vertex_count, Vector3f& pos,
+                               wchar codepoint, u32 rgba) {
+  const wchar kSpaceCodepoint = (wchar)' ';
+
+  if (codepoint == kSpaceCodepoint) {
+    constexpr float kSpaceSkip = 6;
+    pos.x += kSpaceSkip;
+  } else {
+    u8 size_entry = glyph_size_table[codepoint];
+
+    int start = (size_entry >> 4);
+    int end = (size_entry & 0x0F) + 1;
+
+    float width = (float)(end - start);
+    constexpr float height = 16;
+
+    PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, 0, 0), PACK_UV(start, 0), rgba, codepoint);
+    PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), PACK_UV(start, 1), rgba, codepoint);
+    PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), PACK_UV(end, 0), rgba, codepoint);
+
+    PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, 0, 0), PACK_UV(end, 0), rgba, codepoint);
+    PushVertex(mapped_vertices, vertex_count, pos + Vector3f(0, height, 0), PACK_UV(start, 1), rgba, codepoint);
+    PushVertex(mapped_vertices, vertex_count, pos + Vector3f(width, height, 0), PACK_UV(end, 1), rgba, codepoint);
+
+    pos.x += width + 2;
   }
 }
 
@@ -162,10 +183,72 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
 
     u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
 
-    TextOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, position + Vector3f(1, 1, 0), str, rgba);
+    Vector3f drop_position = position + Vector3f(1, 1, 0);
+
+    for (size_t i = 0; i < str.size; ++i) {
+      wchar codepoint = str.data[i];
+
+      GlyphOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, drop_position, codepoint, rgba);
+    }
   }
 
-  TextOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, position, str, rgba);
+  for (size_t i = 0; i < str.size; ++i) {
+    wchar codepoint = str.data[i];
+
+    GlyphOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, position, codepoint, rgba);
+  }
+}
+
+void FontRenderer::RenderText(const Vector3f& screen_position, const WString& wstr, FontStyleFlags style,
+                              const Vector4f& color) {
+  FontVertex* mapped_vertices = push_buffer.GetMapped();
+  Vector3f position = screen_position;
+
+  u32 r = (u32)(color.x * 255);
+  u32 g = (u32)(color.y * 255);
+  u32 b = (u32)(color.z * 255);
+  u32 a = (u32)(color.w * 255);
+  u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
+
+  constexpr float kHorizontalPadding = 4.0f;
+  float width = 0.0f;
+
+  if ((style & FontStyle_Background) || (style & FontStyle_Center)) {
+    // Calculate total width and render the background before the font so it blends correctly.
+    width = (float)GetTextWidth(wstr) + (kHorizontalPadding * 2);
+  }
+
+  if (style & FontStyle_Center) {
+    position.x -= width / 2.0f;
+  }
+
+  if (style & FontStyle_Background) {
+    PushTextBackground(mapped_vertices, push_buffer.vertex_count, position + Vector3f(-kHorizontalPadding, 0, 0),
+                       Vector2f(width, 16), Vector4f(0.2f, 0.2f, 0.2f, 0.5f));
+  }
+
+  if (style & FontStyle_DropShadow) {
+    // Use 30% of the total color for the drop shadow color and render it offset by (1, 1).
+    u32 r = (u32)(color.x * 76);
+    u32 g = (u32)(color.y * 76);
+    u32 b = (u32)(color.z * 76);
+
+    u32 rgba = (a << 24) | (b << 16) | (g << 8) | r;
+
+    Vector3f drop_position = position + Vector3f(1, 1, 0);
+
+    for (size_t i = 0; i < wstr.length; ++i) {
+      wchar codepoint = wstr.data[i];
+
+      GlyphOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, drop_position, codepoint, rgba);
+    }
+  }
+
+  for (size_t i = 0; i < wstr.length; ++i) {
+    wchar codepoint = wstr.data[i];
+
+    GlyphOutput(mapped_vertices, glyph_size_table, push_buffer.vertex_count, position, codepoint, rgba);
+  }
 }
 
 bool FontPipelineLayout::Create(VkDevice device) {

@@ -20,6 +20,7 @@
 #include <Windows.h>
 
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "Imm32.lib")
 
 namespace polymer {
 
@@ -192,12 +193,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   case WM_DESTROY: {
     PostQuitMessage(0);
   } break;
+  case WM_IME_CHAR:
   case WM_CHAR: {
     if (g_game->chat_window.display_full) {
       g_game->chat_window.OnInput((u32)wParam);
     }
   } break;
   case WM_KEYDOWN: {
+    // This converts the IME input into the original VK code so input can be processed while chat is closed.
+    if (wParam == VK_PROCESSKEY) {
+      wParam = (WPARAM)ImmGetVirtualKey(hwnd);
+    }
+
     if (wParam == VK_ESCAPE) {
       ToggleCursor();
 
@@ -519,7 +526,12 @@ int run(const LaunchArgs& args) {
     }
 
     while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-      TranslateMessage(&msg);
+      // Only translate the message into character events when chat is open.
+      // This allows the WM_KEYDOWN event to convert from IME code to normal VK code when chat is closed.
+      if (g_game->chat_window.display_full) {
+        TranslateMessage(&msg);
+      }
+
       DispatchMessage(&msg);
 
       if (msg.message == WM_QUIT) {

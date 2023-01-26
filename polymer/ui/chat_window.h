@@ -6,6 +6,7 @@
 namespace polymer {
 
 struct Connection;
+struct MemoryArena;
 
 namespace render {
 
@@ -16,26 +17,26 @@ struct FontRenderer;
 namespace ui {
 
 struct ChatMessage {
-  char message[1024];
-  size_t message_size;
+  wchar message[1024];
+  size_t message_length;
   u64 timestamp;
 };
 
 // TODO: Handle all of the different ways of manipulating the input.
 struct ChatInput {
-  char message[256];
-  size_t size;
+  wchar message[256];
+  size_t length;
   bool active;
 
   ChatInput() {
     message[0] = 0;
-    size = 0;
+    length = 0;
     active = false;
   }
 
   void Clear() {
     message[0] = 0;
-    size = 0;
+    length = 0;
   }
 };
 
@@ -45,6 +46,8 @@ enum class ChatMoveDirection { Left, Right, Home, End };
 // TODO: Handle modifiers such as control so entire words can be erased at once.
 // TODO: Selection ranges and highlighting.
 struct ChatWindow {
+  MemoryArena& trans_arena;
+
   ChatMessage messages[50];
   size_t message_count;
 
@@ -55,7 +58,7 @@ struct ChatWindow {
   ChatInput input;
   size_t input_cursor_index;
 
-  ChatWindow() {
+  ChatWindow(MemoryArena& trans_arena) : trans_arena(trans_arena) {
     message_count = 0;
     message_index = 0;
     display_full = false;
@@ -63,11 +66,11 @@ struct ChatWindow {
   }
 
   void Update(render::FontRenderer& font_renderer);
-  void PushMessage(const char* mesg, size_t mesg_size);
+  void PushMessage(const wchar* mesg, size_t mesg_length);
 
   bool ToggleDisplay();
 
-  void OnInput(u32 codepoint);
+  void OnInput(wchar codepoint);
   void SendInput(Connection& connection);
 
   void MoveCursor(ChatMoveDirection direction);
@@ -75,7 +78,7 @@ struct ChatWindow {
 
 private:
   void RenderSlice(render::FontRenderer& font_renderer, size_t start_index, size_t count, bool fade);
-  void InsertCodepoint(u32 codepoint);
+  void InsertCodepoint(wchar codepoint);
 };
 
 } // namespace ui

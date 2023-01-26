@@ -76,7 +76,7 @@ void OnSwapchainCleanup(render::Swapchain& swapchain, void* user_data) {
 
 GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
     : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer),
-      block_registry(*perm_arena), block_mesher(*trans_arena) {
+      block_registry(*perm_arena), block_mesher(*trans_arena), chat_window(*trans_arena) {
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
       ChunkSection* section = &world.chunks[chunk_z][chunk_x];

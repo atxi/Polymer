@@ -22,6 +22,8 @@ using u16 = uint16_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
 
+using wchar = u16;
+
 struct String {
   char* data;
   size_t size;
@@ -32,6 +34,14 @@ struct String {
   String(const char* data, size_t size) : data((char*)data), size(size) {}
 
   bool operator==(const String& other) const;
+};
+
+struct WString {
+  wchar* data;
+  size_t length;
+
+  WString() : data(nullptr), length(0) {}
+  WString(wchar* data, size_t length) : data(data), length(length) {}
 };
 
 inline s32 poly_strcmp(const String& str1, const String& str2) {
