@@ -3,11 +3,14 @@
 
 namespace polymer {
 
+constexpr u32 kProtocolVersion = 762;
+
 enum class StatusProtocol { Response, Pong, Count };
 
 enum class LoginProtocol { Disconnect, EncryptionRequest, LoginSuccess, SetCompression, LoginPluginRequest, Count };
 
 enum class PlayProtocol {
+  BundleDelimiter,
   SpawnEntity,
   SpawnExperienceOrb,
   SpawnPlayer,
@@ -19,7 +22,8 @@ enum class PlayProtocol {
   BlockAction,
   BlockUpdate,
   BossBar,
-  ServerDifficulty,
+  ChangeDifficulty,
+  ChunkBiomes,
   ClearTitles,
   CommandSuggestionsResponse,
   Commands,
@@ -30,6 +34,7 @@ enum class PlayProtocol {
   SetCooldown,
   ChatSuggestions,
   PluginMessage,
+  DamageEvent,
   DeleteMessage,
   Disconnect,
   DisguisedChatMessage,
@@ -38,6 +43,7 @@ enum class PlayProtocol {
   UnloadChunk,
   GameEvent,
   OpenHorseScreen,
+  HurtAnimation,
   InitializeWorldBorder,
   KeepAlive,
   ChunkData,

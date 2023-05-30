@@ -151,7 +151,7 @@ void Connection::SendLoginStart(const String& username) {
 void Connection::SendKeepAlive(u64 id) {
   builder.WriteU64(id);
 
-  builder.Commit(write_buffer, 0x11);
+  builder.Commit(write_buffer, 0x12);
 }
 
 void Connection::SendTeleportConfirm(u64 id) {
@@ -169,7 +169,7 @@ void Connection::SendPlayerPositionAndRotation(const Vector3f& position, float y
   builder.WriteFloat(pitch);
   builder.WriteU8(on_ground);
 
-  builder.Commit(write_buffer, 0x14);
+  builder.Commit(write_buffer, 0x15);
 }
 
 void Connection::SendChatCommand(const String& message) {
@@ -214,7 +214,7 @@ void Connection::SendChatMessage(const String& message) {
 void Connection::SendClientStatus(ClientStatusAction action) {
   builder.WriteVarInt((u64)action);
 
-  builder.Commit(write_buffer, 0x06);
+  builder.Commit(write_buffer, 0x07);
 }
 
 #ifdef _WIN32

@@ -3,6 +3,7 @@
 #include <polymer/gamestate.h>
 #include <polymer/memory.h>
 #include <polymer/packet_interpreter.h>
+#include <polymer/protocol.h>
 #include <polymer/types.h>
 
 #include <polymer/render/render.h>
@@ -24,8 +25,8 @@
 
 namespace polymer {
 
-constexpr const char* kMinecraftJar = "1.19.3.jar";
-constexpr const char* kBlocksName = "blocks-1.19.3.json";
+constexpr const char* kMinecraftJar = "1.19.4.jar";
+constexpr const char* kBlocksName = "blocks-1.19.4.json";
 
 // Window surface width
 constexpr u32 kWidth = 1280;
@@ -468,8 +469,6 @@ int run(const LaunchArgs& args) {
   printf("Connected to server.\n");
 
   connection->SetBlocking(false);
-
-  constexpr u32 kProtocolVersion = 761;
 
   connection->SendHandshake(kProtocolVersion, args.server, args.server_port, ProtocolState::Login);
   connection->SendLoginStart(args.username);

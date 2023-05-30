@@ -588,9 +588,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     }
   } break;
   case PlayProtocol::PlayerInfoUpdate: {
-    u64 action_bitset = 0;
-
-    rb->ReadVarInt(&action_bitset);
+    u8 action_bitset = rb->ReadU8();
 
     u64 action_count = 0;
     if (!rb->ReadVarInt(&action_count)) {
