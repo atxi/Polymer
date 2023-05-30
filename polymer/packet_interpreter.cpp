@@ -239,13 +239,13 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       size_t length = rb->ReadString(&sstr);
     }
 
-    nbt::TagCompound dimension_codec_nbt;
+    nbt::TagCompound* dimension_codec_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
 
-    if (!nbt::Parse(*rb, *trans_arena, &dimension_codec_nbt)) {
+    if (!nbt::Parse(*rb, *trans_arena, dimension_codec_nbt)) {
       fprintf(stderr, "Failed to parse dimension codec nbt.\n");
     }
 
-    game->dimension_codec.Parse(*game->perm_arena, dimension_codec_nbt);
+    game->dimension_codec.Parse(*game->perm_arena, *dimension_codec_nbt);
 
     String dimension_type_string;
     dimension_type_string.data = memory_arena_push_type_count(trans_arena, char, 32767);
@@ -341,9 +341,9 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
     sstr.size = 32767;
 
-    nbt::TagCompound nbt;
+    nbt::TagCompound* nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
 
-    if (!nbt::Parse(*rb, *trans_arena, &nbt)) {
+    if (!nbt::Parse(*rb, *trans_arena, nbt)) {
       fprintf(stderr, "Failed to parse chunk nbt.\n");
       fflush(stderr);
     }
@@ -493,12 +493,15 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       u64 type;
       rb->ReadVarInt(&type);
 
-      nbt::TagCompound block_entity_nbt;
+      ArenaSnapshot snapshot = trans_arena->GetSnapshot();
+      nbt::TagCompound* block_entity_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
 
-      if (!nbt::Parse(*rb, *trans_arena, &block_entity_nbt)) {
+      if (!nbt::Parse(*rb, *trans_arena, block_entity_nbt)) {
         fprintf(stderr, "Failed to parse block entity nbt.\n");
         fflush(stderr);
       }
+
+      trans_arena->Revert(snapshot);
     }
 
     bool trust_edges = rb->ReadU8();

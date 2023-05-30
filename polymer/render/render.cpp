@@ -693,17 +693,17 @@ void VulkanRenderer::CreateDescriptorPool() {
   VkDescriptorPoolSize pool_sizes[2] = {};
 
   pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  pool_sizes[0].descriptorCount = swapchain.image_count;
+  pool_sizes[0].descriptorCount = 64;
 
   pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  pool_sizes[1].descriptorCount = 30;
+  pool_sizes[1].descriptorCount = 64;
 
   VkDescriptorPoolCreateInfo pool_info = {};
 
   pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   pool_info.poolSizeCount = polymer_array_count(pool_sizes);
   pool_info.pPoolSizes = pool_sizes;
-  pool_info.maxSets = 30;
+  pool_info.maxSets = 64;
 
   if (vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create descriptor pool.\n");

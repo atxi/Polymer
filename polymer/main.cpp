@@ -220,6 +220,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
       if (wParam == VK_OEM_2) {
         g_game->chat_window.input.active = true;
+        g_game->chat_window.OnInput('/');
       }
     }
 
