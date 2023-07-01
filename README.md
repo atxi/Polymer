@@ -24,31 +24,20 @@ You can specify the username and server ip by command line.
 Currently only a spectator camera is implemented for flying around and rendering the world. By default, you will be in the survival gamemode on the server. If you want chunks to load as you move, you need to put yourself in spectator gamemode. You can do this in the server terminal or in game with the command `/gamemode spectator`.
 
 ### Building
-Currently only compiles on Windows, but other platforms are planned.
+Currently only compiles on Windows, but other platforms are planned.  
+The project is configured to use vcpkg as a dependency manager.  
 
 #### Requirements
 - C++ compiler (tested with MSVC 2022 and Clang)
 - [CMake](https://cmake.org/)
 - [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
 
-#### CMake Instructions
-##### GUI
-- Open CMake GUI.
-- Put in path to source directory.
-- Choose a directory where the build will go.
-- Press Configure.
-- Select the generator to use. Probably `Visual Studio 17 2022` on Windows.
-- Press Finish.
-- Press Generate.
-##### Terminal
-- Create 'build' sub-directory and open terminal in it.
-- `cmake .. -G "Visual Studio 17 2022"`
-
-#### MSVC
-- Browse to the build folder created from CMake.
-- Open solution.
-- Set to Release and x64 in the Standard Toolbar.
-- Build or run.
+#### Instructions
+- Open terminal in polymer folder.
+- `git submodule update --init`
+- `cmake -B build -S . --preset msvc`
+- Open the generated `build/polymer.sln` and build in x64 Release mode.
+- The final executable will be in the `build/Release` folder.
 
 #### Shaders
 The shaders must be compiled with glslc.exe that comes with the vulkan sdk. The `compile_shaders.bat` file will compile them if `%VULKAN_SDK%` is properly set in the environment variables.

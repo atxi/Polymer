@@ -26,3 +26,4 @@ blocks*.json
 *.spv
 *.jar
 *.hex
+vcpkg_installed

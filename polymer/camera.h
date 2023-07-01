@@ -3,6 +3,14 @@
 
 #include <polymer/math.h>
 
+#ifdef near
+#undef near
+#endif
+
+#ifdef far
+#undef far
+#endif
+
 namespace polymer {
 
 struct Camera {

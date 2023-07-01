@@ -1,0 +1,18 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 1
+  },
+  "configurePresets": [
+    {
+      "name": "clang",
+      "generator": "Unix Makefiles"
+    },
+    {
+      "name": "msvc",
+      "generator": "Visual Studio 17 2022"
+    }
+  ]
+}
