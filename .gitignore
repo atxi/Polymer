@@ -25,3 +25,4 @@ blocks*.json
 /x64
 *.spv
 *.jar
+*.hex

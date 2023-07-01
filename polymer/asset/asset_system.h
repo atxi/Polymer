@@ -29,8 +29,7 @@ struct AssetSystem {
   bool Load(render::VulkanRenderer& renderer, const char* jar_path, const char* blocks_path,
             world::BlockRegistry* registry);
 
-  bool LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_arena, MemoryArena& trans_arena,
-                ZipArchive& archive);
+  bool LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_arena, MemoryArena& trans_arena);
 
   TextureIdRange GetTextureRange(const String& texture_path);
 };

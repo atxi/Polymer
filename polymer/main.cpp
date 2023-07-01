@@ -25,8 +25,8 @@
 
 namespace polymer {
 
-constexpr const char* kMinecraftJar = "1.19.4.jar";
-constexpr const char* kBlocksName = "blocks-1.19.4.json";
+constexpr const char* kMinecraftJar = "1.20.1.jar";
+constexpr const char* kBlocksName = "blocks-1.20.1.json";
 
 // Window surface width
 constexpr u32 kWidth = 1280;

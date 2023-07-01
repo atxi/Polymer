@@ -101,11 +101,13 @@ void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
   bool is_leaves = poly_strstr(path, "leaves").data != nullptr;
   bool is_spruce = false;
   bool is_birch = false;
+  bool is_cherry = false;
 
   // TODO: This should be removed once biome data is handled correctly.
   if (is_leaves) {
     // Spruce and birch have hardcoded coloring so they go into their own tintindex.
     is_spruce = poly_strstr(path, "spruce").data != nullptr;
+    is_cherry = poly_strstr(path, "cherry").data != nullptr;
     is_birch = poly_strstr(path, "birch").data != nullptr;
 
     model.has_leaves = 1;
@@ -143,6 +145,8 @@ void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
           element->faces[j].tintindex = 2;
         } else if (is_birch) {
           element->faces[j].tintindex = 3;
+        } else if (is_cherry) {
+          element->faces[j].tintindex = 0xFFFF;
         }
       }
 
@@ -837,6 +841,29 @@ static bool HasPropertyValue(const String& properties, const String& name, const
   return false;
 }
 
+static bool HasAnySplitPropertyValue(BlockRegistry* registry, size_t bid, const String& name, const String& value, char separator) {
+  String* properties = registry->properties + bid;
+
+  if (name.size == 0 && properties == nullptr || properties->size == 0) return true;
+  if (!properties || properties->size == 0) return false;
+
+  String current(value.data, 0);
+  for (size_t i = 0; i < value.size; ++i) {
+    if (value.data[i] == separator) {
+      if (HasPropertyValue(*properties, name, current)) {
+        return true;
+      }
+
+      current.data = value.data + i + 1;
+      current.size = 0;
+    } else {
+      current.size++;
+    }
+  }
+
+  return HasPropertyValue(*properties, name, current);
+}
+
 static bool HasPropertyValue(BlockRegistry* registry, size_t bid, const String& name, const String& value) {
   String* properties = registry->properties + bid;
 
@@ -1066,9 +1093,13 @@ bool AssetParser::ResolveMultiparts(MemoryArena& perm_arena, BitSet& element_set
             json_string_s* when_property_value_str = json_value_as_string(when_obj_element->value);
             String when_property_value(when_property_value_str->string, when_property_value_str->string_size);
 
-            if (!HasPropertyValue(registry, bid, when_property_name, when_property_value)) {
-              matches = false;
-              break;
+            if (poly_contains(when_property_value, '|')) {
+              matches = HasAnySplitPropertyValue(registry, bid, when_property_name, when_property_value, '|');
+            } else {
+              if (!HasPropertyValue(registry, bid, when_property_name, when_property_value)) {
+                matches = false;
+                break;
+              }
             }
           }
 

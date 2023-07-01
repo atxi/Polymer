@@ -58,6 +58,8 @@ static void PushTextBackground(FontVertex* mapped_vertices, size_t& vertex_count
 }
 
 void FontRenderer::RenderBackground(const Vector3f& screen_position, const String& str, const Vector4f& color) {
+  if (glyph_page_texture == nullptr) return;
+
   FontVertex* mapped_vertices = push_buffer.GetMapped();
   float width = (float)GetTextWidth(str);
   float height = 16;
@@ -66,6 +68,8 @@ void FontRenderer::RenderBackground(const Vector3f& screen_position, const Strin
 }
 
 void FontRenderer::RenderBackground(const Vector3f& screen_position, const Vector2f& size, const Vector4f& color) {
+  if (glyph_page_texture == nullptr) return;
+
   FontVertex* mapped_vertices = push_buffer.GetMapped();
 
   PushTextBackground(mapped_vertices, push_buffer.vertex_count, screen_position, size, color);
@@ -74,6 +78,7 @@ void FontRenderer::RenderBackground(const Vector3f& screen_position, const Vecto
 int FontRenderer::GetTextWidth(const String& str) {
   int width = 0;
 
+  if (glyph_size_table == nullptr) return width;
   if (str.size == 0) return width;
 
   for (size_t i = 0; i < str.size; ++i) {
@@ -97,6 +102,7 @@ int FontRenderer::GetTextWidth(const String& str) {
 int FontRenderer::GetTextWidth(const WString& str) {
   int width = 0;
 
+  if (glyph_size_table == nullptr) return width;
   if (str.length == 0) return width;
 
   for (size_t i = 0; i < str.length; ++i) {
@@ -120,6 +126,8 @@ int FontRenderer::GetTextWidth(const WString& str) {
 static inline void GlyphOutput(FontVertex* mapped_vertices, u8* glyph_size_table, size_t& vertex_count, Vector3f& pos,
                                wchar codepoint, u32 rgba) {
   const wchar kSpaceCodepoint = (wchar)' ';
+
+  if (glyph_size_table == nullptr) return;
 
   if (codepoint == kSpaceCodepoint) {
     constexpr float kSpaceSkip = 6;
@@ -149,6 +157,8 @@ static inline void GlyphOutput(FontVertex* mapped_vertices, u8* glyph_size_table
 // This is using the unicode page bitmap font instead.
 void FontRenderer::RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style,
                               const Vector4f& color) {
+  if (glyph_page_texture == nullptr) return;
+
   FontVertex* mapped_vertices = push_buffer.GetMapped();
   Vector3f position = screen_position;
 
@@ -201,6 +211,8 @@ void FontRenderer::RenderText(const Vector3f& screen_position, const String& str
 
 void FontRenderer::RenderText(const Vector3f& screen_position, const WString& wstr, FontStyleFlags style,
                               const Vector4f& color) {
+  if (glyph_page_texture == nullptr) return;
+
   FontVertex* mapped_vertices = push_buffer.GetMapped();
   Vector3f position = screen_position;
 
@@ -498,6 +510,8 @@ void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkE
 }
 
 void FontRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool) {
+  if (glyph_page_texture == nullptr) return;
+
   uniform_buffer.Create(renderer->allocator, sizeof(FontRenderUBO));
   descriptors = layout.CreateDescriptors(device, descriptor_pool);
 
@@ -539,6 +553,8 @@ void FontRenderer::CreateDescriptors(VkDevice device, VkDescriptorPool descripto
 }
 
 bool FontRenderer::BeginFrame(size_t current_frame) {
+  if (glyph_page_texture == nullptr) return true;
+
   VkPipelineLayout layout = this->layout.pipeline_layout;
   VkDescriptorSet& descriptor = descriptors[current_frame];
 
@@ -566,6 +582,8 @@ bool FontRenderer::BeginFrame(size_t current_frame) {
 }
 
 void FontRenderer::Draw(VkCommandBuffer primary_buffer, size_t current_frame) {
+  if (glyph_page_texture == nullptr) return;
+
   VkCommandBuffer command_buffer = command_buffers[current_frame];
 
   if (push_buffer.vertex_count > 0) {
@@ -592,6 +610,8 @@ void FontRenderer::Draw(VkCommandBuffer primary_buffer, size_t current_frame) {
 }
 
 void FontRenderer::OnSwapchainCreate(MemoryArena& trans_arena, Swapchain& swapchain, VkDescriptorPool descriptor_pool) {
+  if (glyph_page_texture == nullptr) return;
+
   CreateDescriptors(swapchain.device, descriptor_pool);
   CreatePipeline(trans_arena, swapchain.device, swapchain.extent);
 
@@ -606,6 +626,8 @@ void FontRenderer::OnSwapchainCreate(MemoryArena& trans_arena, Swapchain& swapch
 }
 
 void FontRenderer::OnSwapchainDestroy(VkDevice device) {
+  if (glyph_page_texture == nullptr) return;
+
   vkDestroyPipeline(device, render_pipeline, nullptr);
   uniform_buffer.Destroy();
 
@@ -613,6 +635,10 @@ void FontRenderer::OnSwapchainDestroy(VkDevice device) {
 }
 
 void FontRenderer::CreateLayoutSet(VulkanRenderer& renderer, VkDevice device) {
+  this->renderer = &renderer;
+
+  if (glyph_page_texture == nullptr) return;
+
   layout.Create(device);
 
   VkBufferCreateInfo buffer_info = {};
@@ -630,8 +656,6 @@ void FontRenderer::CreateLayoutSet(VulkanRenderer& renderer, VkDevice device) {
                       &push_buffer.buffer_alloc, &push_buffer.buffer_alloc_info) != VK_SUCCESS) {
     printf("Failed to create font buffer.\n");
   }
-
-  this->renderer = &renderer;
 }
 
 } // namespace render

@@ -3,7 +3,7 @@
 
 namespace polymer {
 
-constexpr u32 kProtocolVersion = 762;
+constexpr u32 kProtocolVersion = 763;
 
 enum class StatusProtocol { Response, Pong, Count };
 

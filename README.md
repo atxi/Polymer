@@ -11,8 +11,9 @@ It uses the original assets from a user-provided Minecraft jar. Only basic block
 ### Running
 Only runs on Windows currently.  
 
-- Requires `1.19.4.jar` from your Minecraft installation to be in the working directory. You can find this in `%appdata%/.minecraft/versions/1.19.4/`. This is used to load the textures and block models.
-- Requires `blocks-1.19.4.json` that is generated from running Minecraft with a [certain flag](https://wiki.vg/Data_Generators#Generators) or from the [polymer release page](https://github.com/atxi/Polymer/releases).
+- Requires `1.20.1.jar` from your Minecraft installation to be in the working directory. You can find this in `%appdata%/.minecraft/versions/1.20.1/`. This is used to load the textures and block models.
+- Requires `blocks-1.20.1.json` that is generated from running Minecraft with a [certain flag](https://wiki.vg/Data_Generators#Generators) or from the [polymer release page](https://github.com/atxi/Polymer/releases).
+- Requires `unifont.hex` for font rendering. This can be obtained from the `unifont.zip` resource on the resource server.
 - Requires compiled shaders. Get them from the release page or read the shader section below if manually building.
   
 Running the exe will connect to localhost with the username 'polymer'. The server must be configured to be in offline mode.  

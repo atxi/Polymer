@@ -299,7 +299,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   } break;
   case PlayProtocol::UpdateSectionBlocks: {
     u64 xzy = rb->ReadU64();
-    bool inverse = rb->ReadU8();
 
     s32 chunk_x = xzy >> (22 + 20);
     s32 chunk_z = (xzy >> 20) & ((1 << 22) - 1);
@@ -504,8 +503,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       trans_arena->Revert(snapshot);
     }
 
-    bool trust_edges = rb->ReadU8();
-
     BitSet skylight_mask;
     if (!skylight_mask.Read(*trans_arena, *rb)) {
       fprintf(stderr, "Failed to read skylight mask\n");
@@ -588,7 +585,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     }
   } break;
   case PlayProtocol::PlayerInfoUpdate: {
-    u8 action_bitset = rb->ReadU8();
+    u8 action_bitmask = rb->ReadU8();
 
     u64 action_count = 0;
     if (!rb->ReadVarInt(&action_count)) {
@@ -620,7 +617,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         DisplayNameAction = (1 << 5),
       };
 
-      if (action_bitset & AddAction) {
+      if (action_bitmask & AddAction) {
         String name;
 
         name.data = memory_arena_push_type_count(trans_arena, char, 16);
@@ -659,7 +656,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       Player* player = game->player_manager.GetPlayerByUuid(uuid_string);
 
-      if (action_bitset & ChatAction) {
+      if (action_bitmask & ChatAction) {
         bool has_signature = rb->ReadU8();
 
         if (has_signature) {
@@ -714,7 +711,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         }
       }
 
-      if (action_bitset & GamemodeAction) {
+      if (action_bitmask & GamemodeAction) {
         u64 gamemode = 0;
 
         if (!rb->ReadVarInt(&gamemode)) {
@@ -727,11 +724,11 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         }
       }
 
-      if (action_bitset & ListedAction) {
+      if (action_bitmask & ListedAction) {
         player->listed = rb->ReadU8();
       }
 
-      if (action_bitset & LatencyAction) {
+      if (action_bitmask & LatencyAction) {
         u64 latency = 0;
 
         if (!rb->ReadVarInt(&latency)) {
@@ -744,7 +741,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         }
       }
 
-      if (action_bitset & DisplayNameAction) {
+      if (action_bitmask & DisplayNameAction) {
         bool has_display_name = rb->ReadU8();
 
         if (has_display_name) {
