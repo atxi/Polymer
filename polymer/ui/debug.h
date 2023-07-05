@@ -26,7 +26,11 @@ struct DebugTextSystem {
     va_list args;
 
     va_start(args, fmt);
+    #ifdef _WIN32
     size_t size = vsprintf_s(buffer, fmt, args);
+    #else
+    size_t size = vsprintf(buffer, fmt, args);
+    #endif
     va_end(args);
 
     render::FontStyleFlags style = render::FontStyle_Background | render::FontStyle_DropShadow;

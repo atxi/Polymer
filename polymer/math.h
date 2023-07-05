@@ -529,6 +529,13 @@ struct Vector4f {
   }
 };
 
+struct IntRect {
+  int left;
+  int top;
+  int right;
+  int bottom;
+};
+
 struct BoundingBox {
   Vector3f min;
   Vector3f max;

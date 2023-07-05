@@ -1,30 +1,15 @@
 #include <polymer/asset/unihex_font.h>
 
 #include <stdio.h>
+#include <stdlib.h>
+
+#include <polymer/render/util.h>
 
 namespace polymer {
 namespace asset {
 
-static String ReadFile(const char* filename, MemoryArena& trans_arena) {
-  FILE* f = fopen("unifont.hex", "rb");
-
-  if (!f) return {};
-
-  fseek(f, 0, SEEK_END);
-  long file_size = ftell(f);
-  fseek(f, 0, SEEK_SET);
-
-  char* unifont_data = (char*)trans_arena.Allocate(file_size);
-  fread(unifont_data, 1, file_size, f);
-  fclose(f);
-
-  if (file_size == 0) return {};
-
-  return String(unifont_data, file_size);
-}
-
 bool UnihexFont::Load(const char* filename, MemoryArena& perm_arena, MemoryArena& trans_arena) {
-  String file_data = ReadFile(filename, trans_arena);
+  String file_data = render::ReadEntireFile(filename, &trans_arena);
   if (!file_data.data) {
     fprintf(stderr, "Failed to load font file '%s'.\n", filename);
     return false;

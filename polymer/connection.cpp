@@ -9,12 +9,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-
 #include <WS2tcpip.h>
+#define POLY_EWOULDBLOCK WSAEWOULDBLOCK
+#else
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#define closesocket close
+
+#include <fcntl.h>
+#define POLY_EWOULDBLOCK EWOULDBLOCK
+#endif
 
 namespace polymer {
+
+static int GetLastErrorCode() {
+#if defined(_WIN32) || defined(WIN32)
+  int err = WSAGetLastError();
+#else
+  int err = errno;
+#endif
+
+  return err;
+}
 
 Connection::Connection(MemoryArena& arena)
     : read_buffer(arena, 0), write_buffer(arena, 0), interpreter(nullptr), builder(arena) {}
@@ -45,9 +70,9 @@ Connection::TickResult Connection::Tick() {
     this->connected = false;
     return TickResult::ConnectionClosed;
   } else if (bytes_recv < 0) {
-    int err = WSAGetLastError();
+    int err = GetLastErrorCode();
 
-    if (err == WSAEWOULDBLOCK) {
+    if (err == POLY_EWOULDBLOCK) {
       return TickResult::Success;
     }
 
@@ -126,9 +151,9 @@ void Connection::SetBlocking(bool blocking) {
 #endif
 }
 
-void Connection::SendHandshake(u32 version, const String& address, u16 port, ProtocolState state_request) {
+void Connection::SendHandshake(u32 version, const char* address, size_t address_size, u16 port, ProtocolState state_request) {
   builder.WriteVarInt(version);
-  builder.WriteString(address);
+  builder.WriteString(address, address_size);
   builder.WriteU16(port);
   builder.WriteVarInt((u64)state_request);
 
@@ -141,8 +166,8 @@ void Connection::SendPingRequest() {
   builder.Commit(write_buffer, 0x00);
 }
 
-void Connection::SendLoginStart(const String& username) {
-  builder.WriteString(username);
+void Connection::SendLoginStart(const char* username, size_t username_size) {
+  builder.WriteString(username, username_size);
   builder.WriteU8(0); // HasPlayerUUID
 
   builder.Commit(write_buffer, 0x00);

@@ -25,8 +25,10 @@ struct RingBuffer {
   void WriteVarInt(u64 value);
   void WriteFloat(float value);
   void WriteDouble(double value);
+  void WriteString(const char* str, size_t size);
   void WriteString(const String& str);
   void WriteRawString(const String& str);
+  void WriteRawString(const char* str, size_t size);
 
   u8 ReadU8();
   u16 ReadU16();

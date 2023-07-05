@@ -62,10 +62,28 @@ struct DescriptorSet {
   }
 };
 
+using PolymerWindow = void*;
+
+bool CreateWindowSurface(PolymerWindow window, VkSurfaceKHR* surface);
+IntRect GetWindowRect(PolymerWindow window);
+
+struct ExtensionRequest {
+  const char** extensions;
+  u32 extension_count = 0;
+
+  const char** device_extensions;
+  u32 device_extension_count = 0;
+
+  const char** validation_layers;
+  u32 validation_layer_count = 0;
+};
+
 struct VulkanRenderer {
+  ExtensionRequest extension_request;
+
   MemoryArena* trans_arena;
   MemoryArena* perm_arena;
-  HWND hwnd;
+  PolymerWindow hwnd;
 
   VkInstance instance;
   VkDebugUtilsMessengerEXT debug_messenger;
@@ -105,7 +123,7 @@ struct VulkanRenderer {
   VmaAllocation staging_allocs[2048];
   size_t staging_buffer_count = 0;
 
-  bool Initialize(HWND hwnd);
+  bool Initialize(PolymerWindow window, ExtensionRequest& extension_request);
   void RecreateSwapchain();
   bool BeginFrame();
 
@@ -151,7 +169,6 @@ private:
   void CreateCommandPool();
   void CreateDescriptorPool();
 
-  bool CreateWindowSurface(HWND hwnd, VkSurfaceKHR* surface);
   u32 AddUniqueQueue(VkDeviceQueueCreateInfo* infos, u32 count, u32 queue_index);
   void CreateLogicalDevice();
   QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);

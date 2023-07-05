@@ -171,7 +171,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u64 id = rb->ReadU64();
 
     connection->SendKeepAlive(id);
-    printf("Sending keep alive %llu\n", id);
+    printf("Sending keep alive %lu\n", id);
     fflush(stdout);
   } break;
   case PlayProtocol::PlayerPositionAndLook: {

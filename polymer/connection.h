@@ -82,8 +82,16 @@ struct PacketBuilder {
     buffer.WriteString(str);
   }
 
+  inline void WriteString(const char* str, size_t size) {
+    buffer.WriteString(str, size);
+  }
+
   inline void WriteRawString(const String& str) {
     buffer.WriteRawString(str);
+  }
+
+  inline void WriteRawString(const char* str, size_t size) {
+    buffer.WriteRawString(str, size);
   }
 };
 
@@ -109,9 +117,9 @@ struct Connection {
 
   TickResult Tick();
 
-  void SendHandshake(u32 version, const String& address, u16 port, ProtocolState state_request);
+  void SendHandshake(u32 version, const char* address, size_t address_size, u16 port, ProtocolState state_request);
   void SendPingRequest();
-  void SendLoginStart(const String& username);
+  void SendLoginStart(const char* username, size_t username_size);
   void SendKeepAlive(u64 id);
   void SendTeleportConfirm(u64 id);
   void SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground);

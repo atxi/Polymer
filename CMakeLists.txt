@@ -4,7 +4,12 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug" FORCE)
 endif()
 
-set(VCPKG_TARGET_TRIPLET x64-windows-static)
+if (WIN32)
+    set(VCPKG_TARGET_TRIPLET x64-windows-static)
+elseif (UNIX)
+    set(VCPKG_TARGET_TRIPLET x64-linux)
+endif()
+
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake"
   CACHE STRING "Vcpkg toolchain file")
 
@@ -23,10 +28,10 @@ set(CPACK_PACKAGE_INSTALL_DIRECTORY "Polymer")
 
 set(CMAKE_INSTALL_PREFIX ".")
 
-install(TARGETS polymer 
+install(TARGETS polymer
         CONFIGURATIONS Debug
         RUNTIME DESTINATION Debug)
-        
-install(TARGETS polymer 
+
+install(TARGETS polymer
         CONFIGURATIONS Release
         RUNTIME DESTINATION Release)
