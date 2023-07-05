@@ -10,18 +10,6 @@
 namespace polymer {
 namespace render {
 
-const char* const kRequiredExtensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_utils"};
-const char* const kDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-const char* const kValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
-
-#ifdef NDEBUG
-constexpr bool kEnableValidationLayers = false;
-constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions) - 1;
-#else
-constexpr bool kEnableValidationLayers = true;
-constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions);
-#endif
-
 static VkBool32 VKAPI_PTR DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                         VkDebugUtilsMessageTypeFlagsEXT messageTypes,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
@@ -81,8 +69,9 @@ void UniformBuffer::Set(size_t frame, void* data, size_t data_size) {
   vmaUnmapMemory(allocator, uniform_allocations[frame]);
 }
 
-bool VulkanRenderer::Initialize(HWND hwnd) {
-  this->hwnd = hwnd;
+bool VulkanRenderer::Initialize(PolymerWindow window, ExtensionRequest& extension_request) {
+  this->extension_request = extension_request;
+  this->hwnd = window;
   this->render_paused = false;
   this->invalid_swapchain = false;
 
@@ -482,6 +471,8 @@ void VulkanRenderer::GenerateArrayMipmaps(TextureArray& texture, u32 index) {
 }
 
 bool VulkanRenderer::BeginFrame() {
+  if (frame_fences[current_frame] == nullptr) return false;
+
   vkWaitForFences(device, 1, frame_fences + current_frame, VK_TRUE, UINT64_MAX);
 
   if (render_paused || invalid_swapchain) {
@@ -713,9 +704,8 @@ void VulkanRenderer::CreateDescriptorPool() {
 void VulkanRenderer::RecreateSwapchain() {
   vkDeviceWaitIdle(device);
 
-  RECT rect;
-  GetClientRect(hwnd, &rect);
-
+  IntRect rect = GetWindowRect(hwnd);
+  
   if (rect.right - rect.left == 0 || rect.bottom - rect.top == 0) {
     this->render_paused = true;
     return;
@@ -791,15 +781,6 @@ void VulkanRenderer::CreateCommandPool() {
   }
 }
 
-bool VulkanRenderer::CreateWindowSurface(HWND hwnd, VkSurfaceKHR* surface) {
-  VkWin32SurfaceCreateInfoKHR surface_info = {};
-  surface_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-  surface_info.hinstance = GetModuleHandle(nullptr);
-  surface_info.hwnd = hwnd;
-
-  return vkCreateWin32SurfaceKHR(instance, &surface_info, nullptr, surface) == VK_SUCCESS;
-}
-
 u32 VulkanRenderer::AddUniqueQueue(VkDeviceQueueCreateInfo* infos, u32 count, u32 queue_index) {
   for (u32 i = 0; i < count; ++i) {
     if (infos[i].queueFamilyIndex == queue_index) {
@@ -843,15 +824,11 @@ void VulkanRenderer::CreateLogicalDevice() {
   create_info.queueCreateInfoCount = create_count;
   create_info.pEnabledFeatures = &features;
 
-  create_info.enabledExtensionCount = polymer_array_count(kDeviceExtensions);
-  create_info.ppEnabledExtensionNames = kDeviceExtensions;
+  create_info.enabledExtensionCount = extension_request.device_extension_count;
+  create_info.ppEnabledExtensionNames = extension_request.device_extensions;
 
-  if (kEnableValidationLayers) {
-    create_info.enabledLayerCount = polymer_array_count(kValidationLayers);
-    create_info.ppEnabledLayerNames = kValidationLayers;
-  } else {
-    create_info.enabledLayerCount = 0;
-  }
+  create_info.enabledLayerCount = extension_request.validation_layer_count;
+  create_info.ppEnabledLayerNames = extension_request.validation_layers;
 
   if (vkCreateDevice(physical_device, &create_info, nullptr, &device) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create logical device.\n");
@@ -923,11 +900,11 @@ bool VulkanRenderer::DeviceHasExtensions(VkPhysicalDevice device) {
 
   vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions);
 
-  for (size_t i = 0; i < polymer_array_count(kDeviceExtensions); ++i) {
+  for (size_t i = 0; i < extension_request.device_extension_count; ++i) {
     bool found = false;
 
     for (size_t j = 0; j < extension_count; ++j) {
-      if (strcmp(available_extensions[j].extensionName, kDeviceExtensions[i]) == 0) {
+      if (strcmp(available_extensions[j].extensionName, extension_request.device_extensions[i]) == 0) {
         found = true;
         break;
       }
@@ -974,7 +951,7 @@ bool VulkanRenderer::PickPhysicalDevice() {
 }
 
 void VulkanRenderer::SetupDebugMessenger() {
-  if (!kEnableValidationLayers) return;
+  if (extension_request.validation_layer_count == 0) return;
 
   VkDebugUtilsMessengerCreateInfoEXT create_info{};
 
@@ -1000,8 +977,8 @@ bool VulkanRenderer::CheckValidationLayerSupport() {
   VkLayerProperties* properties = memory_arena_push_type_count(trans_arena, VkLayerProperties, count);
   vkEnumerateInstanceLayerProperties(&count, properties);
 
-  for (size_t i = 0; i < polymer_array_count(kValidationLayers); ++i) {
-    const char* name = kValidationLayers[i];
+  for (size_t i = 0; i < extension_request.validation_layer_count; ++i) {
+    const char* name = extension_request.validation_layers[i];
     bool found = false;
 
     for (size_t j = 0; j < count; ++j) {
@@ -1031,7 +1008,7 @@ bool VulkanRenderer::CreateInstance() {
   app_info.engineVersion = 1;
   app_info.apiVersion = VK_API_VERSION_1_0;
 
-  if (kEnableValidationLayers && !CheckValidationLayerSupport()) {
+  if (extension_request.validation_layer_count > 0 && !CheckValidationLayerSupport()) {
     fprintf(stderr, "Validation layers not available\n");
     return false;
   }
@@ -1041,14 +1018,10 @@ bool VulkanRenderer::CreateInstance() {
   inst_info.pNext = NULL;
   inst_info.flags = 0;
   inst_info.pApplicationInfo = &app_info;
-  inst_info.enabledExtensionCount = kRequiredExtensionCount;
-  inst_info.ppEnabledExtensionNames = kRequiredExtensions;
-  if (kEnableValidationLayers) {
-    inst_info.enabledLayerCount = polymer_array_count(kValidationLayers);
-    inst_info.ppEnabledLayerNames = kValidationLayers;
-  } else {
-    inst_info.enabledLayerCount = 0;
-  }
+  inst_info.enabledExtensionCount = extension_request.extension_count;
+  inst_info.ppEnabledExtensionNames = extension_request.extensions;
+  inst_info.enabledLayerCount = extension_request.validation_layer_count;
+  inst_info.ppEnabledLayerNames = extension_request.validation_layers;
 
   VkResult res;
 
@@ -1091,7 +1064,7 @@ void VulkanRenderer::Shutdown() {
 
   vkDestroyDevice(device, nullptr);
 
-  if (kEnableValidationLayers) {
+  if (extension_request.validation_layer_count > 0) {
     DestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
   }
 

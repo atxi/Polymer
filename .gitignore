@@ -27,3 +27,5 @@ blocks*.json
 *.jar
 *.hex
 vcpkg_installed
+out
+.vscode

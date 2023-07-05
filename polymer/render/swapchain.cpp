@@ -248,14 +248,21 @@ void Swapchain::Cleanup() {
 }
 
 VkPresentModeKHR Swapchain::ChooseSwapPresentMode(VkPresentModeKHR* present_modes, u32 present_mode_count) {
+  VkPresentModeKHR best_mode = VK_PRESENT_MODE_FIFO_KHR;
+
   for (u32 i = 0; i < present_mode_count; ++i) {
     VkPresentModeKHR mode = present_modes[i];
 
     if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
       return mode;
     }
+
+    if (mode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+      best_mode = mode;
+    }
   }
-  return VK_PRESENT_MODE_FIFO_KHR;
+
+  return best_mode;
 }
 
 VkSurfaceFormatKHR Swapchain::ChooseSwapSurfaceFormat(VkPhysicalDevice physical_device, VkSurfaceFormatKHR* formats,

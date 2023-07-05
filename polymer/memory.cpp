@@ -7,6 +7,9 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#else
+#include <unistd.h>
+#include <sys/mman.h>
 #endif
 
 namespace polymer {
@@ -122,7 +125,27 @@ u8* AllocateMirroredBuffer(size_t size) {
 
   return view;
 #else
-  static_assert(0, "Mirrored buffer not implemented");
+  size_t pagesize = getpagesize();
+	int fd = fileno(tmpfile());
+	size_t paged_aligned_size = (size / pagesize) * pagesize;
+
+	assert((size / pagesize) == ((size + pagesize - 1) / pagesize));
+
+	// Resize the file to the requested size so the buffer can be mapped to it.
+	if (ftruncate(fd, paged_aligned_size) != 0) {
+    fprintf(stderr, "ftruncate() error\n");
+    return nullptr;
+  }
+
+	// Grab some virtual memory space for the full wrapped buffer.
+	u8* buffer = (u8*)mmap(NULL, paged_aligned_size * 2, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0); 
+
+	// Map the beginning of the virtual memory to the tmpfile.
+	mmap(buffer, paged_aligned_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
+	// Map the wrapping section of the buffer back to the tmpfile.
+	mmap(buffer + paged_aligned_size, paged_aligned_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
+
+	return buffer;
 #endif
 }
 

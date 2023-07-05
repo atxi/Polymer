@@ -266,7 +266,7 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
   assets->block_registry->state_count = 0;
   assets->block_registry->name_map.Clear();
 
-  assets->texture_id_map = memory_arena_construct_type(&perm_arena, TextureIdMap, perm_arena);
+  assets->texture_id_map = perm_arena.Construct<TextureIdMap>(perm_arena);
 
   AssetParser parser(&trans_arena, assets->block_registry, archive);
 
@@ -548,7 +548,12 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
 
   char* buffer = memory_arena_push_type_count(arena, char, file_size);
 
-  fread(buffer, 1, file_size, f);
+  long total_read = 0;
+
+  while (total_read < file_size) {
+    total_read += fread(buffer + total_read, 1, file_size - total_read, f);
+  }
+
   fclose(f);
 
   json_value_s* root = json_parse(buffer, file_size);

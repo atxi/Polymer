@@ -119,10 +119,12 @@ void ChunkRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, Vk
 
   if (vert_code.size == 0) {
     fprintf(stderr, "Failed to read ChunkRenderer vertex shader file.\n");
+    exit(1);
   }
 
   if (frag_code.size == 0) {
     fprintf(stderr, "Failed to read ChunkRenderer fragment shader file.\n");
+    exit(1);
   }
 
   VkShaderModule vertex_shader = CreateShaderModule(device, vert_code);

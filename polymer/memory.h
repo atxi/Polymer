@@ -4,6 +4,7 @@
 #include <polymer/types.h>
 
 #include <new>
+#include <utility>
 
 namespace polymer {
 
@@ -41,13 +42,16 @@ struct MemoryArena {
   }
 
   void Destroy();
+
+  template <typename T, typename... Args>
+  T* Construct(Args&&... args) {
+    T* result = (T*)Allocate(sizeof(T));
+    new (result) T(std::forward<Args>(args)...);
+    return result;
+  }
 };
 
 #define memory_arena_push_type(arena, type) (type*)(arena)->Allocate(sizeof(type))
-#define memory_arena_construct_type(arena, type, ...)                                                                  \
-  (type*)(arena)->Allocate(sizeof(type));                                                                              \
-  new ((arena)->current - sizeof(type)) type(__VA_ARGS__)
-
 #define memory_arena_push_type_count(arena, type, count) (type*)(arena)->Allocate(sizeof(type) * count)
 
 // Allocate virtual pages that mirror the first half

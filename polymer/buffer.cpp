@@ -177,35 +177,39 @@ void RingBuffer::WriteDouble(double value) {
   }
 }
 
-void RingBuffer::WriteString(const String& str) {
+void RingBuffer::WriteString(const char* str, size_t str_size) {
   size_t remaining = this->GetFreeSize();
 
-  size_t size = str.size + GetVarIntSize(str.size);
+  size_t size = str_size + GetVarIntSize(str_size);
 
   if (remaining >= size) {
-    WriteVarInt(str.size);
+    WriteVarInt(str_size);
 
-    memcpy(this->data + this->write_offset, str.data, str.size);
-    this->write_offset = (write_offset + str.size) % this->size;
+    memcpy(this->data + this->write_offset, str, str_size);
+    this->write_offset = (write_offset + str_size) % this->size;
   } else {
-    WriteVarInt(str.size);
+    WriteVarInt(str_size);
 
     remaining = this->GetFreeSize();
-    if (remaining >= str.size) {
-      memcpy(this->data + this->write_offset, str.data, str.size);
-      this->write_offset = (write_offset + str.size) % this->size;
+    if (remaining >= str_size) {
+      memcpy(this->data + this->write_offset, str, str_size);
+      this->write_offset = (write_offset + str_size) % this->size;
     } else {
-      memcpy(this->data + this->write_offset, str.data, remaining);
-      memcpy(this->data, str.data + remaining, str.size - remaining);
-      this->write_offset = str.size - remaining;
+      memcpy(this->data + this->write_offset, str, remaining);
+      memcpy(this->data, str + remaining, str_size - remaining);
+      this->write_offset = str_size - remaining;
     }
   }
 }
 
-void RingBuffer::WriteRawString(const String& str) {
+void RingBuffer::WriteString(const String& str) {
+  WriteString(str.data, str.size);
+}
+
+void RingBuffer::WriteRawString(const char* str, size_t str_size) {
   size_t remaining = this->GetFreeSize();
-  char* data = str.data;
-  size_t size = str.size;
+  const char* data = str;
+  size_t size = str_size;
 
   if (remaining >= size) {
     memcpy(this->data + this->write_offset, data, size);
@@ -215,6 +219,10 @@ void RingBuffer::WriteRawString(const String& str) {
     memcpy(this->data, data + remaining, size - remaining);
     this->write_offset = size - remaining;
   }
+}
+
+void RingBuffer::WriteRawString(const String& str) {
+  WriteRawString(str.data, str.size);
 }
 
 u8 RingBuffer::ReadU8() {
