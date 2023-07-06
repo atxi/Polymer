@@ -705,7 +705,7 @@ void VulkanRenderer::RecreateSwapchain() {
   vkDeviceWaitIdle(device);
 
   IntRect rect = GetWindowRect(hwnd);
-  
+
   if (rect.right - rect.left == 0 || rect.bottom - rect.top == 0) {
     this->render_paused = true;
     return;

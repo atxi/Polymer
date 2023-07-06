@@ -337,7 +337,8 @@ int run(const LaunchArgs& args) {
   const char* kAddress = "127.0.0.1";
   const char* kUsername = "Polymer";
 
-  connection->SendHandshake(kProtocolVersion, args.server.data, args.server.size, args.server_port, ProtocolState::Login);
+  connection->SendHandshake(kProtocolVersion, args.server.data, args.server.size, args.server_port,
+                            ProtocolState::Login);
   connection->SendLoginStart(args.username.data, args.username.size);
 
   memcpy(game->player_manager.client_name, args.username.data, args.username.size);

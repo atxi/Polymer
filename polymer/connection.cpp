@@ -11,8 +11,8 @@
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
 #include <WS2tcpip.h>
+#include <Windows.h>
 #define POLY_EWOULDBLOCK WSAEWOULDBLOCK
 #else
 #include <arpa/inet.h>
@@ -151,7 +151,8 @@ void Connection::SetBlocking(bool blocking) {
 #endif
 }
 
-void Connection::SendHandshake(u32 version, const char* address, size_t address_size, u16 port, ProtocolState state_request) {
+void Connection::SendHandshake(u32 version, const char* address, size_t address_size, u16 port,
+                               ProtocolState state_request) {
   builder.WriteVarInt(version);
   builder.WriteString(address, address_size);
   builder.WriteU16(port);

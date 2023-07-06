@@ -52,18 +52,6 @@ static bool g_display_cursor = false;
 
 namespace render {
 
-const char* const kRequiredExtensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_utils"};
-const char* const kDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-const char* const kValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
-
-#ifdef NDEBUG
-constexpr bool kEnableValidationLayers = false;
-constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions) - 1;
-#else
-constexpr bool kEnableValidationLayers = true;
-constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions);
-#endif
-
 bool CreateWindowSurface(PolymerWindow window, VkSurfaceKHR* surface) {
   HWND hwnd = (HWND)window;
 
@@ -72,12 +60,13 @@ bool CreateWindowSurface(PolymerWindow window, VkSurfaceKHR* surface) {
   surface_info.hinstance = GetModuleHandle(nullptr);
   surface_info.hwnd = hwnd;
 
-  return vkCreateWin32SurfaceKHR(instance, &surface_info, nullptr, surface) == VK_SUCCESS;
+  return vkCreateWin32SurfaceKHR(vk_render.instance, &surface_info, nullptr, surface) == VK_SUCCESS;
 }
 
 IntRect GetWindowRect(PolymerWindow window) {
   IntRect result;
   RECT rect;
+  HWND hwnd = (HWND)window;
 
   GetClientRect(hwnd, &rect);
 
@@ -254,7 +243,7 @@ int run(const LaunchArgs& args) {
   printf("Polymer\n");
   fflush(stdout);
 
-  GameState* game = memory_arena_construct_type(&perm_arena, GameState, &vk_render, &perm_arena, &trans_arena);
+  GameState* game = perm_arena.Construct<GameState>(&vk_render, &perm_arena, &trans_arena);
   PacketInterpreter interpreter(game);
   Connection* connection = &game->connection;
 
@@ -301,7 +290,28 @@ int run(const LaunchArgs& args) {
     return 1;
   }
 
-  vk_render.Initialize(hwnd);
+  render::ExtensionRequest extension_request;
+
+  const char* kRequiredExtensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_utils"};
+  const char* kDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+  const char* kValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
+
+#ifdef NDEBUG
+  constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions) - 1;
+  constexpr size_t kValidationLayerCount = 0;
+#else
+  constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions);
+  constexpr size_t kValidationLayerCount = polymer_array_count(kValidationLayers);
+#endif
+
+  extension_request.device_extensions = kDeviceExtensions;
+  extension_request.device_extension_count = polymer_array_count(kDeviceExtensions);
+  extension_request.extensions = kRequiredExtensions;
+  extension_request.extension_count = kRequiredExtensionCount;
+  extension_request.validation_layers = kValidationLayers;
+  extension_request.validation_layer_count = kValidationLayerCount;
+
+  vk_render.Initialize(hwnd, extension_request);
 
   {
 
@@ -375,8 +385,9 @@ int run(const LaunchArgs& args) {
 
   connection->SetBlocking(false);
 
-  connection->SendHandshake(kProtocolVersion, args.server, args.server_port, ProtocolState::Login);
-  connection->SendLoginStart(args.username);
+  connection->SendHandshake(kProtocolVersion, args.server.data, args.server.size, args.server_port,
+                            ProtocolState::Login);
+  connection->SendLoginStart(args.username.data, args.username.size);
 
   memcpy(game->player_manager.client_name, args.username.data, args.username.size);
   game->player_manager.client_name[args.username.size] = 0;

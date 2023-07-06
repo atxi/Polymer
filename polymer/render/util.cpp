@@ -2,8 +2,8 @@
 
 #include <polymer/memory.h>
 
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
 
 namespace polymer {
 namespace render {
@@ -170,7 +170,7 @@ String ReadEntireFile(const char* filename, MemoryArena* arena) {
 
   long total_read = 0;
   while (total_read < size) {
-    total_read += fread(buffer + total_read, 1, size - total_read, f);
+    total_read += (long)fread(buffer + total_read, 1, size - total_read, f);
   }
 
   fclose(f);
