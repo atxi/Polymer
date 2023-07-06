@@ -69,9 +69,9 @@ void UniformBuffer::Set(size_t frame, void* data, size_t data_size) {
   vmaUnmapMemory(allocator, uniform_allocations[frame]);
 }
 
-bool VulkanRenderer::Initialize(PolymerWindow window, ExtensionRequest& extension_request) {
-  this->extension_request = extension_request;
+bool VulkanRenderer::Initialize(PolymerWindow window) {
   this->hwnd = window;
+  this->extension_request = platform->GetExtensionRequest();
   this->render_paused = false;
   this->invalid_swapchain = false;
 
@@ -83,7 +83,7 @@ bool VulkanRenderer::Initialize(PolymerWindow window, ExtensionRequest& extensio
 
   SetupDebugMessenger();
 
-  if (!CreateWindowSurface(hwnd, &surface)) {
+  if (!platform->WindowCreateSurface(hwnd, &surface)) {
     fprintf(stderr, "Failed to create window surface.\n");
     return false;
   }
@@ -704,7 +704,7 @@ void VulkanRenderer::CreateDescriptorPool() {
 void VulkanRenderer::RecreateSwapchain() {
   vkDeviceWaitIdle(device);
 
-  IntRect rect = GetWindowRect(hwnd);
+  IntRect rect = platform->WindowGetRect(hwnd);
 
   if (rect.right - rect.left == 0 || rect.bottom - rect.top == 0) {
     this->render_paused = true;

@@ -9,6 +9,7 @@
 #include <polymer/buffer.h>
 #include <polymer/math.h>
 #include <polymer/memory.h>
+#include <polymer/platform/platform.h>
 
 namespace polymer {
 namespace render {
@@ -62,28 +63,13 @@ struct DescriptorSet {
   }
 };
 
-using PolymerWindow = void*;
-
-bool CreateWindowSurface(PolymerWindow window, VkSurfaceKHR* surface);
-IntRect GetWindowRect(PolymerWindow window);
-
-struct ExtensionRequest {
-  const char** extensions;
-  u32 extension_count = 0;
-
-  const char** device_extensions;
-  u32 device_extension_count = 0;
-
-  const char** validation_layers;
-  u32 validation_layer_count = 0;
-};
-
 struct VulkanRenderer {
-  ExtensionRequest extension_request;
+  Platform* platform = nullptr;
 
-  MemoryArena* trans_arena;
-  MemoryArena* perm_arena;
+  MemoryArena* trans_arena = nullptr;
+  MemoryArena* perm_arena = nullptr;
   PolymerWindow hwnd;
+  ExtensionRequest extension_request;
 
   VkInstance instance;
   VkDebugUtilsMessengerEXT debug_messenger;
@@ -123,7 +109,7 @@ struct VulkanRenderer {
   VmaAllocation staging_allocs[2048];
   size_t staging_buffer_count = 0;
 
-  bool Initialize(PolymerWindow window, ExtensionRequest& extension_request);
+  bool Initialize(PolymerWindow window);
   void RecreateSwapchain();
   bool BeginFrame();
 
