@@ -551,7 +551,7 @@ bool AssetParser::ParseBlocks(MemoryArena* perm_arena, const char* blocks_filena
   long total_read = 0;
 
   while (total_read < file_size) {
-    total_read += fread(buffer + total_read, 1, file_size - total_read, f);
+    total_read += (long)fread(buffer + total_read, 1, file_size - total_read, f);
   }
 
   fclose(f);
@@ -846,7 +846,8 @@ static bool HasPropertyValue(const String& properties, const String& name, const
   return false;
 }
 
-static bool HasAnySplitPropertyValue(BlockRegistry* registry, size_t bid, const String& name, const String& value, char separator) {
+static bool HasAnySplitPropertyValue(BlockRegistry* registry, size_t bid, const String& name, const String& value,
+                                     char separator) {
   String* properties = registry->properties + bid;
 
   if (name.size == 0 && properties == nullptr || properties->size == 0) return true;

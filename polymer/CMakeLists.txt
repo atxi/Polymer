@@ -5,10 +5,11 @@ file(GLOB_RECURSE SOURCES *.cpp)
 find_package(Vulkan REQUIRED)
 find_package(CURL REQUIRED)
 
+list(FILTER SOURCES EXCLUDE REGEX "/platform/")
+
 if (UNIX)
   find_package(glfw3 CONFIG REQUIRED)
 
-  list(FILTER SOURCES EXCLUDE REGEX "/platform/")
   file(GLOB_RECURSE UNIX_SOURCES ${PROJECT_SOURCE_DIR}/polymer/platform/unix/*.cpp)
   list(APPEND SOURCES ${UNIX_SOURCES})
 
