@@ -131,7 +131,6 @@ int Polymer::Run(InputState* input) {
 
   ui::DebugTextSystem debug(game->font_renderer);
 
-  MSG msg = {};
   float average_frame_time = 0.0f;
   float frame_time = 0.0f;
 
