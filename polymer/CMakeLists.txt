@@ -27,7 +27,7 @@ include_directories(polymer PRIVATE ..)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # Ignore VMA nullability warnings
-  set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -Wno-nullability-completeness -Wplacement-new=")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -Wno-nullability-completeness")
 endif()
 
 if (UNIX)

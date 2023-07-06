@@ -59,7 +59,7 @@ struct ChunkRenderLayout {
   DescriptorSet CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool);
 };
 
-#define DISPLAY_PERF_STATS 1
+#define DISPLAY_PERF_STATS 0
 struct RenderStatistics {
   u32 chunk_render_count;
 

@@ -62,7 +62,7 @@ struct ArgParser {
   static ArgParser Parse(int argc, char* argv[]) {
     ArgParser result = {};
 
-    for (int i = 0; i < argc; ++i) {
+    for (int i = 0; i < argc && i < polymer_array_count(args); ++i) {
       char* current = argv[i];
 
       if (current[0] == '-') {

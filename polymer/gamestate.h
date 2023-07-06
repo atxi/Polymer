@@ -4,6 +4,7 @@
 #include <polymer/asset/asset_system.h>
 #include <polymer/camera.h>
 #include <polymer/connection.h>
+#include <polymer/input.h>
 #include <polymer/render/block_mesher.h>
 #include <polymer/render/chunk_renderer.h>
 #include <polymer/render/font_renderer.h>
@@ -16,18 +17,6 @@
 namespace polymer {
 
 struct MemoryArena;
-
-// TODO: Make this more advanced
-struct InputState {
-  bool forward;
-  bool backward;
-  bool left;
-  bool right;
-  bool climb;
-  bool fall;
-  bool sprint;
-  bool display_players;
-};
 
 struct Player {
   char name[17];
