@@ -29,8 +29,6 @@ The project is configured to use vcpkg as a dependency manager, so follow the di
 #### Requirements
 - C++ compiler (tested with MSVC 2022 and Clang)
 - [CMake](https://cmake.org/)
-  
-Compiling the shaders requires `glslc`, which can be obtained from [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/).
 
 #### Windows
 - Open terminal in polymer folder.
@@ -38,6 +36,8 @@ Compiling the shaders requires `glslc`, which can be obtained from [Vulkan SDK](
 - `cmake -B build -S . --preset msvc`
 - MSVC: Open the generated `build/polymer.sln` and build in x64 Release mode.
 - The final executable will be in the `build/Release` folder.
+
+Compiling the shaders requires `glslc`, which can be obtained from [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/).
 - Compile the shaders with `compile_shaders.bat`. `VULKAN_SDK` needs to be set in your environment variables.
 
 #### Linux
@@ -48,5 +48,8 @@ Linux uses GLFW for managing the window. Install it with your package manager.
 - `cmake -B build -S .`
 - `cd build && make`
 - The final executable will be in the `build/bin` folder.
+
+Compiling the shaders requires `glslangValidator`.
+- `sudo apt-get install glslang-tools`
 - Compile the shaders with `compile_shaders.sh`.
 
