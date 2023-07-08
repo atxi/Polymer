@@ -10,7 +10,6 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
 #include <WS2tcpip.h>
 #include <Windows.h>
 #define POLY_EWOULDBLOCK WSAEWOULDBLOCK

@@ -15,11 +15,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "Imm32.lib")
+
+#define VOLK_IMPLEMENTATION
+#include <volk.h>
 
 namespace polymer {
 
@@ -267,15 +269,21 @@ const char* kRequiredExtensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface", "
 const char* kDeviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 const char* kValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
 
+#define POLYMER_VALIDATION_LAYERS 0
+
 static ExtensionRequest Win32GetExtensionRequest() {
   ExtensionRequest extension_request;
 
 #ifdef NDEBUG
   constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions) - 1;
-  constexpr size_t kValidationLayerCount = 0;
 #else
   constexpr size_t kRequiredExtensionCount = polymer_array_count(kRequiredExtensions);
+#endif
+
+#if POLYMER_VALIDATION_LAYERS
   constexpr size_t kValidationLayerCount = polymer_array_count(kValidationLayers);
+#else
+  constexpr size_t kValidationLayerCount = 0;
 #endif
 
   extension_request.device_extensions = kDeviceExtensions;
@@ -347,6 +355,12 @@ bool curl_test() {
 
 int main(int argc, char* argv[]) {
   using namespace polymer;
+
+  if (volkInitialize() != VK_SUCCESS) {
+    fprintf(stderr, "Failed to get Vulkan loader.\n");
+    fflush(stderr);
+    return 1;
+  }
 
   constexpr size_t kPermanentSize = Gigabytes(1);
   constexpr size_t kTransientSize = Megabytes(32);

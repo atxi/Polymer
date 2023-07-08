@@ -29,7 +29,8 @@ The project is configured to use vcpkg as a dependency manager, so follow the di
 #### Requirements
 - C++ compiler (tested with MSVC 2022 and Clang)
 - [CMake](https://cmake.org/)
-- [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
+  
+Compiling the shaders requires `glslc`, which can be obtained from [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/).
 
 #### Windows
 - Open terminal in polymer folder.

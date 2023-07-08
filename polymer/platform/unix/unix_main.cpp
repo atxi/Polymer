@@ -13,6 +13,9 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#define VOLK_IMPLEMENTATION
+#include <volk.h>
+
 namespace polymer {
 
 static Polymer* g_application;
@@ -225,6 +228,12 @@ static ExtensionRequest UnixGetExtensionRequest() {
 
 int main(int argc, char* argv[]) {
   using namespace polymer;
+
+  if (volkInitialize() != VK_SUCCESS) {
+    fprintf(stderr, "Failed to get Vulkan loader.\n");
+    fflush(stderr);
+    return 1;
+  }
 
   constexpr size_t kPermanentSize = Gigabytes(1);
   constexpr size_t kTransientSize = Megabytes(32);

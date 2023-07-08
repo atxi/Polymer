@@ -75,11 +75,22 @@ bool VulkanRenderer::Initialize(PolymerWindow window) {
   this->render_paused = false;
   this->invalid_swapchain = false;
 
+  if (this->extension_request.validation_layer_count > 0) {
+    printf("Enabling validation layers: ");
+
+    for (u32 i = 0; i < extension_request.validation_layer_count; ++i) {
+      printf("%s ", extension_request.validation_layers[i]);
+    }
+    printf("\n");
+  }
+
   swapchain.swapchain = VK_NULL_HANDLE;
 
   if (!CreateInstance()) {
     return false;
   }
+
+  volkLoadInstance(instance);
 
   SetupDebugMessenger();
 
@@ -90,6 +101,8 @@ bool VulkanRenderer::Initialize(PolymerWindow window) {
 
   PickPhysicalDevice();
   CreateLogicalDevice();
+
+  volkLoadDevice(device);
 
   CreateCommandPool();
 
@@ -105,12 +118,45 @@ bool VulkanRenderer::Initialize(PolymerWindow window) {
     return false;
   }
 
+  VmaVulkanFunctions vma_vulkan_func = {};
+
+  vma_vulkan_func.vkAllocateMemory = vkAllocateMemory;
+  vma_vulkan_func.vkBindBufferMemory = vkBindBufferMemory;
+  vma_vulkan_func.vkBindImageMemory = vkBindImageMemory;
+  vma_vulkan_func.vkCreateBuffer = vkCreateBuffer;
+  vma_vulkan_func.vkCreateImage = vkCreateImage;
+  vma_vulkan_func.vkDestroyBuffer = vkDestroyBuffer;
+  vma_vulkan_func.vkDestroyImage = vkDestroyImage;
+  vma_vulkan_func.vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges;
+  vma_vulkan_func.vkFreeMemory = vkFreeMemory;
+  vma_vulkan_func.vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements;
+  vma_vulkan_func.vkGetImageMemoryRequirements = vkGetImageMemoryRequirements;
+  vma_vulkan_func.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
+  vma_vulkan_func.vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties;
+  vma_vulkan_func.vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges;
+  vma_vulkan_func.vkMapMemory = vkMapMemory;
+  vma_vulkan_func.vkUnmapMemory = vkUnmapMemory;
+  vma_vulkan_func.vkCmdCopyBuffer = vkCmdCopyBuffer;
+
+#if VMA_DEDICATED_ALLOCATION || VMA_VULKAN_VERSION >= 1001000
+  vma_vulkan_func.vkGetBufferMemoryRequirements2KHR = vkGetBufferMemoryRequirements2KHR;
+  vma_vulkan_func.vkGetImageMemoryRequirements2KHR = vkGetImageMemoryRequirements2KHR;
+#endif
+#if VMA_BIND_MEMORY2 || VMA_VULKAN_VERSION >= 1001000
+  vma_vulkan_func.vkBindBufferMemory2KHR = vkBindBufferMemory2KHR;
+  vma_vulkan_func.vkBindImageMemory2KHR = vkBindImageMemory2KHR;
+#endif
+#if VMA_MEMORY_BUDGET || VMA_VULKAN_VERSION >= 1001000
+  vma_vulkan_func.vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2KHR;
+#endif
+
   VmaAllocatorCreateInfo allocator_info = {};
 
   allocator_info.vulkanApiVersion = VK_API_VERSION_1_0;
   allocator_info.physicalDevice = physical_device;
   allocator_info.device = device;
   allocator_info.instance = instance;
+  allocator_info.pVulkanFunctions = &vma_vulkan_func;
 
   if (vmaCreateAllocator(&allocator_info, &allocator) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create vma allocator.\n");
@@ -951,7 +997,16 @@ bool VulkanRenderer::PickPhysicalDevice() {
 }
 
 void VulkanRenderer::SetupDebugMessenger() {
-  if (extension_request.validation_layer_count == 0) return;
+  bool enable = false;
+
+  for (size_t i = 0; i < extension_request.extension_count; ++i) {
+    if (strcmp("VK_EXT_debug_utils", extension_request.extensions[i]) == 0) {
+      enable = true;
+      break;
+    }
+  }
+
+  if (!enable) return;
 
   VkDebugUtilsMessengerCreateInfoEXT create_info{};
 
@@ -966,6 +1021,8 @@ void VulkanRenderer::SetupDebugMessenger() {
 
   if (CreateDebugUtilsMessengerEXT(instance, &create_info, nullptr, &debug_messenger) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create debug messenger.\n");
+  } else {
+    printf("Debug messenger enabled.\n");
   }
 }
 
