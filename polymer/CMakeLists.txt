@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.2)
 
 file(GLOB_RECURSE SOURCES *.cpp)
 
-find_package(Vulkan REQUIRED)
+find_package(volk REQUIRED)
 find_package(CURL REQUIRED)
 
 list(FILTER SOURCES EXCLUDE REGEX "/platform/")
@@ -32,7 +32,9 @@ endif()
 
 if (UNIX)
   target_link_libraries(polymer PRIVATE glfw)
+elseif (WIN32)
+  add_compile_definitions(WIN32_LEAN_AND_MEAN VK_USE_PLATFORM_WIN32_KHR)
 endif()
 
-target_include_directories(polymer PRIVATE ${Vulkan_INCLUDE_DIR} ${CURL_INCLUDE_DIRS})
-target_link_libraries(polymer PRIVATE ${Vulkan_LIBRARY} CURL::libcurl)
+target_include_directories(polymer PRIVATE ${CURL_INCLUDE_DIRS})
+target_link_libraries(polymer PRIVATE volk::volk_headers CURL::libcurl)

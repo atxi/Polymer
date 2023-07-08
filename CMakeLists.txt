@@ -12,8 +12,8 @@ endif()
 
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake"
   CACHE STRING "Vcpkg toolchain file")
-
-project(polymer VERSION 0.0.1 LANGUAGES CXX)
+  
+project(polymer VERSION 0.0.3 LANGUAGES CXX)
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 

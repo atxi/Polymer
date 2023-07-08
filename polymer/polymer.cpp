@@ -157,7 +157,8 @@ int Polymer::Run(InputState* input) {
 
       debug.color = Vector4f(1, 1, 1, 1);
 
-      debug.Write("Platform: %s", platform_name);
+      debug.Write("platform: %s", platform_name);
+      debug.Write("dimension: %.*s", (u32)game->dimension.name.size, game->dimension.name.data);
 
       int fps = (average_frame_time > 0.0f) ? (u32)(1000.0f / average_frame_time) : 0;
       debug.Write("fps: %d", fps);
