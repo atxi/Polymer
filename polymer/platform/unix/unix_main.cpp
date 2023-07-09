@@ -154,6 +154,8 @@ static void OnKeyDown(GLFWwindow* window, int key, int scancode, int action, int
   }
 }
 
+Platform g_Platform;
+
 static const char* UnixGetPlatformName() {
   return "Linux";
 }
@@ -224,6 +226,27 @@ static ExtensionRequest UnixGetExtensionRequest() {
   return extension_request;
 }
 
+static String UnixGetAssetStorePath(MemoryArena& arena) {
+  return {};
+}
+
+static bool UnixFolderExists(const char* path) {
+  return false;
+}
+
+static bool UnixCreateFolder(const char* path) {
+  return false;
+}
+
+static u8* UnixAllocate(size_t size) {
+  u8* result = (u8*)malloc(size);
+  return result;
+}
+
+static void UnixFree(u8* ptr) {
+  free(ptr);
+}
+
 } // namespace polymer
 
 int main(int argc, char* argv[]) {
@@ -246,9 +269,12 @@ int main(int argc, char* argv[]) {
 
   Polymer* polymer = perm_arena.Construct<Polymer>(perm_arena, trans_arena, argc, argv);
 
-  polymer->platform = {UnixGetPlatformName, UnixWindowCreate, UnixWindowCreateSurface,
-                       UnixWindowGetRect,   UnixWindowPump,   UnixGetExtensionRequest};
+  polymer->platform = {UnixGetPlatformName,   UnixWindowCreate, UnixWindowCreateSurface,
+                       UnixWindowGetRect,     UnixWindowPump,   UnixGetExtensionRequest,
+                       UnixGetAssetStorePath, UnixFolderExists, UnixCreateFolder,
+                       UnixAllocate,          UnixFree};
 
+  g_Platform = polymer->platform;
   g_application = polymer;
 
   if (!glfwInit()) {

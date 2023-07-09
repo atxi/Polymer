@@ -1,6 +1,7 @@
 #pragma once
 
 #include <polymer/math.h>
+#include <polymer/memory.h>
 #include <polymer/render/vulkan.h>
 
 namespace polymer {
@@ -27,6 +28,14 @@ using PlatformWindowPump = void (*)(PolymerWindow window);
 
 using PlatformGetExtensionRequest = ExtensionRequest (*)();
 
+using PlatformGetAssetStorePath = String (*)(MemoryArena& arena);
+
+using PlatformFolderExists = bool (*)(const char* path);
+using PlatformCreateFolder = bool (*)(const char* path);
+
+using PlatformAllocate = u8* (*)(size_t size);
+using PlatformFree = void (*)(u8* ptr);
+
 struct Platform {
   PlatformGetPlatformName GetPlatformName;
 
@@ -36,6 +45,14 @@ struct Platform {
   PlatformWindowPump WindowPump;
 
   PlatformGetExtensionRequest GetExtensionRequest;
+
+  PlatformGetAssetStorePath GetAssetStorePath;
+  PlatformFolderExists FolderExists;
+  PlatformCreateFolder CreateFolder;
+
+  PlatformAllocate Allocate;
+  PlatformFree Free;
 };
+extern Platform g_Platform;
 
 } // namespace polymer

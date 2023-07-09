@@ -6,6 +6,9 @@
 //
 #endif
 
+#include <ShlObj.h>
+//
+
 #include <polymer/gamestate.h>
 #include <polymer/platform/args.h>
 #include <polymer/polymer.h>
@@ -170,6 +173,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   return 0;
 }
 
+Platform g_Platform;
+
 static const char* Win32GetPlatformName() {
   return "Windows";
 }
@@ -296,6 +301,50 @@ static ExtensionRequest Win32GetExtensionRequest() {
   return extension_request;
 }
 
+// TODO: Support unicode in path
+static String Win32GetAssetStorePath(MemoryArena& arena) {
+  char path[1024] = {};
+
+  if (!SHGetSpecialFolderPathA(NULL, path, CSIDL_APPDATA, FALSE)) {
+    return {};
+  }
+
+  size_t length = strlen(path);
+
+  if (length == 0) {
+    return {};
+  }
+
+  const char* kAssetStoreName = "\\Polymer\\";
+  size_t name_length = strlen(kAssetStoreName);
+
+  char* path_storage = memory_arena_push_type_count(&arena, char, length + name_length);
+
+  memcpy(path_storage, path, length);
+  memcpy(path_storage + length, kAssetStoreName, name_length);
+
+  return String(path_storage, length + name_length);
+}
+
+static bool Win32FolderExists(const char* path) {
+  DWORD attr = GetFileAttributesA(path);
+
+  return (attr != INVALID_FILE_ATTRIBUTES) && (attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static bool Win32CreateFolder(const char* path) {
+  return CreateDirectoryA(path, NULL);
+}
+
+static u8* Win32Allocate(size_t size) {
+  u8* result = (u8*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  return result;
+}
+
+static void Win32Free(u8* ptr) {
+  VirtualFree(ptr, 0, MEM_RELEASE);
+}
+
 } // namespace polymer
 
 #ifdef POLYMER_CURL_TEST
@@ -373,9 +422,12 @@ int main(int argc, char* argv[]) {
 
   Polymer* polymer = perm_arena.Construct<Polymer>(perm_arena, trans_arena, argc, argv);
 
-  polymer->platform = {Win32GetPlatformName, Win32WindowCreate, Win32WindowCreateSurface,
-                       Win32WindowGetRect,   Win32WindowPump,   Win32GetExtensionRequest};
+  polymer->platform = {Win32GetPlatformName,   Win32WindowCreate, Win32WindowCreateSurface,
+                       Win32WindowGetRect,     Win32WindowPump,   Win32GetExtensionRequest,
+                       Win32GetAssetStorePath, Win32FolderExists, Win32CreateFolder,
+                       Win32Allocate,          Win32Free};
 
+  g_Platform = polymer->platform;
   g_application = polymer;
 
   return polymer->Run(&g_input);
