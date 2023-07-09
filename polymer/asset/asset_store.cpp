@@ -5,6 +5,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include <polymer/json.h>
+
 #pragma warning(disable : 4273)
 #include <tomcrypt.h>
 
@@ -19,6 +21,44 @@ constexpr const char* kVersionDescriptorUrl =
 
 const HashSha1 kVersionDescriptorHash("715ccf3330885e75b205124f09f8712542cbe7e0");
 
+static json_object_s* FindJsonObjectElement(json_object_s* obj, const char* name) {
+  json_object_element_s* element = obj->start;
+
+  while (element) {
+    if (element->value->type == json_type_object) {
+      String element_name(element->name->string, element->name->string_size);
+
+      if (strncmp(element_name.data, name, element_name.size) == 0) {
+        return json_value_as_object(element->value);
+      }
+    }
+
+    element = element->next;
+  }
+
+  return nullptr;
+}
+
+static String FindJsonStringValue(json_object_s* obj, const char* name) {
+  json_object_element_s* element = obj->start;
+
+  while (element) {
+    if (element->value->type == json_type_string) {
+      String element_name(element->name->string, element->name->string_size);
+
+      if (strncmp(element_name.data, name, element_name.size) == 0) {
+        json_string_s* str = json_value_as_string(element->value);
+
+        return String(str->string, str->string_size);
+      }
+    }
+
+    element = element->next;
+  }
+
+  return {};
+}
+
 HashSha1 GetSha1(const String& contents) {
   HashSha1 result = {};
   hash_state state = {};
@@ -31,7 +71,7 @@ HashSha1 GetSha1(const String& contents) {
 }
 
 HashSha1 GetFileSha1(MemoryArena& trans_arena, const char* name) {
-  String entire_file = ReadEntireFile(name, &trans_arena);
+  String entire_file = ReadEntireFile(name, trans_arena);
 
   if (entire_file.size == 0) {
     return {};
@@ -97,6 +137,104 @@ void AssetStore::ProcessVersionDescriptor(const AssetInfo& info) {
 
   // If not client, net_queue request
   // if not index, net_queue request
+
+  String contents = ReadEntireFile(info.path, trans_arena);
+
+  json_value_s* root_value = json_parse(contents.data, contents.size);
+  if (!root_value || root_value->type != json_type_object) {
+    fprintf(stderr, "AssetStore: Failed to parse version descriptor json.\n");
+    exit(1);
+  }
+
+  json_object_s* root = json_value_as_object(root_value);
+
+  {
+    json_object_s* downloads_obj = FindJsonObjectElement(root, "downloads");
+
+    if (!downloads_obj) {
+      fprintf(stderr, "AssetStore: Invalid 'downloads' element of version descriptor. Expected object.\n");
+      exit(1);
+    }
+
+    json_object_s* client_obj = FindJsonObjectElement(downloads_obj, "client");
+    if (!client_obj) {
+      fprintf(stderr, "AssetStore: Invalid 'downloads.client' element of version descriptor. Expected object.\n");
+      exit(1);
+    }
+
+    String sha1_str = FindJsonStringValue(client_obj, "sha1");
+    if (sha1_str.size == 0) {
+      fprintf(stderr, "AssetStore: Invalid 'downloads.client.sha1' element of version descriptor. Expected string.\n");
+      exit(1);
+    }
+
+    AssetInfo client_info = {};
+    client_info.hash = HashSha1(sha1_str.data, sha1_str.size);
+    client_info.type = AssetType::Client;
+
+    if (!HasAsset(client_info)) {
+      String url = FindJsonStringValue(client_obj, "url");
+      if (url.size == 0) {
+        fprintf(stderr, "AssetStore: Invalid 'downloads.client.url' element of version descriptor. Expected string.\n");
+        exit(1);
+      }
+
+      net_queue.PushRequest(url, this, [](NetworkRequest* request, NetworkResponse* response) {
+        AssetStore* store = (AssetStore*)request->userp;
+
+        char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions\\%s", kVersionJar);
+
+        response->SaveToFile(filename);
+      });
+    }
+  }
+
+  {
+    json_object_s* assetindex_obj = FindJsonObjectElement(root, "assetIndex");
+    if (!assetindex_obj) {
+      fprintf(stderr, "AssetStore: Invalid 'assetIndex' element of version descriptor. Expected object.\n");
+      exit(1);
+    }
+
+    String sha1_str = FindJsonStringValue(assetindex_obj, "sha1");
+
+    AssetInfo index_info = {};
+    index_info.hash = HashSha1(sha1_str.data, sha1_str.size);
+    index_info.type = AssetType::Index;
+
+    if (!HasAsset(index_info)) {
+      String url = FindJsonStringValue(assetindex_obj, "url");
+      if (url.size == 0) {
+        fprintf(stderr, "AssetStore: Invalid 'downloads.client.url' element of version descriptor. Expected string.\n");
+        exit(1);
+      }
+
+      net_queue.PushRequest(url, this, [](NetworkRequest* request, NetworkResponse* response) {
+        AssetStore* store = (AssetStore*)request->userp;
+
+        char* filename = GetAbsolutePath(store->trans_arena, store->path, "index\\%s", kVersionIndex);
+
+        response->SaveToFile(filename);
+
+        AssetInfo index_info = {};
+
+        index_info.type = AssetType::Index;
+        strcpy(index_info.path, filename);
+
+        store->ProcessIndex(index_info);
+      });
+    } else {
+      char* filename = GetAbsolutePath(trans_arena, path, "index\\%s", kVersionIndex);
+
+      strcpy(index_info.path, filename);
+
+      ProcessIndex(index_info);
+    }
+  }
+}
+
+void AssetStore::ProcessIndex(const AssetInfo& info) {
+  printf("TODO: Process index. (%s)\n", info.path);
 }
 
 bool AssetStore::HasAsset(AssetInfo& info) {
@@ -157,6 +295,10 @@ bool AssetStore::HasAsset(AssetInfo& info) {
   }
 
   return false;
+}
+
+char* AssetStore::GetClientPath(MemoryArena& arena) {
+  return GetAbsolutePath(arena, path, "versions\\%s", kVersionJar);
 }
 
 } // namespace asset

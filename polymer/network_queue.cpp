@@ -107,14 +107,14 @@ bool NetworkQueue::Initialize() {
   return true;
 }
 
-bool NetworkQueue::PushRequest(const char* url, void* userp, NetworkCompleteCallback callback) {
+NetworkRequest* NetworkQueue::AllocateRequest() {
   NetworkRequest* request = nullptr;
 
   if (!free) {
     free = (NetworkRequest*)malloc(sizeof(NetworkRequest));
     if (!free) {
       fprintf(stderr, "network_queue: Failed to allocate NetworkRequest.\n");
-      return false;
+      return nullptr;
     }
 
     free->next = nullptr;
@@ -124,6 +124,36 @@ bool NetworkQueue::PushRequest(const char* url, void* userp, NetworkCompleteCall
   free = free->next;
 
   request->next = nullptr;
+  return request;
+}
+
+NetworkRequest* NetworkQueue::PushRequest(String url, void* userp, NetworkCompleteCallback callback) {
+  NetworkRequest* request = AllocateRequest();
+
+  if (!request) return nullptr;
+
+  memcpy(request->url, url.data, url.size);
+  request->url[url.size] = 0;
+
+  request->userp = userp;
+  request->callback = callback;
+
+  if (waiting_queue_end) {
+    waiting_queue_end->next = request;
+    waiting_queue_end = request;
+  } else {
+    waiting_queue = request;
+    waiting_queue_end = request;
+  }
+
+  return request;
+}
+
+NetworkRequest* NetworkQueue::PushRequest(const char* url, void* userp, NetworkCompleteCallback callback) {
+  NetworkRequest* request = AllocateRequest();
+
+  if (!request) return nullptr;
+
   strcpy(request->url, url);
   request->userp = userp;
   request->callback = callback;
@@ -136,7 +166,7 @@ bool NetworkQueue::PushRequest(const char* url, void* userp, NetworkCompleteCall
     waiting_queue_end = request;
   }
 
-  return true;
+  return request;
 }
 
 void NetworkQueue::Run() {
@@ -168,6 +198,8 @@ void NetworkQueue::Run() {
         response.transfer_code = msg->data.result;
         response.size = active_request->size;
         response.chunks = active_request->chunks;
+
+        printf("net_queue: Completed download of '%s'. Size: %u.\n", active_request->request->url, (u32)response.size);
 
         active_request->request->callback(active_request->request, &response);
 
@@ -209,6 +241,8 @@ void NetworkQueue::ProcessWaitingQueue() {
       curl_easy_setopt(eh, CURLOPT_PRIVATE, active_requests + i);
       curl_easy_setopt(eh, CURLOPT_WRITEDATA, active_requests + i);
       curl_easy_setopt(eh, CURLOPT_FOLLOWLOCATION, &enable);
+
+      printf("net_queue: Requesting url '%s'.\n", waiting_queue->url);
 
       curl_multi_add_handle(curl_multi, eh);
 
@@ -273,6 +307,9 @@ NetworkChunk* NetworkQueue::AllocateChunk() {
   NetworkChunk* result = free_chunks;
 
   free_chunks = free_chunks->next;
+
+  result->size = 0;
+  result->next = nullptr;
 
   return result;
 }

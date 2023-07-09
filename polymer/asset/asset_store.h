@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct json_object_s;
+
 namespace polymer {
 namespace asset {
 
@@ -75,7 +77,11 @@ struct AssetStore {
   bool HasAsset(AssetInfo& info);
   bool StoreAsset(const AssetInfo& info);
 
+  char* GetClientPath(MemoryArena& arena);
+
+private:
   void ProcessVersionDescriptor(const AssetInfo& info);
+  void ProcessIndex(const AssetInfo& info);
 };
 
 } // namespace asset

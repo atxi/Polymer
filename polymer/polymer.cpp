@@ -11,7 +11,6 @@
 
 namespace polymer {
 
-constexpr const char* kMinecraftJar = "1.20.1.jar";
 constexpr const char* kBlocksName = "blocks-1.20.1.json";
 
 // Window surface width
@@ -90,8 +89,9 @@ int Polymer::Run(InputState* input) {
   {
     auto start = std::chrono::high_resolution_clock::now();
 
-    if (!game->assets.Load(renderer, kMinecraftJar, kBlocksName, &game->block_registry)) {
-      fprintf(stderr, "Failed to load minecraft assets. Requires %s and %s.\n", kBlocksName, kMinecraftJar);
+    char* client_path = store.GetClientPath(trans_arena);
+    if (!game->assets.Load(renderer, client_path, kBlocksName, &game->block_registry)) {
+      fprintf(stderr, "Failed to load minecraft assets. Requires %s and %s.\n", kBlocksName, client_path);
       return 1;
     }
 

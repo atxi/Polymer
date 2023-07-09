@@ -332,8 +332,8 @@ DescriptorSet FontPipelineLayout::CreateDescriptors(VkDevice device, VkDescripto
 }
 
 void FontRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, VkExtent2D swap_extent) {
-  String vert_code = ReadEntireFile(kFontVertShader, &trans_arena);
-  String frag_code = ReadEntireFile(kFontFragShader, &trans_arena);
+  String vert_code = ReadEntireFile(kFontVertShader, trans_arena);
+  String frag_code = ReadEntireFile(kFontFragShader, trans_arena);
 
   if (vert_code.size == 0) {
     fprintf(stderr, "Failed to read FontRenderer vertex shader file.\n");

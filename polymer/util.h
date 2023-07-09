@@ -7,7 +7,7 @@ namespace polymer {
 
 struct MemoryArena;
 
-String ReadEntireFile(const char* filename, MemoryArena* arena);
+String ReadEntireFile(const char* filename, MemoryArena& arena);
 
 // Creates all the necessary folders and opens a FILE handle.
 FILE* CreateAndOpenFile(String filename, const char* mode);
