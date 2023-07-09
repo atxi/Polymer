@@ -1,6 +1,7 @@
 #include <polymer/memory.h>
 
 #include <assert.h>
+#include <polymer/platform/platform.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -12,25 +13,6 @@
 #endif
 
 namespace polymer {
-
-// TODO: Get rid of these when a real platform layer is created.
-void PlatformFree(u8* ptr) {
-#ifdef _WIN32
-  VirtualFree(ptr, 0, MEM_RELEASE);
-#else
-  free(ptr);
-#endif
-}
-
-u8* PlatformAllocate(size_t size) {
-#ifdef _WIN32
-  u8* result = (u8*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-#else
-  u8* result = (u8*)malloc(size);
-#endif
-
-  return result;
-}
 
 MemoryArena::MemoryArena(u8* memory, size_t max_size) : base(memory), current(memory), max_size(max_size) {}
 
@@ -67,7 +49,7 @@ MemoryArena CreateArena(size_t size) {
 
   assert(size > 0);
 
-  result.base = result.current = PlatformAllocate(size);
+  result.base = result.current = g_Platform.Allocate(size);
   result.max_size = size;
 
   assert(result.base);

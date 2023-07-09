@@ -154,32 +154,5 @@ VkShaderModule CreateShaderModule(VkDevice device, String code) {
   return shader;
 }
 
-String ReadEntireFile(const char* filename, MemoryArena* arena) {
-  String result = {};
-  FILE* f = fopen(filename, "rb");
-
-  if (!f) {
-    return result;
-  }
-
-  fseek(f, 0, SEEK_END);
-  long size = ftell(f);
-  fseek(f, 0, SEEK_SET);
-
-  char* buffer = memory_arena_push_type_count(arena, char, size);
-
-  long total_read = 0;
-  while (total_read < size) {
-    total_read += (long)fread(buffer + total_read, 1, size - total_read, f);
-  }
-
-  fclose(f);
-
-  result.data = buffer;
-  result.size = size;
-
-  return result;
-}
-
 } // namespace render
 } // namespace polymer

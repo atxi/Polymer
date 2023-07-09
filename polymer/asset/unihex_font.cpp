@@ -3,13 +3,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <polymer/render/util.h>
+#include <polymer/util.h>
 
 namespace polymer {
 namespace asset {
 
 bool UnihexFont::Load(const char* filename, MemoryArena& perm_arena, MemoryArena& trans_arena) {
-  String file_data = render::ReadEntireFile(filename, &trans_arena);
+  String file_data = ReadEntireFile(filename, &trans_arena);
   if (!file_data.data) {
     fprintf(stderr, "Failed to load font file '%s'.\n", filename);
     return false;

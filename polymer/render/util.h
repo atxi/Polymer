@@ -4,6 +4,7 @@
 #include <polymer/render/vulkan.h>
 
 #include <polymer/types.h>
+#include <polymer/util.h>
 
 namespace polymer {
 
@@ -30,7 +31,6 @@ struct Mipmap {
 void BoxFilterMipmap(u8* previous, u8* data, size_t data_size, size_t dim, bool brighten_mipping);
 
 VkShaderModule CreateShaderModule(VkDevice device, String code);
-String ReadEntireFile(const char* filename, MemoryArena* arena);
 
 } // namespace render
 } // namespace polymer

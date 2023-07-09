@@ -1,5 +1,6 @@
 #include "polymer.h"
 
+#include <polymer/asset/asset_store.h>
 #include <polymer/connection.h>
 #include <polymer/gamestate.h>
 #include <polymer/packet_interpreter.h>
@@ -43,6 +44,24 @@ int Polymer::Run(InputState* input) {
     PrintUsage();
     return 0;
   }
+
+  NetworkQueue net_queue = {};
+
+  if (!net_queue.Initialize()) {
+    return 1;
+  }
+
+  String local = platform.GetAssetStorePath(trans_arena);
+  asset::AssetStore store(platform, perm_arena, trans_arena, net_queue, local);
+
+  store.Initialize();
+
+  // TODO: This should be running during a separate scene so download progress can be rendered.
+  while (!net_queue.IsEmpty()) {
+    net_queue.Run();
+  }
+
+  net_queue.Clear();
 
   const char* platform_name = platform.GetPlatformName();
   printf("Polymer: %s\n", platform_name);
