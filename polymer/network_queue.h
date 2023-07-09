@@ -46,7 +46,9 @@ struct NetworkQueue {
 
   bool Initialize();
 
-  bool PushRequest(const char* url, void* userp, NetworkCompleteCallback callback);
+  NetworkRequest* PushRequest(const char* url, void* userp, NetworkCompleteCallback callback);
+  NetworkRequest* PushRequest(String url, void* userp, NetworkCompleteCallback callback);
+
   void Run();
   void Clear();
   bool IsEmpty() const;
@@ -56,6 +58,8 @@ struct NetworkQueue {
 
 private:
   void ProcessWaitingQueue();
+
+  NetworkRequest* AllocateRequest();
 
   void* curl_multi;
   NetworkActiveRequest active_requests[kParallelRequests];

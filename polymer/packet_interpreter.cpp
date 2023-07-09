@@ -35,6 +35,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   printf("InterpetPlay: %lld\n", pkt_id);
 #endif
 
+  auto start_snapshot = trans_arena->GetSnapshot();
+
   switch (type) {
   case PlayProtocol::SystemChatMessage: {
     String sstr;
@@ -264,7 +266,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     dimension_identifier.data = memory_arena_push_type_count(trans_arena, char, 32767);
     dimension_identifier.size = 32767;
 
-    rb->ReadString(&dimension_identifier);
+    dimension_identifier.size = rb->ReadString(&dimension_identifier);
 
     if (dimension_identifier.size > 0) {
       printf("Dimension: %.*s\n", (u32)dimension_identifier.size, dimension_identifier.data);
@@ -781,6 +783,9 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   default:
     break;
   }
+
+
+  trans_arena->Revert(start_snapshot);
 }
 
 void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_size) {

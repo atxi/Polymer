@@ -66,7 +66,7 @@ FILE* CreateAndOpenFile(const char* filename, const char* mode) {
   return f;
 }
 
-String ReadEntireFile(const char* filename, MemoryArena* arena) {
+String ReadEntireFile(const char* filename, MemoryArena& arena) {
   String result = {};
   FILE* f = fopen(filename, "rb");
 
@@ -78,7 +78,7 @@ String ReadEntireFile(const char* filename, MemoryArena* arena) {
   long size = ftell(f);
   fseek(f, 0, SEEK_SET);
 
-  char* buffer = memory_arena_push_type_count(arena, char, size);
+  char* buffer = memory_arena_push_type_count(&arena, char, size);
 
   long total_read = 0;
   while (total_read < size) {
