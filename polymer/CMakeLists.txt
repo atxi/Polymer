@@ -35,7 +35,7 @@ if (UNIX)
 elseif (WIN32)
   add_compile_definitions(WIN32_LEAN_AND_MEAN VK_USE_PLATFORM_WIN32_KHR)
 
-  target_link_libraries(polymer PRIVATE ../vcpkg_installed/x64-windows-static/lib/tomcrypt)
+  target_link_libraries(polymer PRIVATE ${VCPKG_INSTALLED_DIR}/x64-windows-static/lib/tomcrypt.lib)
 endif()
 
 target_include_directories(polymer PRIVATE ${CURL_INCLUDE_DIRS})
