@@ -2,6 +2,7 @@
 #define POLYMER_ZIP_ARCHIVE_H_
 
 #include <polymer/miniz.h>
+#include <polymer/types.h>
 
 namespace polymer {
 
@@ -15,6 +16,8 @@ struct ZipArchive {
   mz_zip_archive archive;
 
   bool Open(const char* path);
+  bool OpenFromMemory(String contents);
+
   void Close();
 
   char* ReadFile(MemoryArena* arena, const char* filename, size_t* size);

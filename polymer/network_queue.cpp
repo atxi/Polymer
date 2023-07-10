@@ -201,7 +201,9 @@ void NetworkQueue::Run() {
 
         printf("net_queue: Completed download of '%s'. Size: %u.\n", active_request->request->url, (u32)response.size);
 
-        active_request->request->callback(active_request->request, &response);
+        if (active_request->request->callback) {
+          active_request->request->callback(active_request->request, &response);
+        }
 
         NetworkChunk* chunk = response.chunks;
         while (chunk) {
@@ -210,6 +212,8 @@ void NetworkQueue::Run() {
 
           FreeChunk(current);
         }
+
+        active_request->active = false;
       }
 
       curl_multi_remove_handle(curl_multi, e);

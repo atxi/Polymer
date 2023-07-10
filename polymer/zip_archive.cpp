@@ -12,6 +12,12 @@ bool ZipArchive::Open(const char* path) {
   return mz_zip_reader_init_file_v2(&archive, path, 0, 0, 0);
 }
 
+bool ZipArchive::OpenFromMemory(String contents) {
+  mz_zip_zero_struct(&archive);
+
+  return mz_zip_reader_init_mem(&archive, contents.data, contents.size, 0);
+}
+
 void ZipArchive::Close() {
   mz_zip_reader_end(&archive);
 

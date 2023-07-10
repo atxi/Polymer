@@ -29,6 +29,7 @@ struct UnihexFont {
         glyph_page_count(glyph_page_count) {}
 
   bool Load(const char* filename, MemoryArena& perm_arena, MemoryArena& trans_arena);
+  bool Load(MemoryArena& perm_arena, MemoryArena& trans_arena, String file_data);
 
 private:
   bool ProcessCodepoint(char c);

@@ -38,7 +38,7 @@ void MemoryArena::Reset() {
 }
 
 void MemoryArena::Destroy() {
-  PlatformFree(this->base);
+  g_Platform.Free(this->base);
 
   this->base = this->current = nullptr;
   this->max_size = 0;

@@ -15,6 +15,10 @@ bool UnihexFont::Load(const char* filename, MemoryArena& perm_arena, MemoryArena
     return false;
   }
 
+  return Load(perm_arena, trans_arena, file_data);
+}
+
+bool UnihexFont::Load(MemoryArena& perm_arena, MemoryArena& trans_arena, String file_data) {
   unifont_data = file_data.data;
   unifont_end = file_data.data + file_data.size;
 

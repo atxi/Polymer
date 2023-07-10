@@ -88,7 +88,24 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
 
   UnihexFont font(glyph_size_table, kGlyphPageWidth, kGlyphPageWidth, kGlyphPageCount);
 
-  if (!font.Load("unifont.hex", perm_arena, trans_arena)) {
+  String font_zip = asset_store->LoadObject(trans_arena, POLY_STR("minecraft/font/unifont.zip"));
+  ZipArchive zip = {};
+
+  if (!zip.OpenFromMemory(font_zip)) {
+    fprintf(stderr, "AssetSystem: Failed to open 'minecraft/font/unifont.zip' from memory.\n");
+    return false;
+  }
+
+  size_t unifont_size = 0;
+  char* unifont_data = zip.ReadFile(&trans_arena, "unifont_all_no_pua-15.0.06.hex", &unifont_size);
+
+  if (!unifont_data) {
+    fprintf(stderr, "AssetSystem: Failed to read 'unifont_all_no_pua-15.0.06.hex' in 'minecraft/font/unifont.zip'");
+    trans_arena.Revert(snapshot);
+    return false;
+  }
+
+  if (!font.Load(perm_arena, trans_arena, String(unifont_data, unifont_size))) {
     trans_arena.Revert(snapshot);
     return false;
   }

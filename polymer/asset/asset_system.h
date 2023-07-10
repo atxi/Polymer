@@ -6,6 +6,7 @@
 #include <polymer/types.h>
 #include <polymer/world/block.h>
 
+#include <polymer/asset/asset_store.h>
 #include <polymer/asset/block_assets.h>
 
 namespace polymer {
@@ -23,6 +24,7 @@ struct AssetSystem {
   BlockAssets* block_assets = nullptr;
   render::TextureArray* glyph_page_texture = nullptr;
   u8* glyph_size_table = nullptr;
+  AssetStore* asset_store = nullptr;
 
   AssetSystem();
 
