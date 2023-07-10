@@ -3,7 +3,8 @@ In-development Minecraft client using C++ and Vulkan.
 
 It can only connect to offline Java servers at the moment, but online mode is planned. There's currently no physics, but there's a spectator-like camera for looking around.  
 
-It uses the original assets from a user-provided Minecraft jar. Only basic blocks can be rendered at the moment.
+It uses the original assets that are downloaded from the resources server.  
+The downloaded assets will be stored in `%appdata%/Polymer/` on Windows and `~/.polymer/` on Linux.
 
 ### Screenshots
 ![Polymer Image](https://i.imgur.com/rAfkvtd.png)
@@ -11,10 +12,9 @@ It uses the original assets from a user-provided Minecraft jar. Only basic block
 ### Running
 Main development is done on Windows. It can run on Linux, but not tested much.  
 
-- Requires `1.20.1.jar` from your Minecraft installation to be in the working directory. You can find this in `%appdata%/.minecraft/versions/1.20.1/`. This is used to load the textures and block models.
 - Requires `blocks-1.20.1.json` that is generated from running Minecraft with a [certain flag](https://wiki.vg/Data_Generators#Generators) or from the [polymer release page](https://github.com/atxi/Polymer/releases).
-- Requires `unifont.hex` for font rendering. This can be obtained from the `unifont.zip` resource on the resource server.
-- Requires compiled shaders. Get them from the release page or read the shader section below if manually building.
+- Requires compiled shaders. Get them from the release page or read the building section below if manually building.
+- Requires an internet connection on first launch so it can download the necessary assets.
   
 Running the exe will connect to localhost with the username 'polymer'. The server must be configured to be in offline mode.  
 
