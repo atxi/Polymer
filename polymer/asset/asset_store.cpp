@@ -118,14 +118,14 @@ void AssetStore::Initialize() {
 
   // Check local store for version descriptor file
   if (HasAsset(version_info)) {
-    char* filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionDescriptor);
+    char* filename = GetAbsolutePath(trans_arena, path, "versions/%s", kVersionDescriptor);
 
     ProcessVersionDescriptor(filename);
   } else {
     net_queue.PushRequest(kVersionDescriptorUrl, this, [](NetworkRequest* request, NetworkResponse* response) {
       AssetStore* store = (AssetStore*)request->userp;
 
-      char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions\\%s", kVersionDescriptor);
+      char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions/%s", kVersionDescriptor);
 
       response->SaveToFile(filename);
       store->ProcessVersionDescriptor(filename);
@@ -178,7 +178,7 @@ void AssetStore::ProcessVersionDescriptor(const char* path) {
       net_queue.PushRequest(url, this, [](NetworkRequest* request, NetworkResponse* response) {
         AssetStore* store = (AssetStore*)request->userp;
 
-        char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions\\%s", kVersionJar);
+        char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions/%s", kVersionJar);
 
         response->SaveToFile(filename);
       });
@@ -208,13 +208,13 @@ void AssetStore::ProcessVersionDescriptor(const char* path) {
       net_queue.PushRequest(url, this, [](NetworkRequest* request, NetworkResponse* response) {
         AssetStore* store = (AssetStore*)request->userp;
 
-        char* filename = GetAbsolutePath(store->trans_arena, store->path, "index\\%s", kVersionIndex);
+        char* filename = GetAbsolutePath(store->trans_arena, store->path, "index/%s", kVersionIndex);
 
         response->SaveToFile(filename);
         store->ProcessIndex(filename);
       });
     } else {
-      char* filename = GetAbsolutePath(trans_arena, this->path, "index\\%s", kVersionIndex);
+      char* filename = GetAbsolutePath(trans_arena, this->path, "index/%s", kVersionIndex);
 
       ProcessIndex(filename);
     }
@@ -275,7 +275,7 @@ void AssetStore::ProcessIndex(const char* filename) {
             AssetStore* store = (AssetStore*)request->userp;
 
             char* relative_name = request->url + kResourceApi.size;
-            char* filename = GetAbsolutePath(store->trans_arena, store->path, "objects\\%s", relative_name);
+            char* filename = GetAbsolutePath(store->trans_arena, store->path, "objects/%s", relative_name);
 
             response->SaveToFile(filename);
           });
@@ -296,14 +296,14 @@ String AssetStore::LoadObject(MemoryArena& arena, String name) {
 
     char* objects_folder = GetAbsolutePath(trans_arena, path, "objects");
     if (platform.FolderExists(objects_folder)) {
-      char* hash_folder = GetAbsolutePath(trans_arena, path, "objects\\%s", hash_str);
+      char* hash_folder = GetAbsolutePath(trans_arena, path, "objects/%s", hash_str);
 
       if (platform.FolderExists(hash_folder)) {
         char fullhash[41];
 
         hash->ToString(fullhash);
 
-        char* filename = GetAbsolutePath(trans_arena, path, "objects\\%s\\%s", hash_str, fullhash);
+        char* filename = GetAbsolutePath(trans_arena, path, "objects/%s/%s", hash_str, fullhash);
 
         return ReadEntireFile(filename, arena);
       }
@@ -324,19 +324,19 @@ bool AssetStore::HasAsset(AssetInfo& info) {
     char* versions_folder = GetAbsolutePath(trans_arena, path, "versions");
     if (!platform.FolderExists(versions_folder)) return false;
 
-    filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionJar);
+    filename = GetAbsolutePath(trans_arena, path, "versions/%s", kVersionJar);
   } break;
   case AssetType::VersionDescriptor: {
     char* index_folder = GetAbsolutePath(trans_arena, path, "versions");
     if (!platform.FolderExists(index_folder)) return false;
 
-    filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionDescriptor);
+    filename = GetAbsolutePath(trans_arena, path, "versions/%s", kVersionDescriptor);
   } break;
   case AssetType::Index: {
     char* index_folder = GetAbsolutePath(trans_arena, path, "index");
     if (!platform.FolderExists(index_folder)) return false;
 
-    filename = GetAbsolutePath(trans_arena, path, "index\\%s", kVersionIndex);
+    filename = GetAbsolutePath(trans_arena, path, "index/%s", kVersionIndex);
   } break;
   case AssetType::Object: {
     char minihash[3] = {};
@@ -349,10 +349,10 @@ bool AssetStore::HasAsset(AssetInfo& info) {
     char* objects_folder = GetAbsolutePath(trans_arena, path, "objects");
     if (!platform.FolderExists(objects_folder)) return false;
 
-    char* hash_folder = GetAbsolutePath(trans_arena, path, "objects\\%s", minihash);
+    char* hash_folder = GetAbsolutePath(trans_arena, path, "objects/%s", minihash);
     if (!platform.FolderExists(hash_folder)) return false;
 
-    filename = GetAbsolutePath(trans_arena, path, "objects\\%s\\%s", minihash, fullhash);
+    filename = GetAbsolutePath(trans_arena, path, "objects/%s/%s", minihash, fullhash);
   } break;
   default: {
   } break;
@@ -371,7 +371,7 @@ bool AssetStore::HasAsset(AssetInfo& info) {
 }
 
 char* AssetStore::GetClientPath(MemoryArena& arena) {
-  return GetAbsolutePath(arena, path, "versions\\%s", kVersionJar);
+  return GetAbsolutePath(arena, path, "versions/%s", kVersionJar);
 }
 
 } // namespace asset

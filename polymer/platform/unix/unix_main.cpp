@@ -16,6 +16,11 @@
 #define VOLK_IMPLEMENTATION
 #include <volk.h>
 
+#include <pwd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 namespace polymer {
 
 static Polymer* g_application;
@@ -36,6 +41,15 @@ inline void ToggleCursor() {
 
   int mode = g_display_cursor ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED;
   glfwSetInputMode(window, GLFW_CURSOR, mode);
+}
+
+static void ResetLastCursor(GLFWwindow* window) {
+  double xpos, ypos;
+
+  glfwGetCursorPos(window, &xpos, &ypos);
+
+  g_last_cursor.x = (int)xpos;
+  g_last_cursor.y = (int)ypos;
 }
 
 static void OnWindowResize(GLFWwindow* window, int width, int height) {
@@ -77,6 +91,7 @@ static void OnKeyDown(GLFWwindow* window, int key, int scancode, int action, int
       game->chat_window.ToggleDisplay();
       g_frame_chat_open = true;
       memset(&g_input, 0, sizeof(g_input));
+      ResetLastCursor(window);
     }
   } break;
   }
@@ -131,6 +146,7 @@ static void OnKeyDown(GLFWwindow* window, int key, int scancode, int action, int
       ToggleCursor();
       game->chat_window.SendInput(game->connection);
       game->chat_window.ToggleDisplay();
+      ResetLastCursor(window);
     } break;
     case GLFW_KEY_LEFT: {
       game->chat_window.MoveCursor(ui::ChatMoveDirection::Left);
@@ -227,15 +243,42 @@ static ExtensionRequest UnixGetExtensionRequest() {
 }
 
 static String UnixGetAssetStorePath(MemoryArena& arena) {
-  return {};
+  const char* homedir;
+
+  if ((homedir = getenv("HOME")) == NULL) {
+    homedir = getpwuid(getuid())->pw_dir;
+  }
+
+  if (!homedir) {
+    fprintf(stderr, "Failed to get home directory.\n");
+    exit(1);
+  }
+
+  size_t length = strlen(homedir);
+
+  const char* kAssetStoreName = "/.polymer/";
+  size_t name_length = sizeof(kAssetStoreName);
+
+  size_t total_size = length + name_length + 2;
+  char* path_storage = memory_arena_push_type_count(&arena, char, total_size);
+
+  sprintf(path_storage, "%s%s/", homedir, kAssetStoreName);
+
+  return String(path_storage, total_size);
 }
 
 static bool UnixFolderExists(const char* path) {
-  return false;
+  struct stat s = {};
+
+  if (stat(path, &s)) {
+    return false;
+  }
+
+  return (s.st_mode & S_IFDIR);
 }
 
 static bool UnixCreateFolder(const char* path) {
-  return false;
+  return mkdir(path, 0700) == 0;
 }
 
 static u8* UnixAllocate(size_t size) {

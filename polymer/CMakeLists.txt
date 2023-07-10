@@ -31,10 +31,10 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 if (UNIX)
-  target_link_libraries(polymer PRIVATE glfw)
+  target_link_libraries(polymer PRIVATE glfw ${VCPKG_INSTALLED_DIR}/x64-linux/lib/libtomcrypt.a)
 elseif (WIN32)
   add_compile_definitions(WIN32_LEAN_AND_MEAN VK_USE_PLATFORM_WIN32_KHR)
-  
+
   target_link_libraries(polymer PRIVATE ../vcpkg_installed/x64-windows-static/lib/tomcrypt)
 endif()
 
