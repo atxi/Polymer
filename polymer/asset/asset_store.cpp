@@ -20,6 +20,7 @@ constexpr const char* kVersionDescriptorUrl =
     "https://piston-meta.mojang.com/v1/packages/715ccf3330885e75b205124f09f8712542cbe7e0/1.20.1.json";
 
 const HashSha1 kVersionDescriptorHash("715ccf3330885e75b205124f09f8712542cbe7e0");
+const String kResourceApi = POLY_STR("https://resources.download.minecraft.net/");
 
 static json_object_s* FindJsonObjectElement(json_object_s* obj, const char* name) {
   json_object_element_s* element = obj->start;
@@ -94,15 +95,20 @@ inline char* GetAbsolutePath(MemoryArena& arena, const String& path, const char*
   return buffer;
 }
 
-inline bool GetOrCreateFolder(Platform& platform, const char* path) {
-  if (!platform.FolderExists(path)) {
-    if (!platform.CreateFolder(path)) {
-      fprintf(stderr, "Failed to create folder '%s'\n", path);
-      return false;
-    }
-  }
+inline char* GetObjectUrl(MemoryArena& arena, HashSha1 hash) {
+  char hash_str[3] = {};
+  u8 hash_value = hash.hash[0];
 
-  return true;
+  sprintf(hash_str, "%02x", hash_value);
+
+  char full_hash[41];
+  hash.ToString(full_hash);
+
+  char* buffer = (char*)arena.Allocate(kResourceApi.size + sizeof(full_hash) + sizeof(hash_str) + 1);
+
+  sprintf(buffer, "%.*s%s/%s", (u32)kResourceApi.size, kResourceApi.data, hash_str, full_hash);
+
+  return buffer;
 }
 
 void AssetStore::Initialize() {
@@ -112,7 +118,9 @@ void AssetStore::Initialize() {
 
   // Check local store for version descriptor file
   if (HasAsset(version_info)) {
-    ProcessVersionDescriptor(version_info);
+    char* filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionDescriptor);
+
+    ProcessVersionDescriptor(filename);
   } else {
     net_queue.PushRequest(kVersionDescriptorUrl, this, [](NetworkRequest* request, NetworkResponse* response) {
       AssetStore* store = (AssetStore*)request->userp;
@@ -120,25 +128,13 @@ void AssetStore::Initialize() {
       char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions\\%s", kVersionDescriptor);
 
       response->SaveToFile(filename);
-      AssetInfo info;
-
-      info.type = AssetType::VersionDescriptor;
-      info.exists = true;
-      strcpy(info.path, filename);
-
-      store->ProcessVersionDescriptor(info);
+      store->ProcessVersionDescriptor(filename);
     });
   }
 }
 
-void AssetStore::ProcessVersionDescriptor(const AssetInfo& info) {
-  //
-  // Load json and grab client/index
-
-  // If not client, net_queue request
-  // if not index, net_queue request
-
-  String contents = ReadEntireFile(info.path, trans_arena);
+void AssetStore::ProcessVersionDescriptor(const char* path) {
+  String contents = ReadEntireFile(path, trans_arena);
 
   json_value_s* root_value = json_parse(contents.data, contents.size);
   if (!root_value || root_value->type != json_type_object) {
@@ -215,86 +211,163 @@ void AssetStore::ProcessVersionDescriptor(const AssetInfo& info) {
         char* filename = GetAbsolutePath(store->trans_arena, store->path, "index\\%s", kVersionIndex);
 
         response->SaveToFile(filename);
-
-        AssetInfo index_info = {};
-
-        index_info.type = AssetType::Index;
-        strcpy(index_info.path, filename);
-
-        store->ProcessIndex(index_info);
+        store->ProcessIndex(filename);
       });
     } else {
-      char* filename = GetAbsolutePath(trans_arena, path, "index\\%s", kVersionIndex);
+      char* filename = GetAbsolutePath(trans_arena, this->path, "index\\%s", kVersionIndex);
 
-      strcpy(index_info.path, filename);
-
-      ProcessIndex(index_info);
+      ProcessIndex(filename);
     }
   }
 }
 
-void AssetStore::ProcessIndex(const AssetInfo& info) {
-  printf("TODO: Process index. (%s)\n", info.path);
+void AssetStore::ProcessIndex(const char* filename) {
+  String contents = ReadEntireFile(filename, trans_arena);
+
+  json_value_s* root_value = json_parse(contents.data, contents.size);
+  if (!root_value || root_value->type != json_type_object) {
+    fprintf(stderr, "AssetStore: Failed to parse version index json.\n");
+    exit(1);
+  }
+
+  json_object_s* root = json_value_as_object(root_value);
+  json_object_s* objects = FindJsonObjectElement(root, "objects");
+
+  if (!objects) {
+    fprintf(stderr, "AssetStore: Invalid 'objects' element of version index. Expected object.\n");
+    exit(1);
+  }
+
+  json_object_element_s* object_element = objects->start;
+  while (object_element) {
+    String element_name(object_element->name->string, object_element->name->string_size);
+
+    json_object_element_s* current_obj_ele = object_element;
+
+    object_element = object_element->next;
+
+    // Skip over objects that aren't currently necessary.
+    if (poly_contains(element_name, POLY_STR("sound"))) continue;
+    if (poly_contains(element_name, POLY_STR("/lang/"))) continue;
+    if (poly_contains(element_name, POLY_STR("icons/"))) continue;
+    if (poly_contains(element_name, POLY_STR("/resourcepacks/"))) continue;
+
+    if (current_obj_ele->value->type == json_type_object) {
+      json_object_s* obj = json_value_as_object(current_obj_ele->value);
+
+      String obj_hash_str = FindJsonStringValue(obj, "hash");
+
+      if (obj_hash_str.size > 0) {
+        HashSha1 hash(obj_hash_str.data, obj_hash_str.size);
+
+        AssetInfo info = {};
+        info.type = AssetType::Object;
+        info.hash = hash;
+
+        asset_hash_map.Insert(element_name, hash);
+
+        // Check local store for item.
+        // If not found, request from server.
+        if (!HasAsset(info)) {
+          char* url = GetObjectUrl(trans_arena, hash);
+
+          net_queue.PushRequest(url, this, [](NetworkRequest* request, NetworkResponse* response) {
+            AssetStore* store = (AssetStore*)request->userp;
+
+            char* relative_name = request->url + kResourceApi.size;
+            char* filename = GetAbsolutePath(store->trans_arena, store->path, "objects\\%s", relative_name);
+
+            response->SaveToFile(filename);
+          });
+        }
+      }
+    }
+  }
+}
+
+String AssetStore::LoadObject(MemoryArena& arena, String name) {
+  HashSha1* hash = asset_hash_map.Find(name);
+
+  if (hash) {
+    char hash_str[3] = {};
+    u8 hash_value = hash->hash[0];
+
+    sprintf(hash_str, "%02x", hash_value);
+
+    char* objects_folder = GetAbsolutePath(trans_arena, path, "objects");
+    if (platform.FolderExists(objects_folder)) {
+      char* hash_folder = GetAbsolutePath(trans_arena, path, "objects\\%s", hash_str);
+
+      if (platform.FolderExists(hash_folder)) {
+        char fullhash[41];
+
+        hash->ToString(fullhash);
+
+        char* filename = GetAbsolutePath(trans_arena, path, "objects\\%s\\%s", hash_str, fullhash);
+
+        return ReadEntireFile(filename, arena);
+      }
+    }
+  }
+
+  fprintf(stderr, "AssetStore::GetAsset failed to find asset with name %.*s\n", (u32)name.size, name.data);
+  return {};
 }
 
 bool AssetStore::HasAsset(AssetInfo& info) {
+  char* filename = nullptr;
+
+  ArenaSnapshot snapshot = trans_arena.GetSnapshot();
+
   switch (info.type) {
   case AssetType::Client: {
     char* versions_folder = GetAbsolutePath(trans_arena, path, "versions");
     if (!platform.FolderExists(versions_folder)) return false;
 
-    char* filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionJar);
-    HashSha1 existing_hash = GetFileSha1(trans_arena, filename);
-
-    return existing_hash == info.hash;
+    filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionJar);
   } break;
   case AssetType::VersionDescriptor: {
     char* index_folder = GetAbsolutePath(trans_arena, path, "versions");
     if (!platform.FolderExists(index_folder)) return false;
 
-    char* filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionDescriptor);
-    HashSha1 existing_hash = GetFileSha1(trans_arena, filename);
-
-    if (existing_hash != info.hash) {
-      return false;
-    }
-
-    strcpy(info.path, filename);
-    return true;
+    filename = GetAbsolutePath(trans_arena, path, "versions\\%s", kVersionDescriptor);
   } break;
   case AssetType::Index: {
     char* index_folder = GetAbsolutePath(trans_arena, path, "index");
     if (!platform.FolderExists(index_folder)) return false;
 
-    char* filename = GetAbsolutePath(trans_arena, path, "index\\%s", kVersionIndex);
-    HashSha1 existing_hash = GetFileSha1(trans_arena, filename);
-
-    return existing_hash == info.hash;
+    filename = GetAbsolutePath(trans_arena, path, "index\\%s", kVersionIndex);
   } break;
   case AssetType::Object: {
-    char hash_str[3] = {};
+    char minihash[3] = {};
     u8 hash_value = info.hash.hash[0];
 
-    sprintf(hash_str, "%02x", hash_value);
+    sprintf(minihash, "%02x", hash_value);
+    char fullhash[41];
+    info.hash.ToString(fullhash);
 
     char* objects_folder = GetAbsolutePath(trans_arena, path, "objects");
     if (!platform.FolderExists(objects_folder)) return false;
 
-    char* hash_folder = GetAbsolutePath(trans_arena, path, "objects\\%s", hash_str);
+    char* hash_folder = GetAbsolutePath(trans_arena, path, "objects\\%s", minihash);
     if (!platform.FolderExists(hash_folder)) return false;
 
-    char* filename =
-        GetAbsolutePath(trans_arena, path, "objects\\%s\\%.*s", hash_str, (u32)info.name.size, info.name.data);
-
-    HashSha1 existing_hash = GetFileSha1(trans_arena, filename);
-
-    return existing_hash == info.hash;
+    filename = GetAbsolutePath(trans_arena, path, "objects\\%s\\%s", minihash, fullhash);
   } break;
   default: {
   } break;
   }
 
-  return false;
+  bool exists = false;
+
+  if (filename) {
+    HashSha1 existing_hash = GetFileSha1(trans_arena, filename);
+    exists = existing_hash == info.hash;
+  }
+
+  trans_arena.Revert(snapshot);
+
+  return exists;
 }
 
 char* AssetStore::GetClientPath(MemoryArena& arena) {

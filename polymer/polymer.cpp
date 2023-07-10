@@ -44,16 +44,20 @@ int Polymer::Run(InputState* input) {
     return 0;
   }
 
+  const char* platform_name = platform.GetPlatformName();
+  printf("Polymer: %s\n", platform_name);
+  fflush(stdout);
+
+  this->game = perm_arena.Construct<GameState>(&renderer, &perm_arena, &trans_arena);
+
   NetworkQueue net_queue = {};
 
   if (!net_queue.Initialize()) {
     return 1;
   }
 
-  String local = platform.GetAssetStorePath(trans_arena);
-  asset::AssetStore store(platform, perm_arena, trans_arena, net_queue, local);
-
-  store.Initialize();
+  game->assets.asset_store = perm_arena.Construct<asset::AssetStore>(platform, perm_arena, trans_arena, net_queue);
+  game->assets.asset_store->Initialize();
 
   // TODO: This should be running during a separate scene so download progress can be rendered.
   while (!net_queue.IsEmpty()) {
@@ -61,12 +65,6 @@ int Polymer::Run(InputState* input) {
   }
 
   net_queue.Clear();
-
-  const char* platform_name = platform.GetPlatformName();
-  printf("Polymer: %s\n", platform_name);
-  fflush(stdout);
-
-  this->game = perm_arena.Construct<GameState>(&renderer, &perm_arena, &trans_arena);
 
   PacketInterpreter interpreter(game);
   Connection* connection = &game->connection;
@@ -89,7 +87,7 @@ int Polymer::Run(InputState* input) {
   {
     auto start = std::chrono::high_resolution_clock::now();
 
-    char* client_path = store.GetClientPath(trans_arena);
+    char* client_path = game->assets.asset_store->GetClientPath(trans_arena);
     if (!game->assets.Load(renderer, client_path, kBlocksName, &game->block_registry)) {
       fprintf(stderr, "Failed to load minecraft assets. Requires %s and %s.\n", kBlocksName, client_path);
       return 1;

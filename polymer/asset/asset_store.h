@@ -5,6 +5,7 @@
 #include <polymer/platform/platform.h>
 #include <polymer/types.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,6 +40,14 @@ struct HashSha1 {
   bool operator!=(const HashSha1& other) const {
     return !(*this == other);
   }
+
+  void ToString(char* out) {
+    for (size_t i = 0; i < sizeof(hash); ++i) {
+      sprintf(out + i * 2, "%02x", (int)hash[i]);
+    }
+
+    out[40] = 0;
+  }
 };
 
 enum class AssetType : u8 { VersionDescriptor, Index, Object, Client };
@@ -46,11 +55,7 @@ enum class AssetType : u8 { VersionDescriptor, Index, Object, Client };
 struct AssetInfo {
   String name;
   HashSha1 hash;
-  char path[2048];
-  size_t size;
-
   AssetType type;
-  bool exists;
 };
 
 // Keeps a local asset store synchronized with the remote store by using the index.
@@ -64,24 +69,26 @@ struct AssetStore {
   MemoryArena& perm_arena;
   MemoryArena& trans_arena;
   NetworkQueue& net_queue;
-  HashMap<String, AssetInfo, MapStringHasher> asset_map;
+  HashMap<String, HashSha1, MapStringHasher> asset_hash_map;
   String path;
 
-  AssetStore(Platform& platform, MemoryArena& perm_arena, MemoryArena& trans_arena, NetworkQueue& net_queue,
-             String path)
-      : platform(platform), perm_arena(perm_arena), trans_arena(trans_arena), asset_map(perm_arena),
-        net_queue(net_queue), path(path) {}
+  AssetStore(Platform& platform, MemoryArena& perm_arena, MemoryArena& trans_arena, NetworkQueue& net_queue)
+      : platform(platform), perm_arena(perm_arena), trans_arena(trans_arena), asset_hash_map(perm_arena),
+        net_queue(net_queue) {
+    path = platform.GetAssetStorePath(trans_arena);
+  }
 
   void Initialize();
 
   bool HasAsset(AssetInfo& info);
-  bool StoreAsset(const AssetInfo& info);
 
   char* GetClientPath(MemoryArena& arena);
 
+  String LoadObject(MemoryArena& arena, String name);
+
 private:
-  void ProcessVersionDescriptor(const AssetInfo& info);
-  void ProcessIndex(const AssetInfo& info);
+  void ProcessVersionDescriptor(const char* path);
+  void ProcessIndex(const char* path);
 };
 
 } // namespace asset
