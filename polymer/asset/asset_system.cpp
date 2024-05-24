@@ -56,6 +56,8 @@ bool AssetSystem::Load(render::VulkanRenderer& renderer, const char* jar_path, c
 
   this->block_assets = block_loader.assets;
 
+  trans_arena.Reset();
+
   if (!LoadFont(renderer, perm_arena, trans_arena)) {
     this->glyph_page_texture = nullptr;
     fprintf(stderr, "Failed to load fonts.\n");
@@ -72,7 +74,7 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
   constexpr size_t kGlyphPageHeight = 256;
   constexpr size_t kGlyphPageCount = 256;
 
-  ArenaSnapshot snapshot = trans_arena.GetSnapshot();
+  MemoryRevert trans_arena_revert = trans_arena.GetReverter();
 
   // Create a texture array to store the glyphs
   glyph_page_texture = renderer.CreateTextureArray(kGlyphPageWidth, kGlyphPageHeight, kGlyphPageCount, 1, false);
@@ -96,17 +98,23 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
     return false;
   }
 
+  size_t zip_file_count;
+  ZipArchiveElement* zip_file_elements = zip.ListFiles(&trans_arena, ".hex", &zip_file_count);
+
+  if (zip_file_count == 0) {
+    fprintf(stderr, "AssetSystem: Failed to find '*.hex' file in 'minecraft/font/unifont.zip'.");
+    return false;
+  }
+
   size_t unifont_size = 0;
-  char* unifont_data = zip.ReadFile(&trans_arena, "unifont_all_no_pua-15.0.06.hex", &unifont_size);
+  char* unifont_data = zip.ReadFile(&trans_arena, zip_file_elements[0].name, &unifont_size);
 
   if (!unifont_data) {
-    fprintf(stderr, "AssetSystem: Failed to read 'unifont_all_no_pua-15.0.06.hex' in 'minecraft/font/unifont.zip'");
-    trans_arena.Revert(snapshot);
+    fprintf(stderr, "AssetSystem: Failed to read '%s' in 'minecraft/font/unifont.zip'", zip_file_elements->name);
     return false;
   }
 
   if (!font.Load(perm_arena, trans_arena, String(unifont_data, unifont_size))) {
-    trans_arena.Revert(snapshot);
     return false;
   }
 
@@ -117,8 +125,6 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
     u8* page_start = font.images + (256 * 256) * i;
     renderer.PushArrayTexture(trans_arena, glyph_page_push, page_start, i, texture_cfg);
   }
-
-  trans_arena.Revert(snapshot);
 
   renderer.CommitTexturePush(glyph_page_push);
 

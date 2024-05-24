@@ -298,7 +298,7 @@ bool ParseTag(RingBuffer& rb, Tag& tag, MemoryArena& arena) {
   return 1;
 }
 
-bool Parse(RingBuffer& rb, MemoryArena& arena, TagCompound* result) {
+bool Parse(bool network_nbt, RingBuffer& rb, MemoryArena& arena, TagCompound* result) {
   TagType type = TagType::Unknown;
 
   if (rb.GetReadAmount() < sizeof(u8)) {
@@ -315,8 +315,10 @@ bool Parse(RingBuffer& rb, MemoryArena& arena, TagCompound* result) {
     return false;
   }
 
-  if (!ReadLengthString(rb, &result->name, &result->name_length, arena)) {
-    return false;
+  if (!network_nbt) {
+    if (!ReadLengthString(rb, &result->name, &result->name_length, arena)) {
+      return false;
+    }
   }
 
   if (!ParseCompound(rb, *result, arena)) {

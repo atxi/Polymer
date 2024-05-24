@@ -97,7 +97,7 @@ struct TagLongArray {
   size_t length;
 };
 
-bool Parse(RingBuffer& rb, MemoryArena& arena, TagCompound* result);
+bool Parse(bool network_nbt, RingBuffer& rb, MemoryArena& arena, TagCompound* result);
 
 } // namespace nbt
 } // namespace polymer

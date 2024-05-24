@@ -9,14 +9,6 @@
 
 constexpr float kPi = 3.14159265f;
 
-#ifdef near
-#undef near
-#endif
-
-#ifdef far
-#undef far
-#endif
-
 namespace polymer {
 
 inline constexpr float Radians(float degrees) {

@@ -29,3 +29,4 @@ blocks*.json
 vcpkg_installed
 out
 .vscode
+x64

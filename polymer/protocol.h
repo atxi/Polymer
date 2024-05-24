@@ -3,17 +3,33 @@
 
 namespace polymer {
 
-constexpr u32 kProtocolVersion = 763;
+// TODO: Generate protocol ids and packet data from some standardized source.
+
+constexpr u32 kProtocolVersion = 765;
 
 enum class StatusProtocol { Response, Pong, Count };
 
 enum class LoginProtocol { Disconnect, EncryptionRequest, LoginSuccess, SetCompression, LoginPluginRequest, Count };
 
+enum class ConfigurationProtocol {
+  PluginMessage,
+  Disconnect,
+  Finish,
+  KeepAlive,
+  Ping,
+  RegistryData,
+  RemoveResourcePack,
+  AddResourcePack,
+  FeatureFlags,
+  UpdateTags,
+
+  Count
+};
+
 enum class PlayProtocol {
   BundleDelimiter,
   SpawnEntity,
   SpawnExperienceOrb,
-  SpawnPlayer,
   EntityAnimation,
   AwardStatistics,
   AcknowledgeBlockChange,
@@ -23,6 +39,8 @@ enum class PlayProtocol {
   BlockUpdate,
   BossBar,
   ChangeDifficulty,
+  ChunkBatchFinished,
+  ChunkBatchStart,
   ChunkBiomes,
   ClearTitles,
   CommandSuggestionsResponse,
@@ -61,6 +79,7 @@ enum class PlayProtocol {
   OpenScreen,
   OpenSignEditor,
   Ping,
+  PingResponse,
   PlaceGhostRecipe,
   PlayerAbilities,
   PlayerChatMessage,
@@ -74,7 +93,9 @@ enum class PlayProtocol {
   UpdateRecipeBook,
   RemoveEntities,
   RemoveEntityEffect,
-  ResourcePackSend,
+  ResetScore,
+  RemoveResourcePack,
+  AddResourcePack,
   Respawn,
   SetHeadRotation,
   UpdateSectionBlocks,
@@ -109,15 +130,17 @@ enum class PlayProtocol {
   SetTitleAnimationTimes,
   EntitySoundEffect,
   SoundEffect,
+  StartConfiguration,
   StopSound,
   SystemChatMessage,
   PlayerListHeaderAndFooter,
   NBTQueryResponse,
   CollectItem,
   EntityTeleport,
+  SetTickingState,
+  StepTick,
   UpdateAdvancements,
   UpdateAttributes,
-  FeatureFlags,
   EntityEffect,
   UpdateRecipes,
   Tags,

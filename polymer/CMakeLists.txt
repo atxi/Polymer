@@ -33,7 +33,7 @@ endif()
 if (UNIX)
   target_link_libraries(polymer PRIVATE glfw ${VCPKG_INSTALLED_DIR}/x64-linux/lib/libtomcrypt.a)
 elseif (WIN32)
-  add_compile_definitions(WIN32_LEAN_AND_MEAN VK_USE_PLATFORM_WIN32_KHR)
+  add_compile_definitions(WIN32_LEAN_AND_MEAN VK_USE_PLATFORM_WIN32_KHR NOMINMAX)
 
   target_link_libraries(polymer PRIVATE ${VCPKG_INSTALLED_DIR}/x64-windows-static/lib/tomcrypt.lib)
 endif()

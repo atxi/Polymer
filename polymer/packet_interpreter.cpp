@@ -35,9 +35,13 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   printf("InterpetPlay: %lld\n", pkt_id);
 #endif
 
-  auto start_snapshot = trans_arena->GetSnapshot();
-
   switch (type) {
+  case PlayProtocol::ChunkBatchStart: {
+    //
+  } break;
+  case PlayProtocol::ChunkBatchFinished: {
+    //
+  } break;
   case PlayProtocol::SystemChatMessage: {
     String sstr;
     sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
@@ -48,7 +52,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     printf("System: %.*s\n", (int)length, sstr.data);
 
     u8 type = rb->ReadU8();
-
   } break;
   case PlayProtocol::PlayerChatMessage: {
     String sender_uuid;
@@ -164,8 +167,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     float velocity_z = rb->ReadFloat();
   } break;
   case PlayProtocol::UnloadChunk: {
-    s32 chunk_x = rb->ReadU32();
     s32 chunk_z = rb->ReadU32();
+    s32 chunk_x = rb->ReadU32();
 
     game->OnChunkUnload(chunk_x, chunk_z);
   } break;
@@ -224,9 +227,6 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   case PlayProtocol::Login: {
     u32 entity_id = rb->ReadU32();
     bool is_hardcore = rb->ReadU8();
-    u8 gamemode = rb->ReadU8();
-    u8 previous_gamemode = rb->ReadU8();
-
     u64 world_count = 0;
     rb->ReadVarInt(&world_count);
 
@@ -239,13 +239,14 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       size_t length = rb->ReadString(&sstr);
     }
 
-    nbt::TagCompound* dimension_codec_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
+    u64 max_players = 0, view_distance = 0, simulation_distance = 0;
+    rb->ReadVarInt(&max_players);
+    rb->ReadVarInt(&view_distance);
+    rb->ReadVarInt(&simulation_distance);
 
-    if (!nbt::Parse(*rb, *trans_arena, dimension_codec_nbt)) {
-      fprintf(stderr, "Failed to parse dimension codec nbt.\n");
-    }
-
-    game->dimension_codec.Parse(*game->perm_arena, *dimension_codec_nbt);
+    u8 reduced_debug_info = rb->ReadU8();
+    u8 enable_respawn_screen = rb->ReadU8();
+    u8 limited_crafting = rb->ReadU8();
 
     String dimension_type_string;
     dimension_type_string.data = memory_arena_push_type_count(trans_arena, char, 32767);
@@ -256,6 +257,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     DimensionType* dimension_type = game->dimension_codec.GetDimensionType(dimension_type_string);
 
     if (dimension_type) {
+      printf("PlayProtocol::Login: Dimension set to %.*s\n", (u32)dimension_type_string.size,
+             dimension_type_string.data);
       game->dimension = *dimension_type;
     } else {
       fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size,
@@ -342,7 +345,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     nbt::TagCompound* nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
 
-    if (!nbt::Parse(*rb, *trans_arena, nbt)) {
+    if (!nbt::Parse(true, *rb, *trans_arena, nbt)) {
       fprintf(stderr, "Failed to parse chunk nbt.\n");
       fflush(stderr);
     }
@@ -495,7 +498,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       ArenaSnapshot snapshot = trans_arena->GetSnapshot();
       nbt::TagCompound* block_entity_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
 
-      if (!nbt::Parse(*rb, *trans_arena, block_entity_nbt)) {
+      if (!nbt::Parse(true, *rb, *trans_arena, block_entity_nbt)) {
         fprintf(stderr, "Failed to parse block entity nbt.\n");
         fflush(stderr);
       }
@@ -783,9 +786,90 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   default:
     break;
   }
+}
 
+void PacketInterpreter::InterpretConfiguration(RingBuffer* rb, u64 pkt_id, size_t pkt_size) {
+  MemoryArena* trans_arena = game->trans_arena;
+  Connection* connection = &game->connection;
 
-  trans_arena->Revert(start_snapshot);
+  ConfigurationProtocol type = (ConfigurationProtocol)pkt_id;
+
+  assert(type < ConfigurationProtocol::Count);
+
+#if LOG_PACKET_ID
+  printf("InterpetConfiguration: %lld\n", pkt_id);
+#endif
+
+  switch (type) {
+  case ConfigurationProtocol::PluginMessage: {
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 1024);
+    sstr.size = 1024;
+
+    size_t length = rb->ReadString(&sstr);
+
+    if (length > 0) {
+      printf("ConfigurationProtocol::PluginMessage on channel %.*s\n", (int)length, sstr.data);
+    }
+  } break;
+  case ConfigurationProtocol::Disconnect: {
+    String sstr;
+    sstr.data = memory_arena_push_type_count(trans_arena, char, 65535);
+    sstr.size = 65535;
+
+    size_t length = rb->ReadString(&sstr);
+
+    if (length > 0) {
+      printf("ConfigurationProtocol::Disconnect: %.*s\n", (int)length, sstr.data);
+    } else {
+      printf("ConfigurationProtocol::Disconnect: No reason specified.\n");
+    }
+  } break;
+  case ConfigurationProtocol::Finish: {
+    printf("LoginConfiguration::Finish: Transitioning to PlayProtocol.\n");
+
+    // Send AckFinish
+    connection->builder.Commit(connection->write_buffer, 0x02);
+    connection->protocol_state = ProtocolState::Play;
+  } break;
+  case ConfigurationProtocol::KeepAlive: {
+    u64 alive_id = rb->ReadU64();
+    connection->builder.WriteU64(alive_id);
+    connection->builder.Commit(connection->write_buffer, 0x03);
+  } break;
+  case ConfigurationProtocol::Ping: {
+    u32 ping_id = rb->ReadU32();
+    connection->builder.WriteU32(ping_id);
+    connection->builder.Commit(connection->write_buffer, 0x04);
+  } break;
+  case ConfigurationProtocol::RegistryData: {
+    nbt::TagCompound* dimension_codec_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
+
+    if (!nbt::Parse(true, *rb, *trans_arena, dimension_codec_nbt)) {
+      fprintf(stderr, "ConfigurationProtocol::RegistryData: Failed to parse dimension codec nbt.\n");
+      exit(1);
+    }
+
+    game->dimension_codec.Parse(*game->perm_arena, *dimension_codec_nbt);
+    printf("ConfigurationProtocol::RegistryData: Received %u dimension types.\n",
+           (u32)game->dimension_codec.type_count);
+  } break;
+  case ConfigurationProtocol::RemoveResourcePack: {
+    //
+  } break;
+  case ConfigurationProtocol::AddResourcePack: {
+    //
+  } break;
+  case ConfigurationProtocol::FeatureFlags: {
+    //
+  } break;
+  case ConfigurationProtocol::UpdateTags: {
+    //
+  } break;
+  default: {
+
+  } break;
+  }
 }
 
 void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_size) {
@@ -809,19 +893,23 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
     size_t length = rb->ReadString(&sstr);
 
     if (length > 0) {
-      printf("Disconnect reason: %.*s\n", (int)length, sstr.data);
+      printf("LoginProtocol::Disconnect: %.*s\n", (int)length, sstr.data);
     }
 
     connection->Disconnect();
   } break;
   case LoginProtocol::EncryptionRequest: {
-    printf("EncryptionRequest. Not yet implemented\n");
+    printf("LoginProtocol::EncryptionRequest: online-mode=true (server.properties) is not yet implemented.\n");
     connection->Disconnect();
   } break;
   case LoginProtocol::LoginSuccess: {
-    printf("Login success\n");
-    connection->protocol_state = ProtocolState::Play;
-    fflush(stdout);
+    printf("LoginProtocol::LoginSuccess: Transitioning to ConfigurationProtocol.\n");
+
+    // Send LoginAck
+    connection->builder.Commit(connection->write_buffer, 0x03);
+    connection->protocol_state = ProtocolState::Configuration;
+
+    connection->SendConfigClientInformation(16, 0x7F, 1);
   } break;
   case LoginProtocol::SetCompression: {
     compression = true;
@@ -900,6 +988,8 @@ void PacketInterpreter::Interpret() {
     bool id_read = rb->ReadVarInt(&pkt_id);
     assert(id_read);
 
+    MemoryRevert memory_snapshot = trans_arena->GetReverter();
+
     switch (connection->protocol_state) {
     case ProtocolState::Status:
       this->InterpretStatus(rb, pkt_id, (size_t)pkt_size);
@@ -907,6 +997,9 @@ void PacketInterpreter::Interpret() {
     case ProtocolState::Login:
       this->InterpretLogin(rb, pkt_id, (size_t)pkt_size);
       break;
+    case ProtocolState::Configuration: {
+      this->InterpretConfiguration(rb, pkt_id, (size_t)pkt_size);
+    } break;
     case ProtocolState::Play:
       this->InterpretPlay(rb, pkt_id, (size_t)pkt_size);
       break;

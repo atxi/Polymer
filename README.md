@@ -12,7 +12,7 @@ The downloaded assets will be stored in `%appdata%/Polymer/` on Windows and `~/.
 ### Running
 Main development is done on Windows. It can run on Linux, but not tested much.  
 
-- Requires `blocks-1.20.1.json` that is generated from running Minecraft with a [certain flag](https://wiki.vg/Data_Generators#Generators) or from the [polymer release page](https://github.com/atxi/Polymer/releases).
+- Requires `blocks-1.20.4.json` that is generated from running Minecraft with a [certain flag](https://wiki.vg/Data_Generators#Generators) or from the [polymer release page](https://github.com/atxi/Polymer/releases).
 - Requires compiled shaders. Get them from the release page or read the building section below if manually building.
 - Requires an internet connection on first launch so it can download the necessary assets.
   

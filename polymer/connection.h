@@ -9,7 +9,7 @@
 namespace polymer {
 
 enum class ConnectResult { Success, ErrorSocket, ErrorAddrInfo, ErrorConnect };
-enum class ProtocolState { Handshake, Status, Login, Play };
+enum class ProtocolState { Handshake, Status, Login, Configuration, Play };
 
 #ifdef _WIN64
 using SocketType = long long;
@@ -125,6 +125,8 @@ struct Connection {
   void SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground);
   void SendChatMessage(const String& message);
   void SendChatCommand(const String& message);
+
+  void SendConfigClientInformation(u8 view_distance, u8 skin_bitmask, u8 main_hand );
 
   enum class ClientStatusAction { Respawn, Stats };
   void SendClientStatus(ClientStatusAction action);
