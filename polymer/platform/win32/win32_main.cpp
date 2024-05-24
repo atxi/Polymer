@@ -1,13 +1,15 @@
-// #define POLYMER_CURL_TEST
+// This needs to be defined at the top of this file because the Windows headers are a mess and break if Windows.h is
+// included before it.
+#include <ShlObj.h>
 
-#ifdef POLYMER_CURL_TEST
-//
-#include <curl/curl.h>
-//
+// Get rid of the disgusting defines from Windows headers.
+#ifdef near
+#undef near
 #endif
 
-#include <ShlObj.h>
-//
+#ifdef far
+#undef far
+#endif
 
 #include <polymer/gamestate.h>
 #include <polymer/platform/args.h>
@@ -346,61 +348,6 @@ static void Win32Free(u8* ptr) {
 }
 
 } // namespace polymer
-
-#ifdef POLYMER_CURL_TEST
-
-static size_t write_callback(char* ptr, size_t size, size_t nmemb, void* userp) {
-  size_t full_size = size * nmemb;
-
-  polymer::String* out = (polymer::String*)userp;
-
-  memcpy(out->data + out->size, ptr, full_size);
-  out->size += full_size;
-
-  return full_size;
-}
-
-bool curl_test() {
-  const char* kRequestUrl =
-      "https://piston-meta.mojang.com/v1/packages/9d58fdd2538c6877fb5c5c558ebc60ee0b6d0e84/5.json";
-
-  CURL* curl;
-  CURLcode res;
-
-  polymer::String response;
-
-  response.data = (char*)malloc(polymer::Megabytes(32));
-
-  res = curl_global_init(CURL_GLOBAL_DEFAULT);
-
-  if (res != CURLE_OK) {
-    fprintf(stderr, "curl_global_init() failed: %s\n", curl_easy_strerror(res));
-    return false;
-  }
-
-  curl = curl_easy_init();
-  if (curl) {
-    curl_easy_setopt(curl, CURLOPT_URL, kRequestUrl);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-
-    res = curl_easy_perform(curl);
-
-    if (res != CURLE_OK) {
-      fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-    }
-
-    curl_easy_cleanup(curl);
-  }
-
-  printf("%.*s\n", (int)response.size, response.data);
-  free(response.data);
-
-  curl_global_cleanup();
-  return 1;
-}
-
-#endif
 
 int main(int argc, char* argv[]) {
   using namespace polymer;

@@ -422,7 +422,6 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
     return;
   }
 
-  section_info->bitmask = 0;
   section_info->loaded = false;
 
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
@@ -431,6 +430,7 @@ void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
     }
   }
 
+  section_info->bitmask = 0;
   ChunkMesh* meshes = world.meshes[z_index][x_index];
 
   renderer->WaitForIdle();

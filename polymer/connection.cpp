@@ -168,7 +168,8 @@ void Connection::SendPingRequest() {
 
 void Connection::SendLoginStart(const char* username, size_t username_size) {
   builder.WriteString(username, username_size);
-  builder.WriteU8(0); // HasPlayerUUID
+  builder.WriteU64(0); // UUID start
+  builder.WriteU64(0); // UUID end
 
   builder.Commit(write_buffer, 0x00);
 }
@@ -176,7 +177,7 @@ void Connection::SendLoginStart(const char* username, size_t username_size) {
 void Connection::SendKeepAlive(u64 id) {
   builder.WriteU64(id);
 
-  builder.Commit(write_buffer, 0x12);
+  builder.Commit(write_buffer, 0x15);
 }
 
 void Connection::SendTeleportConfirm(u64 id) {
@@ -194,7 +195,7 @@ void Connection::SendPlayerPositionAndRotation(const Vector3f& position, float y
   builder.WriteFloat(pitch);
   builder.WriteU8(on_ground);
 
-  builder.Commit(write_buffer, 0x15);
+  builder.Commit(write_buffer, 0x18);
 }
 
 void Connection::SendChatCommand(const String& message) {
@@ -208,13 +209,28 @@ void Connection::SendChatCommand(const String& message) {
   builder.WriteU64(salt);
   builder.WriteVarInt(array_length);
   builder.WriteVarInt(message_count);
-  // TODO: This doesn't match what wiki says, maybe because it's unclear about its mixed usage of BitSet term.
-  // Seems to work fine for insecure chatting.
-  builder.WriteU8(0);
-  builder.WriteU8(0);
-  builder.WriteU8(0);
+
+  const u32 kBitsetSize = 20;
+  const u32 kEmptyBitsetBytes = (kBitsetSize + 8) / 8;
+
+  for (size_t i = 0; i < kEmptyBitsetBytes; ++i) {
+    builder.WriteU8(0);
+  }
 
   builder.Commit(write_buffer, 0x04);
+}
+
+void Connection::SendConfigClientInformation(u8 view_distance, u8 skin_bitmask, u8 main_hand) {
+  builder.WriteString(POLY_STR("en_GB")); // Locale
+  builder.WriteU8(view_distance);
+  builder.WriteVarInt(0); // ChatMode enabled
+  builder.WriteU8(1);     // Chat Colors
+  builder.WriteU8(skin_bitmask);
+  builder.WriteVarInt(main_hand);
+  builder.WriteU8(0); // Text filtering
+  builder.WriteU8(1); // Allow listing
+
+  builder.Commit(write_buffer, 0x00);
 }
 
 void Connection::SendChatMessage(const String& message) {
@@ -225,13 +241,15 @@ void Connection::SendChatMessage(const String& message) {
   builder.WriteString(message);
   builder.WriteU64(timestamp);
   builder.WriteU64(salt);
-  builder.WriteU8(0);
+  builder.WriteU8(0); // HasSignature
   builder.WriteVarInt(message_count);
-  // TODO: This doesn't match what wiki says, maybe because it's unclear about its mixed usage of BitSet term.
-  // Seems to work fine for insecure chatting.
-  builder.WriteU8(0);
-  builder.WriteU8(0);
-  builder.WriteU8(0);
+
+  const u32 kBitsetSize = 20;
+  const u32 kEmptyBitsetBytes = (kBitsetSize + 8) / 8;
+
+  for (size_t i = 0; i < kEmptyBitsetBytes; ++i) {
+    builder.WriteU8(0);
+  }
 
   builder.Commit(write_buffer, 0x05);
 }
@@ -239,7 +257,7 @@ void Connection::SendChatMessage(const String& message) {
 void Connection::SendClientStatus(ClientStatusAction action) {
   builder.WriteVarInt((u64)action);
 
-  builder.Commit(write_buffer, 0x07);
+  builder.Commit(write_buffer, 0x08);
 }
 
 #ifdef _WIN32

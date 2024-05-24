@@ -22,6 +22,14 @@ constexpr size_t Gigabytes(size_t n) {
 
 using ArenaSnapshot = u8*;
 
+struct MemoryRevert {
+  struct MemoryArena& arena;
+  ArenaSnapshot snapshot;
+
+  inline MemoryRevert(MemoryArena& arena, ArenaSnapshot snapshot) : arena(arena), snapshot(snapshot) {}
+  inline ~MemoryRevert();
+};
+
 struct MemoryArena {
   u8* base;
   u8* current;
@@ -37,6 +45,10 @@ struct MemoryArena {
     return current;
   }
 
+  MemoryRevert GetReverter() {
+    return MemoryRevert(*this, GetSnapshot());
+  }
+
   void Revert(ArenaSnapshot snapshot) {
     current = snapshot;
   }
@@ -50,6 +62,10 @@ struct MemoryArena {
     return result;
   }
 };
+
+inline MemoryRevert::~MemoryRevert() {
+  arena.Revert(snapshot);
+}
 
 #define memory_arena_push_type(arena, type) (type*)(arena)->Allocate(sizeof(type))
 #define memory_arena_push_type_count(arena, type, count) (type*)(arena)->Allocate(sizeof(type) * count)
