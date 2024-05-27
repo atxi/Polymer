@@ -93,7 +93,7 @@ struct VulkanRenderer {
   VkSemaphore image_available_semaphores[kMaxFramesInFlight];
   VkFence frame_fences[kMaxFramesInFlight];
 
-  TextureArrayManager texture_array_manager;
+  VulkanTextureManager texture_manager;
 
   size_t current_frame = 0;
   u32 current_image = 0;
@@ -121,14 +121,17 @@ struct VulkanRenderer {
                           size_t index_count);
   void FreeMesh(RenderMesh* mesh);
 
-  TextureArrayPushState BeginTexturePush(TextureArray& texture);
+  VulkanTexture* CreateTexture(TextureConfig cfg, u32 width, u32 height, VkImageType image_type,
+                               VkImageViewType view_type, VkFormat format, VkImageTiling tiling);
+
+  TextureArrayPushState BeginTexturePush(VulkanTexture& texture);
   void CommitTexturePush(TextureArrayPushState& state);
 
-  TextureArray* CreateTextureArray(size_t width, size_t height, size_t layers, int channels = 4,
-                                   bool enable_mips = true);
+  VulkanTexture* CreateTextureArray(size_t width, size_t height, size_t layers, int channels = 4,
+                                    bool enable_mips = true);
   void PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushState& state, u8* texture, size_t index,
                         const TextureConfig& cfg);
-  void FreeTextureArray(TextureArray& texture);
+  void FreeTextureArray(VulkanTexture& texture);
 
   void BeginMeshAllocation();
   void EndMeshAllocation();
@@ -145,7 +148,7 @@ private:
 
   u32 FindMemoryType(u32 type_filter, VkMemoryPropertyFlags properties);
 
-  void GenerateArrayMipmaps(TextureArray& texture, u32 index);
+  void GenerateArrayMipmaps(VulkanTexture& texture, u32 index);
   void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout,
                              u32 base_layer, u32 layer_count, u32 mips);
   void BeginOneShotCommandBuffer();

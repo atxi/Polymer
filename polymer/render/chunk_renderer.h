@@ -30,12 +30,12 @@ enum class RenderLayer {
 constexpr size_t kRenderLayerCount = (size_t)RenderLayer::Count;
 extern const char* kRenderLayerNames[kRenderLayerCount];
 
-struct TextureArray;
+struct VulkanTexture;
 
 struct ChunkRenderUBO {
   mat4 mvp;
   Vector4f camera;
-  u32 frame;
+  float anim_time;
   float sunlight;
   u32 alpha_discard;
 };
@@ -47,6 +47,7 @@ struct ChunkVertex {
   u32 packed_light;
 
   u16 packed_uv;
+  u16 packed_frametime;
 };
 
 struct ChunkRenderLayout {
@@ -83,7 +84,8 @@ struct ChunkRenderer {
   RenderPass* render_pass;
 
   ChunkRenderLayout layout;
-  VkPipeline pipelines[kRenderLayerCount];
+  VkPipeline pipeline;
+  VkPipeline alpha_pipeline;
   DescriptorSet descriptor_sets[kRenderLayerCount];
 
   UniformBuffer opaque_ubo;
@@ -94,14 +96,14 @@ struct ChunkRenderer {
 
   ChunkFrameCommandBuffers frame_command_buffers[kMaxFramesInFlight];
 
-  TextureArray* block_textures;
+  VulkanTexture* block_textures;
 
 #if DISPLAY_PERF_STATS
   RenderStatistics stats;
 #endif
 
-  void Draw(VkCommandBuffer command_buffer, size_t current_frame, world::World& world, Camera& camera,
-            u32 animation_frame, float sunlight);
+  void Draw(VkCommandBuffer command_buffer, size_t current_frame, world::World& world, Camera& camera, float anim_time,
+            float sunlight);
 
   void CreateLayoutSet(VulkanRenderer& renderer, VkDevice device) {
     layout.Create(device);

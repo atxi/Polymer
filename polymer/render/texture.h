@@ -8,13 +8,16 @@ namespace polymer {
 namespace render {
 
 struct TextureConfig {
-  bool brighten_mipping;
-
-  TextureConfig() : brighten_mipping(true) {}
-  TextureConfig(bool brighten_mipping) : brighten_mipping(brighten_mipping) {}
+  bool brighten_mipping = false;
+  bool anisotropy = false;
+  bool enable_mipping = false;
+  VkFilter mag_filter = VK_FILTER_NEAREST;
+  VkFilter min_filter = VK_FILTER_NEAREST;
+  float min_lod = 0.0f;
+  float max_lod = 1.0f;
 };
 
-struct TextureArray {
+struct VulkanTexture {
   VmaAllocation allocation;
   VkImage image;
   VkImageView image_view;
@@ -23,15 +26,15 @@ struct TextureArray {
   u16 mips;
   u16 depth;
 
-  // Width and height must be the same
-  // TODO: This shouldn't be required, but the mip generator might need updated.
-  u32 dimensions;
+  // Width and height must be the same for texture arrays
+  u32 width;
+  u32 height;
 
   u32 channels;
   VkFormat format;
 
-  TextureArray* next;
-  TextureArray* prev;
+  VulkanTexture* next;
+  VulkanTexture* prev;
 };
 
 // Stores state for creating a data push command to fill the texture array.
@@ -39,7 +42,7 @@ struct TextureArray {
 struct TextureArrayPushState {
   enum class Status { Success, ErrorBuffer, Initial };
 
-  TextureArray& texture;
+  VulkanTexture& texture;
 
   VkBuffer buffer;
   VmaAllocation alloc;
@@ -49,23 +52,23 @@ struct TextureArrayPushState {
   // Size of one texture with its mips.
   size_t texture_data_size;
 
-  TextureArrayPushState(TextureArray& texture)
+  TextureArrayPushState(VulkanTexture& texture)
       : texture(texture), buffer(), alloc(), alloc_info(), status(Status::Initial), texture_data_size(0) {}
 };
 
-struct TextureArrayManager {
-  TextureArray* textures = nullptr;
-  TextureArray* last = nullptr;
-  TextureArray* free = nullptr;
+struct VulkanTextureManager {
+  VulkanTexture* textures = nullptr;
+  VulkanTexture* last = nullptr;
+  VulkanTexture* free = nullptr;
 
-  TextureArray* CreateTexture(MemoryArena& arena) {
-    TextureArray* result = nullptr;
+  VulkanTexture* CreateTexture(MemoryArena& arena) {
+    VulkanTexture* result = nullptr;
 
     if (free) {
       result = free;
       free = free->next;
     } else {
-      result = memory_arena_push_type(&arena, TextureArray);
+      result = memory_arena_push_type(&arena, VulkanTexture);
     }
 
     result->next = textures;
@@ -83,7 +86,7 @@ struct TextureArrayManager {
     return result;
   }
 
-  void ReleaseTexture(TextureArray& texture) {
+  void ReleaseTexture(VulkanTexture& texture) {
     if (texture.prev) {
       texture.prev->next = texture.next;
     }
@@ -98,10 +101,10 @@ struct TextureArrayManager {
   }
 
   void Clear() {
-    TextureArray* current = textures;
+    VulkanTexture* current = textures;
 
     while (current) {
-      TextureArray* texture = current;
+      VulkanTexture* texture = current;
       current = current->next;
 
       texture->next = free;

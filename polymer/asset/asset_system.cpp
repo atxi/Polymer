@@ -15,16 +15,16 @@ namespace asset {
 
 AssetSystem::AssetSystem() {}
 
-TextureIdRange AssetSystem::GetTextureRange(const String& texture_path) {
-  if (block_assets->texture_id_map) {
-    TextureIdRange* find = block_assets->texture_id_map->Find(MapStringKey(texture_path));
+BlockTextureDescriptor AssetSystem::GetTextureRange(const String& texture_path) {
+  if (block_assets->texture_descriptor_map) {
+    BlockTextureDescriptor* find = block_assets->texture_descriptor_map->Find(MapStringKey(texture_path));
 
     if (find) {
       return *find;
     }
   }
 
-  TextureIdRange empty = {};
+  BlockTextureDescriptor empty = {};
 
   return empty;
 }
@@ -118,7 +118,7 @@ bool AssetSystem::LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_a
     return false;
   }
 
-  render::TextureConfig texture_cfg(false);
+  render::TextureConfig texture_cfg;
 
   render::TextureArrayPushState glyph_page_push = renderer.BeginTexturePush(*glyph_page_texture);
   for (size_t i = 0; i < kGlyphPageCount; ++i) {

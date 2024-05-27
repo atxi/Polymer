@@ -13,7 +13,7 @@ namespace polymer {
 namespace render {
 
 struct VulkanRenderer;
-struct TextureArray;
+struct VulkanTexture;
 
 } // namespace render
 
@@ -22,7 +22,7 @@ namespace asset {
 struct AssetSystem {
   MemoryArena perm_arena;
   BlockAssets* block_assets = nullptr;
-  render::TextureArray* glyph_page_texture = nullptr;
+  render::VulkanTexture* glyph_page_texture = nullptr;
   u8* glyph_size_table = nullptr;
   AssetStore* asset_store = nullptr;
 
@@ -33,7 +33,7 @@ struct AssetSystem {
 
   bool LoadFont(render::VulkanRenderer& renderer, MemoryArena& perm_arena, MemoryArena& trans_arena);
 
-  TextureIdRange GetTextureRange(const String& texture_path);
+  BlockTextureDescriptor GetTextureRange(const String& texture_path);
 };
 
 } // namespace asset

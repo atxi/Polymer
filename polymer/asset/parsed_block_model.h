@@ -41,7 +41,9 @@ struct ParsedRenderableFace {
     u32 render_layer : 3;
     u32 random_flip : 1;
     u32 padding : 6;
-    u32 tintindex : 16;
+    u32 tintindex : 6;
+    u32 frametime : 9;
+    u32 interpolated : 1;
   };
 };
 

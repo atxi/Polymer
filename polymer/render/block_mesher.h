@@ -190,7 +190,6 @@ struct BlockMesher {
     }
   }
 
-  asset::TextureIdRange water_texture;
   MemoryArena& trans_arena;
   MemoryArena vertex_arenas[render::kRenderLayerCount];
   MemoryArena index_arenas[render::kRenderLayerCount];

@@ -50,9 +50,6 @@ struct LayerData {
 struct PushContext {
   MemoryArena* vertex_arenas[kRenderLayerCount];
   MemoryArena* index_arenas[kRenderLayerCount];
-  bool anim_repeat;
-
-  PushContext(bool anim_repeat) : anim_repeat(anim_repeat) {}
 
   void SetLayerData(RenderLayer layer, MemoryArena* vertex_arena, MemoryArena* index_arena) {
     vertex_arenas[(size_t)layer] = vertex_arena;
@@ -60,8 +57,8 @@ struct PushContext {
   }
 };
 
-inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face, u16 light,
-                      u32 axis_data = 0) {
+static inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f& uv, RenderableFace* face,
+                             u16 light, u32 axis_data = 0) {
   render::ChunkVertex* vertex =
       (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->Allocate(sizeof(render::ChunkVertex), 1);
 
@@ -74,23 +71,25 @@ inline u16 PushVertex(PushContext& ctx, const Vector3f& position, const Vector2f
 
   vertex->texture_id = face->texture_id;
 
-  u8 packed_anim = (ctx.anim_repeat << 7) | (u8)face->frame_count;
+  u8 packed_anim = (u8)face->frame_count;
   u8 tintindex = (u8)face->tintindex;
+
   light |= (axis_data << 14);
 
   vertex->packed_light = (packed_anim << 24) | (tintindex << 16) | light;
+  vertex->packed_frametime = face->frametime | (face->interpolated << 15);
 
   size_t index = (vertex - (render::ChunkVertex*)ctx.vertex_arenas[face->render_layer]->base);
   assert(index <= 65535);
   return (u16)index;
 }
 
-inline void PushIndex(PushContext& ctx, u32 render_layer, u16 index) {
+static inline void PushIndex(PushContext& ctx, u32 render_layer, u16 index) {
   u16* out = (u16*)ctx.index_arenas[render_layer]->Allocate(sizeof(index), 1);
   *out = index;
 }
 
-inline bool HasOccludableFace(BlockModel& model, BlockFace face) {
+static inline bool HasOccludableFace(BlockModel& model, BlockFace face) {
   for (size_t i = 0; i < model.element_count; ++i) {
     RenderableFace& render_face = model.elements[i].faces[(size_t)face];
 
@@ -104,7 +103,7 @@ inline bool HasOccludableFace(BlockModel& model, BlockFace face) {
   return false;
 }
 
-FaceQuad GetFaceQuad(BlockElement& element, BlockFace direction) {
+static FaceQuad GetFaceQuad(BlockElement& element, BlockFace direction) {
   FaceQuad result = {};
 
   const RenderableFace& face = element.faces[(size_t)direction];
@@ -191,7 +190,7 @@ FaceQuad GetFaceQuad(BlockElement& element, BlockFace direction) {
   return result;
 }
 
-inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
+static inline bool IsOccluding(BlockModel* from, BlockModel* to, BlockFace face) {
   BlockFace opposite_face = world::GetOppositeFace(face);
 
   // TODO: Clean this up once rotation is settled.
@@ -246,7 +245,7 @@ struct MaterialDescription {
   bool water;
 };
 
-inline MaterialDescription GetMaterialDescription(BlockMesherMapping& mapping, u32 bid) {
+static inline MaterialDescription GetMaterialDescription(BlockMesherMapping& mapping, u32 bid) {
   MaterialDescription result = {};
 
   result.water = mapping.water_range.Contains(bid) || mapping.kelp_range.Contains(bid) ||
@@ -257,7 +256,7 @@ inline MaterialDescription GetMaterialDescription(BlockMesherMapping& mapping, u
   return result;
 }
 
-inline u32 xorshift(u32 seed) {
+static inline u32 xorshift(u32 seed) {
   seed ^= seed << 13;
   seed ^= seed >> 17;
   seed ^= seed << 5;
@@ -675,7 +674,7 @@ static void MeshBlock(BlockMesher& mesher, PushContext& context, BlockRegistry& 
 // TODO: Real implementation.
 static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& block_registry,
                       BorderedChunk* bordered_chunk, u32 bid, size_t relative_x, size_t relative_y, size_t relative_z,
-                      const Vector3f& chunk_base, asset::TextureIdRange texture_range, u32 tintindex,
+                      const Vector3f& chunk_base, asset::BlockTextureDescriptor texture_range, u32 tintindex,
                       RenderLayer layer) {
   float x = (float)relative_x;
   float y = (float)relative_y;
@@ -737,9 +736,11 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
   face_.uv_from = Vector2f(0, 0);
   face_.uv_to = Vector2f(1, 1);
   face_.frame_count = texture_range.count;
-  face_.texture_id = texture_range.base;
+  face_.texture_id = texture_range.base_texture_id;
   face_.tintindex = tintindex;
   face_.render_layer = (int)layer;
+  face_.frametime = texture_range.animation_time;
+  face_.interpolated = texture_range.interpolated;
   RenderableFace* face = &face_;
 
   bool fluid_below = GetMaterialDescription(mesher.mapping, below_id).fluid;
@@ -789,14 +790,6 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
-
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bri);
-
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tli);
   }
 
   if (below_id == 0) {
@@ -837,14 +830,6 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
-
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bri);
-
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tli);
   }
 
   if (fluid_below) {
@@ -891,14 +876,6 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
-
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bri);
-
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tli);
   }
 
   if (south_id == 0) {
@@ -939,14 +916,6 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
-
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bri);
-
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tli);
   }
 
   if (east_id == 0) {
@@ -987,14 +956,6 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
-
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bri);
-
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tli);
   }
 
   if (west_id == 0) {
@@ -1035,16 +996,15 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
-
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bri);
-
-    PushIndex(context, face->render_layer, tri);
-    PushIndex(context, face->render_layer, bli);
-    PushIndex(context, face->render_layer, tli);
   }
 }
+
+struct FluidTextures {
+  asset::BlockTextureDescriptor water_still_texture;
+  asset::BlockTextureDescriptor water_flow_texture;
+  asset::BlockTextureDescriptor lava_still_texture;
+  asset::BlockTextureDescriptor lava_flow_texture;
+};
 
 ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistry& block_registry,
                                         ChunkBuildContext* ctx, s32 chunk_y) {
@@ -1056,13 +1016,19 @@ ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistr
   BorderedChunk* bordered_chunk = CreateBorderedChunk(trans_arena, ctx, chunk_y);
   if (!bordered_chunk) return vertex_data;
 
-  water_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_still.png"));
-  asset::TextureIdRange lava_texture =
+  FluidTextures fluid_textures = {};
+
+  fluid_textures.water_still_texture =
+      assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_still.png"));
+  fluid_textures.water_flow_texture =
+      assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/water_flow.png"));
+  fluid_textures.lava_still_texture =
       assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/lava_still.png"));
+  fluid_textures.lava_flow_texture = assets.GetTextureRange(POLY_STR("assets/minecraft/textures/block/lava_flow.png"));
 
   Vector3f chunk_base(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
 
-  PushContext context(false);
+  PushContext context = {};
 
   for (size_t i = 0; i < kRenderLayerCount; ++i) {
     RenderLayer layer = (RenderLayer)i;
@@ -1080,21 +1046,19 @@ ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistr
 
         if (desc.fluid) {
           RenderLayer layer = RenderLayer::Standard;
-          asset::TextureIdRange texture_range = lava_texture;
-          u32 tintindex = 0xFF;
+          asset::BlockTextureDescriptor texture_range = fluid_textures.lava_still_texture;
+          u32 tintindex = world::kHighestTintIndex;
 
           if (desc.water) {
-            texture_range = water_texture;
+            texture_range = fluid_textures.water_still_texture;
             tintindex = 50;
             layer = RenderLayer::Alpha;
           }
 
-          context.anim_repeat = true;
           MeshFluid(*this, context, block_registry, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base,
                     texture_range, tintindex, layer);
         }
 
-        context.anim_repeat = false;
         // Always mesh block even if it's a fluid because the plants have both
         MeshBlock(*this, context, block_registry, bordered_chunk, bid, relative_x, relative_y, relative_z, chunk_base);
       }
