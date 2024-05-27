@@ -4,7 +4,7 @@
 layout(binding = 0) uniform UniformBufferObject {
   mat4 mvp;
   vec4 camera;
-  uint frame;
+  float anim_time;
   float sunlight;
   uint alpha_discard;
 } ubo;
@@ -13,10 +13,13 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 1) in uint inTexId;
 layout(location = 2) in uint inPackedLight;
 layout(location = 3) in uint inTexCoord;
+layout(location = 4) in uint inFrametime;
 
 layout(location = 0) out vec2 fragTexCoord;
 layout(location = 1) flat out uint fragTexId;
 layout(location = 2) out vec4 fragColorMod;
+layout(location = 3) flat out uint fragTexIdInterpolate;
+layout(location = 4) flat out float interpolate_t;
 
 #define GRASS_TINTINDEX 0
 #define LEAF_TINTINDEX 1
@@ -40,31 +43,31 @@ layout(location = 2) out vec4 fragColorMod;
 #define BIRCH_LEAF_TINT vec4(0.502, 0.655, 0.333, 1.0)
 
 void main() {
-  uint packed_anim = inPackedLight >> 24;
-  uint animCount = packed_anim & 0x7F;
-  uint animRepeat = (packed_anim >> 7) & 1;
-
+  uint animCount = inPackedLight >> 24;
+  
   gl_Position = ubo.mvp * vec4(inPosition - ubo.camera.xyz, 1.0);
   fragTexCoord.x = (inTexCoord >> 5) / 16.0;
   fragTexCoord.y = (inTexCoord & 0x1F) / 16.0;
 
-  // Have animation repeat itself backwards
-  uint frame = 0;
+  uint frametime = inFrametime & 0x7FFF;
+  uint interpolated = inFrametime >> 15;
 
-  if (animRepeat > 0) {
-    frame = ubo.frame % (animCount * 2);
-    if (frame >= animCount) {
-      frame = animCount - (frame - animCount) - 1;
-    }  
-  } else {
-    frame = ubo.frame % animCount;
-  }
+  float frame_t = ubo.anim_time * (24.0f / frametime);
+  uint frame = uint(frame_t) % animCount;
 
   fragTexId = inTexId + frame;
   fragColorMod = vec4(1, 1, 1, 1);
+  fragTexIdInterpolate = 0;
+  interpolate_t = 0.0;
+
+  if (interpolated != 0) {
+    fragTexIdInterpolate = inTexId + ((frame + 1) % animCount);
+    float frame_index = 0;
+    interpolate_t = modf(frame_t, frame_index);
+  }
 
   // TODO: Remove this and sample biome from foliage/grass png
-  uint tintindex = (inPackedLight >> 16) & 0xFF;
+  uint tintindex = (inPackedLight >> 16) & 0x7F;
   uint ao = inPackedLight & 3;
   
   uint skylight_value = (inPackedLight >> 2) & 0x3F;

@@ -240,7 +240,7 @@ void ParsedBlockModel::ParseElements(json_object_s* root) {
           face->uv_to = Vector2f(1, 1);
           face->custom_uv = 0;
           face->render = true;
-          face->tintindex = 0xFFFF;
+          face->tintindex = world::kHighestTintIndex;
           face->cullface = 6;
           face->render_layer = 0;
           face->rotation = 0;

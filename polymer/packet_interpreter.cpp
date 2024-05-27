@@ -43,15 +43,24 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     //
   } break;
   case PlayProtocol::SystemChatMessage: {
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    sstr.size = 32767;
+    nbt::TagCompound msg_nbt;
 
-    size_t length = rb->ReadString(&sstr);
+    if (nbt::Parse(true, *rb, *trans_arena, &msg_nbt)) {
+      for (size_t i = 0; i < msg_nbt.ntags; ++i) {
+        String tag_name(msg_nbt.tags[i].name, msg_nbt.tags[i].name_length);
 
-    printf("System: %.*s\n", (int)length, sstr.data);
+        // Grab the translate key and output it for now.
 
-    u8 type = rb->ReadU8();
+        if (poly_strcmp(tag_name, POLY_STR("translate")) == 0) {
+          if (msg_nbt.tags[i].type == nbt::TagType::String) {
+            nbt::TagString* str_tag = (nbt::TagString*)msg_nbt.tags[i].tag;
+            printf("System: %.*s\n", (u32)str_tag->length, str_tag->data);
+          }
+        }
+      }
+    } else {
+      fprintf(stderr, "PlayProtocol::SystemChatMessage: Failed to parse NBT.\n");
+    }
   } break;
   case PlayProtocol::PlayerChatMessage: {
     String sender_uuid;
@@ -909,7 +918,11 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
     connection->builder.Commit(connection->write_buffer, 0x03);
     connection->protocol_state = ProtocolState::Configuration;
 
-    connection->SendConfigClientInformation(16, 0x7F, 1);
+    u8 view_distance = 16;
+#ifdef _DEBUG
+    view_distance = 3;
+#endif
+    connection->SendConfigClientInformation(view_distance, 0x7F, 1);
   } break;
   case LoginProtocol::SetCompression: {
     compression = true;

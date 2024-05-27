@@ -14,6 +14,8 @@ layout(binding = 1) uniform sampler2DArray texSampler;
 layout(location = 0) in vec2 fragTexCoord;
 layout(location = 1) flat in uint fragTexId;
 layout(location = 2) in vec4 fragColorMod;
+layout(location = 3) flat in uint fragTexIdInterpolate;
+layout(location = 4) flat in float interpolate_t;
 
 layout(location = 0) out vec4 outColor;
 
@@ -34,11 +36,15 @@ vec3 hsv2rgb(vec3 c) {
 }
 
 // TODO: Move to post-processing and figure out the actual post effects used.
-const float saturation = 1.1;
-const float brightness = 0.9;
+const float saturation = 1.0;
+const float brightness = 1.0;
 
 void main() {
   vec4 diffuse = texture(texSampler, vec3(fragTexCoord, fragTexId));
+  if (fragTexIdInterpolate != 0xFFFFFFFF) {
+    vec4 next_diffuse = texture(texSampler, vec3(fragTexCoord, fragTexIdInterpolate));
+    diffuse = mix(diffuse, next_diffuse, interpolate_t);
+  }
   
   outColor = diffuse * fragColorMod;
 

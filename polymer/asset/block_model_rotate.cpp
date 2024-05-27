@@ -237,6 +237,8 @@ void RotateVariant(MemoryArena& perm_arena, world::BlockModel& model, const Pars
       new_face.render_layer = element.faces[j].render_layer;
       new_face.random_flip = element.faces[j].random_flip;
       new_face.tintindex = element.faces[j].tintindex;
+      new_face.frametime = element.faces[j].frametime;
+      new_face.interpolated = element.faces[j].interpolated;
 
       if (new_face.render) {
         BlockFace uv_face = uvlock ? block_face : new_block_face;

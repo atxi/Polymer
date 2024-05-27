@@ -10,7 +10,7 @@ struct MemoryArena;
 
 namespace render {
 
-struct TextureArray;
+struct VulkanTexture;
 
 enum FontStyleFlag {
   FontStyle_None = 0,
@@ -71,7 +71,7 @@ struct FontRenderer {
   FontPushBuffer push_buffer;
   VkCommandBuffer command_buffers[kMaxFramesInFlight];
 
-  TextureArray* glyph_page_texture;
+  VulkanTexture* glyph_page_texture;
   u8* glyph_size_table;
 
   void RenderText(const Vector3f& screen_position, const String& str, FontStyleFlags style = FontStyle_None,

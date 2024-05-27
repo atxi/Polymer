@@ -96,11 +96,7 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
 
   camera.near = 0.1f;
   camera.far = 1024.0f;
-
-  // Fov seems to be off by 10%, maybe due to some post effects
-  constexpr const float kFovMultiplier = 1.1f;
-
-  camera.fov = Radians(80.0f) * kFovMultiplier;
+  camera.fov = Radians(80.0f);
 
   position_sync_timer = 0.0f;
   animation_accumulator = 0.0f;
@@ -140,8 +136,9 @@ void GameState::Update(float dt, InputState* input) {
   animation_accumulator += dt;
   time_accumulator += dt;
 
-  if (animation_accumulator >= 128.0f) {
-    animation_accumulator -= 128.0f;
+  constexpr float kMaxFrame = 256.0f;
+  if (animation_accumulator >= kMaxFrame) {
+    animation_accumulator -= kMaxFrame;
   }
 
   if (time_accumulator >= 1.0f / 20.0f) {
@@ -154,8 +151,7 @@ void GameState::Update(float dt, InputState* input) {
 
   ProcessBuildQueue();
 
-  u32 anim_frame = (u32)(animation_accumulator * 8.0f);
-  chunk_renderer.Draw(command_buffer, renderer->current_frame, world, camera, anim_frame, sunlight);
+  chunk_renderer.Draw(command_buffer, renderer->current_frame, world, camera, animation_accumulator, sunlight);
 }
 
 void GameState::SubmitFrame() {

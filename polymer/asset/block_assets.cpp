@@ -47,8 +47,8 @@ struct AssetParser {
 
   ZipArchive& archive;
 
-  TextureIdMap texture_id_map;
-  TextureIdMap* full_texture_id_map = nullptr;
+  TextureDescriptorMap texture_id_map;
+  TextureDescriptorMap* full_texture_id_map = nullptr;
   ParsedBlockMap parsed_block_map;
 
   size_t model_count;
@@ -61,7 +61,7 @@ struct AssetParser {
 
   size_t texture_count;
   u8* texture_images;
-  render::TextureConfig* texture_configs;
+  bool* texture_mipping_configs;
 
   AssetParser(MemoryArena* arena, BlockRegistry* registry, ZipArchive& archive)
       : arena(arena), registry(registry), archive(archive), model_count(0), parsed_block_map(*arena),
@@ -146,7 +146,7 @@ void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
         } else if (is_birch) {
           element->faces[j].tintindex = 3;
         } else if (is_cherry) {
-          element->faces[j].tintindex = 0xFFFF;
+          element->faces[j].tintindex = world::kHighestTintIndex;
         }
       }
 
@@ -247,14 +247,12 @@ static void AssignFaceRenderSettings(RenderableFace* face, const String& texture
   }
 }
 
-static inline render::TextureConfig CreateTextureConfig(String texture_name) {
-  render::TextureConfig cfg(true);
-
+static inline bool IsBrightenedMipping(String texture_name) {
   if (poly_contains(texture_name, POLY_STR("leaves"))) {
-    cfg.brighten_mipping = false;
+    return false;
   }
 
-  return cfg;
+  return true;
 }
 
 bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archive, const char* blocks_path,
@@ -266,11 +264,11 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
   assets->block_registry->state_count = 0;
   assets->block_registry->name_map.Clear();
 
-  assets->texture_id_map = perm_arena.Construct<TextureIdMap>(perm_arena);
+  assets->texture_descriptor_map = perm_arena.Construct<TextureDescriptorMap>(perm_arena);
 
   AssetParser parser(&trans_arena, assets->block_registry, archive);
 
-  parser.full_texture_id_map = assets->texture_id_map;
+  parser.full_texture_id_map = assets->texture_descriptor_map;
 
   if (!parser.ParseBlockModels()) {
     return false;
@@ -300,8 +298,10 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
 
   render::TextureArrayPushState push_state = renderer.BeginTexturePush(*assets->block_textures);
 
+  render::TextureConfig cfg;
+
   for (size_t i = 0; i < texture_count; ++i) {
-    const render::TextureConfig& cfg = parser.texture_configs[i];
+    cfg.enable_mipping = parser.texture_mipping_configs[i];
 
     renderer.PushArrayTexture(trans_arena, push_state, parser.GetTexture(i), i, cfg);
   }
@@ -434,7 +434,7 @@ size_t AssetParser::LoadTextures() {
   // TODO: Allocate this better. This should be enough for current versions but it would be better to allocate to handle
   // any amount.
   this->texture_images = memory_arena_push_type_count(arena, u8, kTextureSize * state_count * 4);
-  this->texture_configs = memory_arena_push_type_count(arena, render::TextureConfig, state_count * 4);
+  this->texture_mipping_configs = memory_arena_push_type_count(arena, bool, state_count * 4);
 
   u32 current_texture_id = 0;
 
@@ -451,15 +451,82 @@ size_t AssetParser::LoadTextures() {
     }
 
     if (width % 16 == 0 && height % 16 == 0) {
+      BlockTextureDescriptor descriptor = {};
+
+      descriptor.base_texture_id = current_texture_id;
+      descriptor.count = height / 16;
+
+      descriptor.animation_time = 1;
+      descriptor.interpolated = false;
+
+      assert(descriptor.count > 0);
+
+      constexpr u32 kMaxFrames = 256;
+      u32 frame_count = 0;
+      u32 frames[kMaxFrames];
+
+      {
+        MemoryRevert reverter = arena->GetReverter();
+        size_t meta_size = 0;
+        char metaname[512];
+
+        sprintf(metaname, "%s.mcmeta", texture_files[i].name);
+
+        char* meta_contents = archive.ReadFile(arena, metaname, &meta_size);
+
+        if (meta_contents) {
+          // Read animation data here.
+          json_value_s* root_value = json_parse(meta_contents, meta_size);
+          if (root_value) {
+            json_object_s* root = json_value_as_object(root_value);
+
+            json_object_element_s* root_element = root->start;
+            while (root_element) {
+              String name(root_element->name->string, root_element->name->string_size);
+
+              if (poly_strcmp(name, POLY_STR("animation")) == 0) {
+                json_object_s* animation_obj = json_value_as_object(root_element->value);
+
+                json_object_element_s* animation_element = animation_obj->start;
+                while (animation_element) {
+                  String animation_element_name(animation_element->name->string, animation_element->name->string_size);
+
+                  if (poly_strcmp(animation_element_name, POLY_STR("frametime")) == 0) {
+                    descriptor.animation_time =
+                        (u32)strtol(json_value_as_number(animation_element->value)->number, nullptr, 10);
+                  } else if (poly_strcmp(animation_element_name, POLY_STR("interpolate")) == 0) {
+                    descriptor.interpolated = json_value_is_true(animation_element->value);
+                  } else if (poly_strcmp(animation_element_name, POLY_STR("frames")) == 0) {
+                    json_array_s* frames_array = json_value_as_array(animation_element->value);
+                    json_array_element_s* frame_element = frames_array->start;
+
+                    // Grab each frame index from this array and store it in a local array to be used down below.
+                    while (frame_element) {
+                      u32 frame_index = (u32)strtol(json_value_as_number(frame_element->value)->number, nullptr, 10);
+
+                      frames[frame_count++] = frame_index;
+
+                      frame_element = frame_element->next;
+                    }
+                  }
+
+                  animation_element = animation_element->next;
+                }
+              }
+
+              root_element = root_element->next;
+            }
+          }
+        }
+      }
+
+      if (frame_count > descriptor.count) {
+        descriptor.count = frame_count;
+      }
+
       String texture_name = poly_string(texture_files[i].name + kTexturePathPrefixSize);
 
-      TextureIdRange range;
-      range.base = current_texture_id;
-      range.count = height / 16;
-
-      assert(range.count > 0);
-
-      this->texture_id_map.Insert(texture_name, range);
+      this->texture_id_map.Insert(texture_name, descriptor);
 
       size_t perm_name_size = texture_name.size + kTexturePathPrefixSize;
       char* perm_name_alloc = (char*)full_texture_id_map->arena.Allocate(perm_name_size);
@@ -467,14 +534,28 @@ size_t AssetParser::LoadTextures() {
 
       String full_texture_name(perm_name_alloc, perm_name_size);
 
-      full_texture_id_map->Insert(full_texture_name, range);
+      full_texture_id_map->Insert(full_texture_name, descriptor);
 
-      render::TextureConfig cfg = CreateTextureConfig(texture_name);
+      bool brighten_mipping = IsBrightenedMipping(texture_name);
 
-      for (u32 j = 0; j < range.count; ++j) {
-        texture_configs[current_texture_id] = cfg;
+      s32 image_pitch = width * 4;
+      s32 texture_pitch = 16 * 4;
+
+      for (u32 j = 0; j < descriptor.count; ++j) {
+        texture_mipping_configs[current_texture_id] = brighten_mipping;
         u8* destination = texture_images + (current_texture_id * kTextureSize);
-        memcpy(destination, image + j * (width * 16 * 4), kTextureSize);
+
+        u32 image_index = j;
+
+        if (frame_count > 0) {
+          image_index = frames[j];
+        }
+
+        u8* image_base = image + image_index * image_pitch * 16;
+
+        for (s32 y = 0; y < 16; ++y) {
+          memcpy(destination + y * texture_pitch, image_base + (y * image_pitch), texture_pitch);
+        }
 
         ++current_texture_id;
       }
@@ -766,17 +847,22 @@ void AssetParser::ResolveModel(ParsedBlockModel& parsed_model) {
           sprintf(lookup, "%.*s.png", (u32)(texture_name.size - prefix_size), texture_name.data + prefix_size);
       String texture_search(lookup, lookup_size);
 
-      TextureIdRange* texture_range = texture_id_map.Find(MapStringKey(texture_search.data, texture_search.size));
+      BlockTextureDescriptor* texture_descriptor =
+          texture_id_map.Find(MapStringKey(texture_search.data, texture_search.size));
 
-      if (!texture_range) {
-        fprintf(stderr, "Failed to find texture %.*s\n", (u32)texture_name.size, texture_name.data);
+      if (!texture_descriptor) {
+        fprintf(stderr, "Failed to find texture descriptor %.*s\n", (u32)texture_name.size, texture_name.data);
         continue;
       }
 
-      model_face->texture_id = texture_range->base;
-      model_face->frame_count = texture_range->count;
-      parsed_face->texture_id = texture_range->base;
-      parsed_face->frame_count = texture_range->count;
+      model_face->texture_id = texture_descriptor->base_texture_id;
+      model_face->frame_count = texture_descriptor->count;
+      model_face->frametime = texture_descriptor->animation_time;
+      model_face->interpolated = texture_descriptor->interpolated;
+      parsed_face->texture_id = texture_descriptor->base_texture_id;
+      parsed_face->frame_count = texture_descriptor->count;
+      parsed_face->frametime = texture_descriptor->animation_time;
+      parsed_face->interpolated = texture_descriptor->interpolated;
 
       AssignFaceRenderSettings(model_face, texture_search);
 

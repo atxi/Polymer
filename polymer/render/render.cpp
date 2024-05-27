@@ -166,8 +166,111 @@ bool VulkanRenderer::Initialize(PolymerWindow window) {
   return true;
 }
 
-TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, size_t layers, int channels,
-                                                 bool enable_mips) {
+VulkanTexture* VulkanRenderer::CreateTexture(TextureConfig cfg, u32 width, u32 height, VkImageType image_type, VkImageViewType view_type,
+                                             VkFormat format, VkImageTiling tiling) {
+  VulkanTexture* result = texture_manager.CreateTexture(*perm_arena);
+
+  if (result == nullptr) {
+    fprintf(stderr, "Failed to allocate texture.\n");
+    return nullptr;
+  }
+
+  result->width = (u32)width;
+  result->height = (u32)height;
+  result->depth = (u16)1;
+  result->channels = 4;
+  result->format = format;
+  result->mips = cfg.enable_mipping ? (u16)floorf(log2f((float)width)) + 1 : 1;
+
+  VkImageCreateInfo image_info = {};
+
+  image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  image_info.imageType = image_type;
+  image_info.extent.width = (u32)width;
+  image_info.extent.height = (u32)height;
+  image_info.extent.depth = 1;
+  image_info.mipLevels = result->mips;
+  image_info.arrayLayers = (u32)1;
+  image_info.format = format;
+  image_info.tiling = tiling;
+  image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+  image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+  image_info.flags = 0;
+
+  if (vkCreateImage(device, &image_info, nullptr, &result->image) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to create texture image.\n");
+    texture_manager.ReleaseTexture(*result);
+    return nullptr;
+  }
+
+  VmaAllocationCreateInfo alloc_create_info = {};
+  alloc_create_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+  alloc_create_info.flags = 0;
+
+  if (vmaAllocateMemoryForImage(allocator, result->image, &alloc_create_info, &result->allocation, nullptr) !=
+      VK_SUCCESS) {
+    fprintf(stderr, "Failed to allocate memory for texture image.\n");
+    texture_manager.ReleaseTexture(*result);
+    return nullptr;
+  }
+
+  vmaBindImageMemory(allocator, result->allocation, result->image);
+
+  VkImageViewCreateInfo view_create_info = {};
+  view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  view_create_info.image = result->image;
+  view_create_info.viewType = view_type;
+  view_create_info.format = format;
+  view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  view_create_info.subresourceRange.baseMipLevel = 0;
+  view_create_info.subresourceRange.levelCount = image_info.mipLevels;
+  view_create_info.subresourceRange.baseArrayLayer = 0;
+  view_create_info.subresourceRange.layerCount = (u32)1;
+
+  if (vkCreateImageView(device, &view_create_info, nullptr, &result->image_view) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to create texture image view.\n");
+    texture_manager.ReleaseTexture(*result);
+    return nullptr;
+  }
+
+  VkPhysicalDeviceProperties properties = {};
+  vkGetPhysicalDeviceProperties(physical_device, &properties);
+
+  VkSamplerCreateInfo sampler_info = {};
+  sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  sampler_info.magFilter = cfg.mag_filter;
+  sampler_info.minFilter = cfg.min_filter;
+  sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  sampler_info.anisotropyEnable = cfg.anisotropy;
+  sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+  sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+  sampler_info.unnormalizedCoordinates = VK_FALSE;
+  sampler_info.compareEnable = VK_FALSE;
+  sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
+  if (cfg.enable_mipping && swapchain.supports_linear_mipmap) {
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  } else {
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  }
+  sampler_info.mipLodBias = 0.0f;
+  sampler_info.minLod = cfg.min_lod;
+  sampler_info.maxLod = cfg.max_lod;
+
+  if (vkCreateSampler(device, &sampler_info, nullptr, &result->sampler) != VK_SUCCESS) {
+    fprintf(stderr, "Failed to create texture sampler.\n");
+    texture_manager.ReleaseTexture(*result);
+    return nullptr;
+  }
+
+  return result;
+}
+
+VulkanTexture* VulkanRenderer::CreateTextureArray(size_t width, size_t height, size_t layers, int channels,
+                                                  bool enable_mips) {
   if (channels <= 0 || channels > 4) {
     fprintf(stderr, "Bad channel size during texture array creation.\n");
     return nullptr;
@@ -177,16 +280,17 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
                                VK_FORMAT_R8G8B8A8_UNORM};
   VkFormat format = kFormats[channels - 1];
 
-  TextureArray* new_texture = texture_array_manager.CreateTexture(*perm_arena);
+  VulkanTexture* new_texture = texture_manager.CreateTexture(*perm_arena);
 
   if (new_texture == nullptr) {
     fprintf(stderr, "Failed to allocate TextureArray.\n");
     return nullptr;
   }
 
-  TextureArray& result = *new_texture;
+  VulkanTexture& result = *new_texture;
 
-  result.dimensions = (u16)width;
+  result.width = (u32)width;
+  result.height = (u32)height;
   result.depth = (u16)layers;
   result.channels = channels;
   result.format = format;
@@ -216,7 +320,7 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
 
   if (vkCreateImage(device, &image_info, nullptr, &result.image) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture image.\n");
-    texture_array_manager.ReleaseTexture(result);
+    texture_manager.ReleaseTexture(result);
     return nullptr;
   }
 
@@ -227,7 +331,7 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
   if (vmaAllocateMemoryForImage(allocator, result.image, &alloc_create_info, &result.allocation, nullptr) !=
       VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate memory for texture image.\n");
-    texture_array_manager.ReleaseTexture(result);
+    texture_manager.ReleaseTexture(result);
     return nullptr;
   }
 
@@ -246,7 +350,7 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
 
   if (vkCreateImageView(device, &view_create_info, nullptr, &result.image_view) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture image view.\n");
-    texture_array_manager.ReleaseTexture(result);
+    texture_manager.ReleaseTexture(result);
     return nullptr;
   }
 
@@ -277,7 +381,7 @@ TextureArray* VulkanRenderer::CreateTextureArray(size_t width, size_t height, si
 
   if (vkCreateSampler(device, &sampler_info, nullptr, &result.sampler) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create texture sampler.\n");
-    texture_array_manager.ReleaseTexture(result);
+    texture_manager.ReleaseTexture(result);
     return nullptr;
   }
 
@@ -329,12 +433,12 @@ void VulkanRenderer::TransitionImageLayout(VkImage image, VkFormat format, VkIma
   EndOneShotCommandBuffer();
 }
 
-TextureArrayPushState VulkanRenderer::BeginTexturePush(TextureArray& texture) {
+TextureArrayPushState VulkanRenderer::BeginTexturePush(VulkanTexture& texture) {
   TextureArrayPushState result(texture);
 
   // Calculate the size of one texture with all of its mips.
   size_t texture_data_size = 0;
-  size_t current_dim = texture.dimensions;
+  size_t current_dim = texture.width;
   for (size_t i = 0; i < texture.mips; ++i) {
     texture_data_size += current_dim * current_dim * texture.channels;
     current_dim /= 2;
@@ -383,7 +487,7 @@ void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushS
                                       const TextureConfig& cfg) {
   if (texture == nullptr) return;
 
-  u32 dim = state.texture.dimensions;
+  u32 dim = state.texture.width;
 
   ArenaSnapshot snapshot = temp_arena.GetSnapshot();
 
@@ -435,15 +539,15 @@ void VulkanRenderer::PushArrayTexture(MemoryArena& temp_arena, TextureArrayPushS
   temp_arena.Revert(snapshot);
 }
 
-void VulkanRenderer::FreeTextureArray(TextureArray& texture) {
+void VulkanRenderer::FreeTextureArray(VulkanTexture& texture) {
   vkDestroySampler(device, texture.sampler, nullptr);
   vkDestroyImageView(device, texture.image_view, nullptr);
   vmaDestroyImage(allocator, texture.image, texture.allocation);
 
-  texture_array_manager.ReleaseTexture(texture);
+  texture_manager.ReleaseTexture(texture);
 }
 
-void VulkanRenderer::GenerateArrayMipmaps(TextureArray& texture, u32 index) {
+void VulkanRenderer::GenerateArrayMipmaps(VulkanTexture& texture, u32 index) {
   VkImageMemoryBarrier barrier = {};
 
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1094,14 +1198,14 @@ bool VulkanRenderer::CreateInstance() {
 void VulkanRenderer::Shutdown() {
   vkDeviceWaitIdle(device);
 
-  TextureArray* current = texture_array_manager.textures;
+  VulkanTexture* current = texture_manager.textures;
   while (current) {
     vkDestroySampler(device, current->sampler, nullptr);
     vkDestroyImageView(device, current->image_view, nullptr);
     vmaDestroyImage(allocator, current->image, current->allocation);
     current = current->next;
   }
-  texture_array_manager.Clear();
+  texture_manager.Clear();
 
   swapchain.Cleanup();
 

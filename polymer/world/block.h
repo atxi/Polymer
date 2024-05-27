@@ -75,22 +75,25 @@ private:
   }
 };
 
+constexpr u32 kHighestTintIndex = 0b111111;
 struct RenderableFace {
   Vector2f uv_from;
   Vector2f uv_to;
   FaceQuad* quad;
 
-  u32 texture_id;
-
   struct {
+    u32 texture_id : 31;
     u32 render : 1;
+
     u32 transparency : 1;
     u32 cullface : 3;
     u32 render_layer : 3;
     u32 random_flip : 1;
-    u32 frame_count : 6;
+    u32 frame_count : 7;
     u32 full_occlusion : 1;
-    u32 tintindex : 16;
+    u32 tintindex : 6;
+    u32 frametime : 9;
+    u32 interpolated : 1;
   };
 };
 
