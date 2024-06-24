@@ -3,23 +3,25 @@
 #include <polymer/memory.h>
 #include <polymer/nbt.h>
 
+#include <stdio.h>
+
 namespace polymer {
 namespace world {
 
-inline void ProcessDimensionFlag(DimensionType* type, nbt::TagCompound& element_compound, String name, u32 flag) {
+inline void ProcessDimensionFlag(DimensionType& type, nbt::TagCompound& element_compound, String name, u32 flag) {
   nbt::Tag* flag_tag = element_compound.GetNamedTag(name);
 
   if (flag_tag && flag_tag->type == nbt::TagType::Byte) {
     nbt::TagByte* data_tag = (nbt::TagByte*)flag_tag->tag;
 
     if (data_tag->data) {
-      type->flags |= flag;
+      type.flags |= flag;
     }
   }
 }
 
 template <typename DataTag, typename T>
-inline void ProcessDimensionData(DimensionType* type, nbt::TagCompound& element_compound, String name,
+inline void ProcessDimensionData(DimensionType& type, nbt::TagCompound& element_compound, String name,
                                  nbt::TagType tag_type, T* out) {
   nbt::Tag* named_tag = element_compound.GetNamedTag(name);
 
@@ -30,78 +32,29 @@ inline void ProcessDimensionData(DimensionType* type, nbt::TagCompound& element_
   }
 }
 
-inline void ProcessDimensionInt(DimensionType* type, nbt::TagCompound& element_compound, String name, int* out) {
+inline void ProcessDimensionInt(DimensionType& type, nbt::TagCompound& element_compound, String name, int* out) {
   ProcessDimensionData<nbt::TagInt, int>(type, element_compound, name, nbt::TagType::Int, out);
 }
 
-inline void ProcessDimensionFloat(DimensionType* type, nbt::TagCompound& element_compound, String name, float* out) {
+inline void ProcessDimensionFloat(DimensionType& type, nbt::TagCompound& element_compound, String name, float* out) {
   ProcessDimensionData<nbt::TagFloat, float>(type, element_compound, name, nbt::TagType::Float, out);
 }
 
-inline void ProcessDimensionDouble(DimensionType* type, nbt::TagCompound& element_compound, String name, double* out) {
+inline void ProcessDimensionDouble(DimensionType& type, nbt::TagCompound& element_compound, String name, double* out) {
   ProcessDimensionData<nbt::TagDouble, double>(type, element_compound, name, nbt::TagType::Double, out);
 }
 
-inline void ProcessDimensionLong(DimensionType* type, nbt::TagCompound& element_compound, String name, u64* out) {
+inline void ProcessDimensionLong(DimensionType& type, nbt::TagCompound& element_compound, String name, u64* out) {
   ProcessDimensionData<nbt::TagLong, u64>(type, element_compound, name, nbt::TagType::Long, out);
 }
 
-void DimensionCodec::Parse(MemoryArena& arena, nbt::TagCompound& nbt) {
-  types = nullptr;
-  type_count = 0;
-
-  nbt::Tag* named_tag = nbt.GetNamedTag(POLY_STR("minecraft:dimension_type"));
-
-  if (named_tag && named_tag->type == nbt::TagType::Compound) {
-    nbt::TagCompound* dimension_nbt = (nbt::TagCompound*)named_tag->tag;
-    nbt::Tag* value_tag = dimension_nbt->GetNamedTag(POLY_STR("value"));
-
-    if (value_tag) {
-      nbt::TagList* entry_list = (nbt::TagList*)value_tag->tag;
-
-      types = memory_arena_push_type_count(&arena, DimensionType, entry_list->length);
-      type_count = entry_list->length;
-
-      memset(types, 0, sizeof(DimensionType) * entry_list->length);
-
-      for (size_t i = 0; i < entry_list->length; ++i) {
-        DimensionType* type = types + i;
-
-        nbt::Tag* entry_tag = entry_list->tags + i;
-
-        if (entry_tag->type == nbt::TagType::Compound) {
-          nbt::TagCompound* entry_compound = (nbt::TagCompound*)entry_tag->tag;
-          nbt::Tag* name_tag = entry_compound->GetNamedTag(POLY_STR("name"));
-
-          if (name_tag && name_tag->type == nbt::TagType::String) {
-            nbt::TagString* name_str = (nbt::TagString*)name_tag->tag;
-
-            type->name.data = (char*)arena.Allocate(name_str->length);
-            type->name.size = name_str->length;
-
-            memcpy(type->name.data, name_str->data, name_str->length);
-          }
-
-          nbt::Tag* id_tag = entry_compound->GetNamedTag(POLY_STR("id"));
-          if (id_tag && id_tag->type == nbt::TagType::Int) {
-            nbt::TagInt* id_int = (nbt::TagInt*)id_tag->tag;
-
-            type->id = id_int->data;
-          }
-
-          nbt::Tag* element_tag = entry_compound->GetNamedTag(POLY_STR("element"));
-          if (element_tag && element_tag->type == nbt::TagType::Compound) {
-            nbt::TagCompound* element_compound = (nbt::TagCompound*)element_tag->tag;
-
-            ParseType(arena, *element_compound, type);
-          }
-        }
-      }
-    }
-  }
+void DimensionCodec::Initialize(MemoryArena& arena, size_t size) {
+  type_count = size;
+  types = memory_arena_push_type_count(&arena, DimensionType, size);
+  memset(types, 0, sizeof(DimensionType) * size);
 }
 
-void DimensionCodec::ParseType(MemoryArena& arena, nbt::TagCompound& nbt, DimensionType* type) {
+void DimensionCodec::ParseType(MemoryArena& arena, nbt::TagCompound& nbt, DimensionType& type) {
   ProcessDimensionFlag(type, nbt, POLY_STR("piglin_safe"), DimensionFlag_PiglinSafe);
   ProcessDimensionFlag(type, nbt, POLY_STR("natural"), DimensionFlag_Natural);
   ProcessDimensionFlag(type, nbt, POLY_STR("respawn_anchor_works"), DimensionFlag_RespawnAnchor);
@@ -111,19 +64,45 @@ void DimensionCodec::ParseType(MemoryArena& arena, nbt::TagCompound& nbt, Dimens
   ProcessDimensionFlag(type, nbt, POLY_STR("ultrawarm"), DimensionFlag_Ultrawarm);
   ProcessDimensionFlag(type, nbt, POLY_STR("has_ceiling"), DimensionFlag_HasCeiling);
 
-  ProcessDimensionInt(type, nbt, POLY_STR("min_y"), &type->min_y);
-  ProcessDimensionInt(type, nbt, POLY_STR("height"), &type->height);
-  ProcessDimensionInt(type, nbt, POLY_STR("logical_height"), &type->logical_height);
+  ProcessDimensionInt(type, nbt, POLY_STR("min_y"), &type.min_y);
+  ProcessDimensionInt(type, nbt, POLY_STR("height"), &type.height);
+  ProcessDimensionInt(type, nbt, POLY_STR("logical_height"), &type.logical_height);
 
-  ProcessDimensionFloat(type, nbt, POLY_STR("ambient_light"), &type->ambient_light);
-  ProcessDimensionDouble(type, nbt, POLY_STR("coordinate_scale"), &type->coordinate_scale);
+  ProcessDimensionFloat(type, nbt, POLY_STR("ambient_light"), &type.ambient_light);
+  ProcessDimensionDouble(type, nbt, POLY_STR("coordinate_scale"), &type.coordinate_scale);
 
-  ProcessDimensionLong(type, nbt, POLY_STR("fixed_time"), &type->fixed_time);
+  ProcessDimensionLong(type, nbt, POLY_STR("fixed_time"), &type.fixed_time);
 
   // TODO: effects, infiniburn
 }
 
-DimensionType* DimensionCodec::GetDimensionType(const String& identifier) {
+void DimensionCodec::ParseDefaultType(MemoryArena& arena, size_t index) {
+  if (index >= 4) {
+    fprintf(stderr, "Failed to receive dimension data for non-core dimension.\n");
+    exit(1);
+  }
+
+  static const DimensionType kCoreTypes[] = {
+      DimensionType{POLY_STR("minecraft:overworld"), String(), String(), 0, 58, -64, 384, 384, 0.0f, 1.0f, 0},
+      DimensionType{POLY_STR("minecraft:overworld_caves"), String(), String(), 1, 186, -64, 384, 384, 0.0f, 1.0f, 0},
+      DimensionType{POLY_STR("minecraft:the_end"), String(), String(), 2, 32, 0, 256, 256, 0.0f, 1.0f, 6000},
+      DimensionType{POLY_STR("minecraft:the_nether"), String(), String(), 3, 197, 0, 256, 128, 0.1f, 8.0f, 18000},
+  };
+
+  types[index] = kCoreTypes[index];
+}
+
+DimensionType* DimensionCodec::GetDimensionTypeById(s32 id) {
+  for (size_t i = 0; i < type_count; ++i) {
+    DimensionType* type = types + i;
+
+    if (type->id == id) return type;
+  }
+
+  return nullptr;
+}
+
+DimensionType* DimensionCodec::GetDimensionTypeByName(const String& identifier) {
   for (size_t i = 0; i < type_count; ++i) {
     DimensionType* type = types + i;
 

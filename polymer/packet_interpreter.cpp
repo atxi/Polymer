@@ -27,33 +27,37 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
   MemoryArena* trans_arena = game->trans_arena;
   Connection* connection = &game->connection;
 
-  PlayProtocol type = (PlayProtocol)pkt_id;
+  using inbound::play::ProtocolId;
 
-  assert(type < PlayProtocol::Count);
+  ProtocolId type = (ProtocolId)pkt_id;
+
+  assert(type < ProtocolId::Count);
 
 #if LOG_PACKET_ID
   printf("InterpetPlay: %lld\n", pkt_id);
 #endif
 
   switch (type) {
-  case PlayProtocol::ChunkBatchStart: {
-    //
+  case ProtocolId::ChunkBatchStart: {
+    // TODO: Measure
   } break;
-  case PlayProtocol::ChunkBatchFinished: {
-    //
+  case ProtocolId::ChunkBatchFinished: {
+    outbound::play::SendChunkBatchReceived(*connection, 8.0f);
   } break;
-  case PlayProtocol::SystemChatMessage: {
-    nbt::TagCompound msg_nbt;
+  case ProtocolId::SystemChatMessage: {
+    MemoryRevert revert = trans_arena->GetReverter();
 
-    if (nbt::Parse(true, *rb, *trans_arena, &msg_nbt)) {
-      for (size_t i = 0; i < msg_nbt.ntags; ++i) {
-        String tag_name(msg_nbt.tags[i].name, msg_nbt.tags[i].name_length);
+    nbt::TagCompound* msg_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
+
+    if (nbt::Parse(true, *rb, *trans_arena, msg_nbt)) {
+      for (size_t i = 0; i < msg_nbt->ntags; ++i) {
+        String tag_name(msg_nbt->tags[i].name, msg_nbt->tags[i].name_length);
 
         // Grab the translate key and output it for now.
 
         if (poly_strcmp(tag_name, POLY_STR("translate")) == 0) {
-          if (msg_nbt.tags[i].type == nbt::TagType::String) {
-            nbt::TagString* str_tag = (nbt::TagString*)msg_nbt.tags[i].tag;
+          if (msg_nbt->tags[i].type == nbt::TagType::String) {
+            nbt::TagString* str_tag = (nbt::TagString*)msg_nbt->tags[i].tag;
             printf("System: %.*s\n", (u32)str_tag->length, str_tag->data);
           }
         }
@@ -62,12 +66,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       fprintf(stderr, "PlayProtocol::SystemChatMessage: Failed to parse NBT.\n");
     }
   } break;
-  case PlayProtocol::PlayerChatMessage: {
-    String sender_uuid;
-    sender_uuid.data = memory_arena_push_type_count(trans_arena, char, 16);
-    sender_uuid.size = 16;
-
-    rb->ReadRawString(&sender_uuid, 16);
+  case ProtocolId::PlayerChatMessage: {
+    String sender_uuid = rb->ReadAllocRawString(*trans_arena, 16);
 
     if (sender_uuid.size != 16) {
       fprintf(stderr, "Failed to read PlayerChatMessage::sender_uuid\n");
@@ -94,11 +94,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       rb->ReadVarInt(&mesg_signature_size);
 
-      String mesg_signature;
-      mesg_signature.data = memory_arena_push_type_count(trans_arena, char, (size_t)mesg_signature_size);
-      mesg_signature.size = (size_t)mesg_signature_size;
-
-      rb->ReadRawString(&mesg_signature, (size_t)mesg_signature_size);
+      String mesg_signature = rb->ReadAllocRawString(*trans_arena, mesg_signature_size);
 
       if (mesg_signature.size != mesg_signature_size) {
         fprintf(stderr, "Failed to read PlayerChatMessage::mesg_signature\n");
@@ -106,11 +102,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       }
     }
 
-    String message;
-    message.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    message.size = 32767;
-
-    message.size = rb->ReadString(&message);
+    String message = rb->ReadAllocString(*trans_arena);
 
     if (message.size > 0) {
       wchar output_text[1024];
@@ -143,18 +135,14 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u64 timestamp = rb->ReadU64();
     u64 salt = rb->ReadU64();
   } break;
-  case PlayProtocol::Disconnect: {
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    sstr.size = 32767;
+  case ProtocolId::Disconnect: {
+    String reason = rb->ReadAllocString(*trans_arena);
 
-    size_t length = rb->ReadString(&sstr);
-
-    if (length > 0) {
-      printf("Disconnected: %.*s\n", (int)length, sstr.data);
+    if (reason.size > 0) {
+      printf("Disconnected: %.*s\n", (int)reason.size, reason.data);
     }
   } break;
-  case PlayProtocol::Explosion: {
+  case ProtocolId::Explosion: {
     double x = rb->ReadDouble();
     double y = rb->ReadDouble();
     double z = rb->ReadDouble();
@@ -175,18 +163,18 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     float velocity_y = rb->ReadFloat();
     float velocity_z = rb->ReadFloat();
   } break;
-  case PlayProtocol::UnloadChunk: {
+  case ProtocolId::UnloadChunk: {
     s32 chunk_z = rb->ReadU32();
     s32 chunk_x = rb->ReadU32();
 
     game->OnChunkUnload(chunk_x, chunk_z);
   } break;
-  case PlayProtocol::KeepAlive: {
+  case ProtocolId::KeepAlive: {
     u64 id = rb->ReadU64();
 
-    connection->SendKeepAlive(id);
+    outbound::play::SendKeepAlive(*connection, id);
   } break;
-  case PlayProtocol::PlayerPositionAndLook: {
+  case ProtocolId::PlayerPositionAndLook: {
     double x = rb->ReadDouble();
     double y = rb->ReadDouble();
     double z = rb->ReadDouble();
@@ -197,21 +185,21 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u64 teleport_id;
     rb->ReadVarInt(&teleport_id);
 
-    connection->SendTeleportConfirm(teleport_id);
+    outbound::play::SendTeleportConfirm(*connection, teleport_id);
     // TODO: Relative/Absolute
     printf("Position: (%f, %f, %f)\n", x, y, z);
     game->OnPlayerPositionAndLook(Vector3f((float)x, (float)y, (float)z), yaw, pitch);
   } break;
-  case PlayProtocol::UpdateHealth: {
+  case ProtocolId::UpdateHealth: {
     float health = rb->ReadFloat();
 
     printf("Health: %f\n", health);
     if (health <= 0.0f) {
-      connection->SendClientStatus(Connection::ClientStatusAction::Respawn);
+      outbound::play::SendClientStatus(*connection, ClientStatusAction::Respawn);
       printf("Sending respawn packet.\n");
     }
   } break;
-  case PlayProtocol::BlockUpdate: {
+  case ProtocolId::BlockUpdate: {
     u64 position_data = rb->ReadU64();
 
     u64 new_bid;
@@ -233,22 +221,20 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     game->OnBlockChange(x, y, z, (u32)new_bid);
   } break;
-  case PlayProtocol::Login: {
+  case ProtocolId::Login: {
     u32 entity_id = rb->ReadU32();
     bool is_hardcore = rb->ReadU8();
-    u64 world_count = 0;
-    rb->ReadVarInt(&world_count);
+    u64 dimension_count = 0;
 
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    sstr.size = 32767;
+    rb->ReadVarInt(&dimension_count);
 
     // Read all of the dimensions
-    for (size_t i = 0; i < world_count; ++i) {
-      size_t length = rb->ReadString(&sstr);
+    for (size_t i = 0; i < dimension_count; ++i) {
+      String dimension_name = rb->ReadAllocString(*trans_arena);
     }
 
     u64 max_players = 0, view_distance = 0, simulation_distance = 0;
+
     rb->ReadVarInt(&max_players);
     rb->ReadVarInt(&view_distance);
     rb->ReadVarInt(&simulation_distance);
@@ -257,28 +243,20 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u8 enable_respawn_screen = rb->ReadU8();
     u8 limited_crafting = rb->ReadU8();
 
-    String dimension_type_string;
-    dimension_type_string.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    dimension_type_string.size = 32767;
+    u64 dimension_type_id = 0;
 
-    dimension_type_string.size = rb->ReadString(&dimension_type_string);
+    rb->ReadVarInt(&dimension_type_id);
 
-    DimensionType* dimension_type = game->dimension_codec.GetDimensionType(dimension_type_string);
+    DimensionType* dimension_type = game->dimension_codec.GetDimensionTypeById((s32)dimension_type_id);
 
     if (dimension_type) {
-      printf("PlayProtocol::Login: Dimension set to %.*s\n", (u32)dimension_type_string.size,
-             dimension_type_string.data);
+      printf("PlayProtocol::Login: Dimension set to %.*s\n", (u32)dimension_type->name.size, dimension_type->name.data);
       game->dimension = *dimension_type;
     } else {
-      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size,
-              dimension_type_string.data);
+      fprintf(stderr, "Failed to find dimension with id %d in codec.\n", (s32)dimension_type_id);
     }
 
-    String dimension_identifier;
-    dimension_identifier.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    dimension_identifier.size = 32767;
-
-    dimension_identifier.size = rb->ReadString(&dimension_identifier);
+    String dimension_identifier = rb->ReadAllocString(*trans_arena);
 
     if (dimension_identifier.size > 0) {
       printf("Dimension: %.*s\n", (u32)dimension_identifier.size, dimension_identifier.data);
@@ -287,29 +265,27 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     printf("Entered dimension with height range of %d to %d\n", game->dimension.min_y,
            (game->dimension.height + game->dimension.min_y));
   } break;
-  case PlayProtocol::Respawn: {
-    String dimension_type_string;
+  case ProtocolId::Respawn: {
+    u64 dimension_type_id = 0;
 
-    dimension_type_string.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    dimension_type_string.size = 32767;
+    rb->ReadVarInt(&dimension_type_id);
 
-    dimension_type_string.size = rb->ReadString(&dimension_type_string);
+    String dimension_name = rb->ReadAllocString(*trans_arena);
 
-    DimensionType* dimension_type = game->dimension_codec.GetDimensionType(dimension_type_string);
+    DimensionType* dimension_type = game->dimension_codec.GetDimensionTypeById((s32)dimension_type_id);
 
     if (dimension_type) {
       game->dimension = *dimension_type;
-    } else {
-      fprintf(stderr, "Failed to find dimension type %.*s in codec.\n", (u32)dimension_type_string.size,
-              dimension_type_string.data);
-    }
 
-    printf("Entered dimension with height range of %d to %d\n", game->dimension.min_y,
-           (game->dimension.height + game->dimension.min_y));
+      printf("Entered dimension with height range of %d to %d\n", game->dimension.min_y,
+             (game->dimension.height + game->dimension.min_y));
+    } else {
+      fprintf(stderr, "Failed to find dimension type %d in codec.\n", (s32)dimension_type_id);
+    }
 
     game->OnDimensionChange();
   } break;
-  case PlayProtocol::UpdateSectionBlocks: {
+  case ProtocolId::UpdateSectionBlocks: {
     u64 xzy = rb->ReadU64();
 
     s32 chunk_x = xzy >> (22 + 20);
@@ -344,13 +320,14 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       game->OnBlockChange(chunk_x * 16 + relative_x, chunk_y * 16 + relative_y, chunk_z * 16 + relative_z, new_bid);
     }
   } break;
-  case PlayProtocol::ChunkData: {
+  case ProtocolId::ChunkData: {
     s32 chunk_x = rb->ReadU32();
     s32 chunk_z = rb->ReadU32();
 
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    sstr.size = 32767;
+    // This is some scratch space for reading byte arrays below.
+    String scratch_str;
+    scratch_str.data = memory_arena_push_type_count(trans_arena, char, 32767);
+    scratch_str.size = 32767;
 
     nbt::TagCompound* nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
 
@@ -550,53 +527,57 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     u64 skylight_array_count = 0;
     rb->ReadVarInt(&skylight_array_count);
 
-    for (size_t i = 0; i < 26; ++i) {
+    constexpr size_t kRecvSections = kChunkColumnCount + 2;
+
+    s32 column_offset = (game->dimension.min_y + 64) / 16;
+
+    for (size_t i = 0; i < kRecvSections; ++i) {
       if (!skylight_mask.IsSet(i)) continue;
 
       u64 skylight_length = 0;
 
       rb->ReadVarInt(&skylight_length);
-      rb->ReadRawString(&sstr, skylight_length);
+      rb->ReadRawString(&scratch_str, skylight_length);
 
-      if (i == 0 || i == 25) continue;
+      if (i == 0 || i == kRecvSections - 1) continue;
 
-      size_t chunk_y = i - 1;
+      size_t chunk_y = i - 1 + column_offset;
 
       for (size_t index = 0; index < skylight_length; ++index) {
         size_t block_data_index = index * 2;
         u8* lightmap = (u8*)section->chunks[chunk_y].lightmap;
 
-        lightmap[block_data_index] = sstr.data[index] & 0x0F;
-        lightmap[block_data_index + 1] = (sstr.data[index] & 0xF0) >> 4;
+        lightmap[block_data_index] = scratch_str.data[index] & 0x0F;
+        lightmap[block_data_index + 1] = (scratch_str.data[index] & 0xF0) >> 4;
       }
     }
 
     u64 blocklight_array_count = 0;
     rb->ReadVarInt(&blocklight_array_count);
 
-    for (size_t i = 0; i < 26; ++i) {
+    for (size_t i = 0; i < kRecvSections + 2; ++i) {
       if (!blocklight_mask.IsSet(i)) continue;
 
       u64 blocklight_length = 0;
 
       rb->ReadVarInt(&blocklight_length);
-      rb->ReadRawString(&sstr, blocklight_length);
+      rb->ReadRawString(&scratch_str, blocklight_length);
 
-      if (i == 0 || i == 25) continue;
+      if (i == 0 || i == kRecvSections - 1) continue;
 
-      size_t chunk_y = i - 1;
+      size_t chunk_y = i - 1 + column_offset;
 
       for (size_t index = 0; index < blocklight_length; ++index) {
         size_t block_data_index = index * 2;
         u8* lightmap = (u8*)section->chunks[chunk_y].lightmap;
 
         // Merge the block lightmap into the packed chunk lightmap
-        lightmap[block_data_index] |= (sstr.data[index] & 0x0F) << 4;
-        lightmap[block_data_index + 1] |= (sstr.data[index] & 0xF0);
+        lightmap[block_data_index] |= (scratch_str.data[index] & 0x0F) << 4;
+        lightmap[block_data_index + 1] |= (scratch_str.data[index] & 0xF0);
       }
     }
   } break;
-  case PlayProtocol::PlayerInfoUpdate: {
+  case ProtocolId::PlayerInfoUpdate: {
     u8 action_bitmask = rb->ReadU8();
 
     u64 action_count = 0;
@@ -608,12 +589,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     for (u64 i = 0; i < action_count; ++i) {
       ArenaSnapshot snapshot = trans_arena->GetSnapshot();
 
-      String uuid_string;
-
-      uuid_string.data = memory_arena_push_type_count(trans_arena, char, 16);
-      uuid_string.size = 16;
-
-      rb->ReadRawString(&uuid_string, 16);
+      String uuid_string = rb->ReadAllocRawString(*trans_arena, 16);
 
       if (uuid_string.size != 16) {
         fprintf(stderr, "Failed to read PlayerInfoUpdate::uuid\n");
@@ -630,12 +606,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       };
 
       if (action_bitmask & AddAction) {
-        String name;
-
-        name.data = memory_arena_push_type_count(trans_arena, char, 16);
-        name.size = 16;
-
-        name.size = rb->ReadString(&name);
+        String name = rb->ReadAllocString(*trans_arena);
 
         String property_name;
         property_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
@@ -672,12 +643,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         bool has_signature = rb->ReadU8();
 
         if (has_signature) {
-          String chat_session_id;
-
-          chat_session_id.data = memory_arena_push_type_count(trans_arena, char, 16);
-          chat_session_id.size = 16;
-
-          rb->ReadRawString(&chat_session_id, 16);
+          String chat_session_id = rb->ReadAllocRawString(*trans_arena, 16);
 
           if (chat_session_id.size != 16) {
             fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::chat_session_id\n");
@@ -692,12 +658,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
             break;
           }
 
-          String encoded_public_key;
+          String encoded_public_key = rb->ReadAllocRawString(*trans_arena, encoded_public_key_size);
 
-          encoded_public_key.data = memory_arena_push_type_count(trans_arena, char, encoded_public_key_size);
-          encoded_public_key.size = encoded_public_key_size;
-
-          rb->ReadRawString(&encoded_public_key, encoded_public_key_size);
           if (encoded_public_key.size != encoded_public_key_size) {
             fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::encoded_public_key\n");
             break;
@@ -710,12 +672,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
             break;
           }
 
-          String public_key_sig;
+          String public_key_sig = rb->ReadAllocRawString(*trans_arena, public_key_sig_size);
 
-          public_key_sig.data = memory_arena_push_type_count(trans_arena, char, public_key_sig_size);
-          public_key_sig.size = public_key_sig_size;
-
-          rb->ReadRawString(&public_key_sig, public_key_sig_size);
           if (public_key_sig.size != public_key_sig_size) {
             fprintf(stderr, "Failed to read PlayerInfoAction::InitializeChat::public_key_sig\n");
             break;
@@ -757,19 +715,14 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         bool has_display_name = rb->ReadU8();
 
         if (has_display_name) {
-          String display_name;
-
-          display_name.data = memory_arena_push_type_count(trans_arena, char, 32767);
-          display_name.size = 32767;
-
-          display_name.size = rb->ReadString(&display_name);
+          String display_name = rb->ReadAllocString(*trans_arena);
         }
       }
 
       trans_arena->Revert(snapshot);
     }
   } break;
-  case PlayProtocol::PlayerInfoRemove: {
+  case ProtocolId::PlayerInfoRemove: {
     u64 player_count = 0;
 
     rb->ReadVarInt(&player_count);
@@ -783,9 +736,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       rb->ReadRawString(&uuid_string, 16);
       game->player_manager.RemovePlayer(uuid_string);
     }
-
   } break;
-  case PlayProtocol::TimeUpdate: {
+  case ProtocolId::TimeUpdate: {
     u64 world_age = rb->ReadU64();
     s64 time_tick = rb->ReadU64();
 
@@ -801,79 +753,121 @@ void PacketInterpreter::InterpretConfiguration(RingBuffer* rb, u64 pkt_id, size_
   MemoryArena* trans_arena = game->trans_arena;
   Connection* connection = &game->connection;
 
-  ConfigurationProtocol type = (ConfigurationProtocol)pkt_id;
+  using inbound::configuration::ProtocolId;
 
-  assert(type < ConfigurationProtocol::Count);
+  ProtocolId type = (ProtocolId)pkt_id;
+
+  assert(type < ProtocolId::Count);
 
 #if LOG_PACKET_ID
   printf("InterpetConfiguration: %lld\n", pkt_id);
 #endif
 
   switch (type) {
-  case ConfigurationProtocol::PluginMessage: {
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 1024);
-    sstr.size = 1024;
+  case ProtocolId::CookieRequest: {
+    String cookie_request = rb->ReadAllocString(*trans_arena);
 
-    size_t length = rb->ReadString(&sstr);
+    printf("ConfigurationProtocol::CookieRequest: %.*s\n", (int)cookie_request.size, cookie_request.data);
+  } break;
+  case ProtocolId::PluginMessage: {
+    String channel = rb->ReadAllocString(*trans_arena);
 
-    if (length > 0) {
-      printf("ConfigurationProtocol::PluginMessage on channel %.*s\n", (int)length, sstr.data);
+    if (channel.size > 0) {
+      printf("ConfigurationProtocol::PluginMessage on channel %.*s\n", (int)channel.size, channel.data);
     }
   } break;
-  case ConfigurationProtocol::Disconnect: {
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 65535);
-    sstr.size = 65535;
+  case ProtocolId::Disconnect: {
+    String reason = rb->ReadAllocString(*trans_arena);
 
-    size_t length = rb->ReadString(&sstr);
-
-    if (length > 0) {
-      printf("ConfigurationProtocol::Disconnect: %.*s\n", (int)length, sstr.data);
+    if (reason.size > 0) {
+      printf("ConfigurationProtocol::Disconnect: %.*s\n", (int)reason.size, reason.data);
     } else {
       printf("ConfigurationProtocol::Disconnect: No reason specified.\n");
     }
   } break;
-  case ConfigurationProtocol::Finish: {
+  case ProtocolId::Finish: {
     printf("LoginConfiguration::Finish: Transitioning to PlayProtocol.\n");
 
-    // Send AckFinish
-    connection->builder.Commit(connection->write_buffer, 0x02);
+    outbound::configuration::SendFinish(*connection);
     connection->protocol_state = ProtocolState::Play;
   } break;
-  case ConfigurationProtocol::KeepAlive: {
+  case ProtocolId::KeepAlive: {
     u64 alive_id = rb->ReadU64();
-    connection->builder.WriteU64(alive_id);
-    connection->builder.Commit(connection->write_buffer, 0x03);
-  } break;
-  case ConfigurationProtocol::Ping: {
-    u32 ping_id = rb->ReadU32();
-    connection->builder.WriteU32(ping_id);
-    connection->builder.Commit(connection->write_buffer, 0x04);
-  } break;
-  case ConfigurationProtocol::RegistryData: {
-    nbt::TagCompound* dimension_codec_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
 
-    if (!nbt::Parse(true, *rb, *trans_arena, dimension_codec_nbt)) {
-      fprintf(stderr, "ConfigurationProtocol::RegistryData: Failed to parse dimension codec nbt.\n");
-      exit(1);
+    outbound::configuration::SendKeepAlive(*connection, alive_id);
+  } break;
+  case ProtocolId::Ping: {
+    u32 ping_id = rb->ReadU32();
+
+    outbound::configuration::SendPong(*connection, ping_id);
+  } break;
+  case ProtocolId::RegistryData: {
+    // This registry type holds what kind of registry is being received. Biome, banner, dimensions, etc.
+    String registry_type = rb->ReadAllocString(*trans_arena);
+
+    u64 entry_count = 0;
+
+    rb->ReadVarInt(&entry_count);
+
+    printf("ConfigurationProtocol::RegistryData: Received data for %.*s with %d entries\n", (u32)registry_type.size,
+           registry_type.data, (s32)entry_count);
+
+    // We only care to process dimension data.
+    if (poly_strcmp(registry_type, POLY_STR("minecraft:dimension_type")) == 0) {
+      game->dimension_codec.Initialize(*game->perm_arena, entry_count);
+
+      for (u64 i = 0; i < entry_count; ++i) {
+        MemoryRevert reverter = trans_arena->GetReverter();
+        DimensionType* dimension_type = game->dimension_codec.types + i;
+
+        dimension_type->id = (s32)i;
+        dimension_type->name = rb->ReadAllocString(*game->perm_arena);
+
+        if (rb->ReadU8()) {
+          nbt::TagCompound* dimension_codec_nbt = memory_arena_push_type(trans_arena, nbt::TagCompound);
+
+          if (!nbt::Parse(true, *rb, *trans_arena, dimension_codec_nbt)) {
+            fprintf(stderr, "ConfigurationProtocol::RegistryData: Failed to parse dimension codec nbt.\n");
+            exit(1);
+          }
+
+          game->dimension_codec.ParseType(*game->perm_arena, *dimension_codec_nbt, *dimension_type);
+        } else {
+          // If we didn't receive data about this dimension then it is one of the core ones.
+          printf("Receiving default data about dim %d\n", (s32)i);
+          game->dimension_codec.ParseDefaultType(*game->perm_arena, i);
+        }
+      }
+
+      printf("ConfigurationProtocol::RegistryData: Received %u dimension types.\n", (u32)entry_count);
+    }
+  } break;
+  case ProtocolId::RemoveResourcePack: {
+    //
+  } break;
+  case ProtocolId::AddResourcePack: {
+    //
+  } break;
+  case ProtocolId::FeatureFlags: {
+    //
+  } break;
+  case ProtocolId::UpdateTags: {
+    //
+  } break;
+  case ProtocolId::KnownPacks: {
+    u64 pack_count = 0;
+
+    rb->ReadVarInt(&pack_count);
+
+    for (u64 i = 0; i < pack_count; ++i) {
+      String namespace_id = rb->ReadAllocString(*trans_arena);
+      String pack_id = rb->ReadAllocString(*trans_arena);
+      String version = rb->ReadAllocString(*trans_arena);
+
+      //
     }
 
-    game->dimension_codec.Parse(*game->perm_arena, *dimension_codec_nbt);
-    printf("ConfigurationProtocol::RegistryData: Received %u dimension types.\n",
-           (u32)game->dimension_codec.type_count);
-  } break;
-  case ConfigurationProtocol::RemoveResourcePack: {
-    //
-  } break;
-  case ConfigurationProtocol::AddResourcePack: {
-    //
-  } break;
-  case ConfigurationProtocol::FeatureFlags: {
-    //
-  } break;
-  case ConfigurationProtocol::UpdateTags: {
-    //
+    outbound::configuration::SendKnownPacks(*connection);
   } break;
   default: {
 
@@ -885,46 +879,44 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
   MemoryArena* trans_arena = game->trans_arena;
   Connection* connection = &game->connection;
 
-  LoginProtocol type = (LoginProtocol)pkt_id;
+  using inbound::login::ProtocolId;
 
-  assert(type < LoginProtocol::Count);
+  ProtocolId type = (ProtocolId)pkt_id;
+
+  assert(type < ProtocolId::Count);
 
 #if LOG_PACKET_ID
   printf("InterpetLogin: %lld\n", pkt_id);
 #endif
 
   switch (type) {
-  case LoginProtocol::Disconnect: {
-    String sstr;
-    sstr.data = memory_arena_push_type_count(trans_arena, char, 32767);
-    sstr.size = 32767;
+  case ProtocolId::Disconnect: {
+    String reason = rb->ReadAllocString(*trans_arena);
 
-    size_t length = rb->ReadString(&sstr);
-
-    if (length > 0) {
-      printf("LoginProtocol::Disconnect: %.*s\n", (int)length, sstr.data);
+    if (reason.size > 0) {
+      printf("LoginProtocol::Disconnect: %.*s\n", (int)reason.size, reason.data);
     }
 
     connection->Disconnect();
   } break;
-  case LoginProtocol::EncryptionRequest: {
+  case ProtocolId::EncryptionRequest: {
     printf("LoginProtocol::EncryptionRequest: online-mode=true (server.properties) is not yet implemented.\n");
     connection->Disconnect();
   } break;
-  case LoginProtocol::LoginSuccess: {
+  case ProtocolId::LoginSuccess: {
     printf("LoginProtocol::LoginSuccess: Transitioning to ConfigurationProtocol.\n");
 
-    // Send LoginAck
-    connection->builder.Commit(connection->write_buffer, 0x03);
+    outbound::login::SendAcknowledged(*connection);
     connection->protocol_state = ProtocolState::Configuration;
 
     u8 view_distance = 16;
 #ifdef _DEBUG
     view_distance = 3;
 #endif
-    connection->SendConfigClientInformation(view_distance, 0x7F, 1);
+
+    outbound::configuration::SendClientInformation(*connection, view_distance, 0x7F, 1);
   } break;
-  case LoginProtocol::SetCompression: {
+  case ProtocolId::SetCompression: {
     compression = true;
     connection->builder.flags &= ~(PacketBuilder::BuildFlag_OmitCompress);
   } break;
@@ -937,9 +929,11 @@ void PacketInterpreter::InterpretStatus(RingBuffer* rb, u64 pkt_id, size_t pkt_s
   MemoryArena* trans_arena = game->trans_arena;
   Connection* connection = &game->connection;
 
-  StatusProtocol type = (StatusProtocol)pkt_id;
+  using inbound::status::ProtocolId;
 
-  assert(type < StatusProtocol::Count);
+  ProtocolId type = (ProtocolId)pkt_id;
+
+  assert(type < ProtocolId::Count);
 
 #if LOG_PACKET_ID
   printf("InterpetStatus: %lld\n", pkt_id);

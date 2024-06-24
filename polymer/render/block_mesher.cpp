@@ -790,6 +790,14 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
+
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (below_id == 0) {
@@ -830,6 +838,14 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
+
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (fluid_below) {
@@ -876,6 +892,14 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
+
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (south_id == 0) {
@@ -916,6 +940,14 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
+
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (east_id == 0) {
@@ -956,6 +988,14 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
+
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 
   if (west_id == 0) {
@@ -996,6 +1036,14 @@ static void MeshFluid(BlockMesher& mesher, PushContext& context, BlockRegistry& 
     PushIndex(context, face->render_layer, tri);
     PushIndex(context, face->render_layer, tli);
     PushIndex(context, face->render_layer, bli);
+
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bri);
+
+    PushIndex(context, face->render_layer, tri);
+    PushIndex(context, face->render_layer, bli);
+    PushIndex(context, face->render_layer, tli);
   }
 }
 

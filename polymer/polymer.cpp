@@ -11,7 +11,7 @@
 
 namespace polymer {
 
-constexpr const char* kBlocksName = "blocks-1.20.4.json";
+constexpr const char* kBlocksName = "blocks-1.21.json";
 
 // Window surface width
 constexpr u32 kWidth = 1280;
@@ -137,9 +137,10 @@ int Polymer::Run(InputState* input) {
 
   connection->SetBlocking(false);
 
-  connection->SendHandshake(kProtocolVersion, args.server.data, args.server.size, args.server_port,
-                            ProtocolState::Login);
-  connection->SendLoginStart(args.username.data, args.username.size);
+  outbound::handshake::SendHandshake(*connection, kProtocolVersion, args.server.data, args.server.size,
+                                     args.server_port, ProtocolState::Login);
+
+  outbound::login::SendLoginStart(*connection, args.username.data, args.username.size);
 
   memcpy(game->player_manager.client_name, args.username.data, args.username.size);
   game->player_manager.client_name[args.username.size] = 0;

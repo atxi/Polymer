@@ -4,20 +4,18 @@
 #include <polymer/buffer.h>
 #include <polymer/math.h>
 #include <polymer/memory.h>
+#include <polymer/protocol.h>
 #include <polymer/types.h>
 
 namespace polymer {
 
 enum class ConnectResult { Success, ErrorSocket, ErrorAddrInfo, ErrorConnect };
-enum class ProtocolState { Handshake, Status, Login, Configuration, Play };
 
 #ifdef _WIN64
 using SocketType = long long;
 #else
 using SocketType = int;
 #endif
-
-struct PacketInterpreter;
 
 struct PacketBuilder {
   enum BuildFlag {
@@ -107,7 +105,7 @@ struct Connection {
 
   PacketBuilder builder;
 
-  PacketInterpreter* interpreter;
+  struct PacketInterpreter* interpreter;
 
   Connection(MemoryArena& arena);
 
@@ -116,20 +114,6 @@ struct Connection {
   void SetBlocking(bool blocking);
 
   TickResult Tick();
-
-  void SendHandshake(u32 version, const char* address, size_t address_size, u16 port, ProtocolState state_request);
-  void SendPingRequest();
-  void SendLoginStart(const char* username, size_t username_size);
-  void SendKeepAlive(u64 id);
-  void SendTeleportConfirm(u64 id);
-  void SendPlayerPositionAndRotation(const Vector3f& position, float yaw, float pitch, bool on_ground);
-  void SendChatMessage(const String& message);
-  void SendChatCommand(const String& message);
-
-  void SendConfigClientInformation(u8 view_distance, u8 skin_bitmask, u8 main_hand );
-
-  enum class ClientStatusAction { Respawn, Stats };
-  void SendClientStatus(ClientStatusAction action);
 };
 
 } // namespace polymer

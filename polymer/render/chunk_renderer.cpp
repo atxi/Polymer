@@ -298,7 +298,6 @@ void ChunkRenderer::CreatePipeline(MemoryArena& trans_arena, VkDevice device, Vk
 
   depth_stencil.depthWriteEnable = VK_FALSE;
   blend_attachment.blendEnable = VK_TRUE;
-  rasterizer.cullMode = VK_CULL_MODE_NONE;
 
   size_t alpha_index = (size_t)RenderLayer::Alpha;
   if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &alpha_pipeline) != VK_SUCCESS) {
