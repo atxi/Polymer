@@ -49,10 +49,13 @@ struct DimensionCodec {
   DimensionType* types;
   size_t type_count;
 
-  void Parse(MemoryArena& arena, nbt::TagCompound& nbt);
-  void ParseType(MemoryArena& arena, nbt::TagCompound& nbt, DimensionType* type);
+  void Initialize(MemoryArena& arena, size_t size);
 
-  DimensionType* GetDimensionType(const String& identifier);
+  void ParseType(MemoryArena& arena, nbt::TagCompound& nbt, DimensionType& type);
+  void ParseDefaultType(MemoryArena& arena, size_t index);
+
+  DimensionType* GetDimensionTypeById(s32 identifier);
+  DimensionType* GetDimensionTypeByName(const String& identifier);
 };
 
 } // namespace world

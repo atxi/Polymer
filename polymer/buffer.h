@@ -37,6 +37,9 @@ struct RingBuffer {
   bool ReadVarInt(u64* value);
   float ReadFloat();
   double ReadDouble();
+  // Allocates a string from the arena according to the length received from the buffer.
+  String ReadAllocString(MemoryArena& arena);
+  String ReadAllocRawString(MemoryArena& arena, size_t size);
   size_t ReadString(String* str);
   void ReadRawString(String* str, size_t size);
 

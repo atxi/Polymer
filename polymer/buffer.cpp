@@ -363,6 +363,40 @@ double RingBuffer::ReadDouble() {
   return result;
 }
 
+String RingBuffer::ReadAllocString(MemoryArena& arena) {
+  String result;
+  u64 length = 0;
+  size_t offset_snapshot = this->read_offset;
+
+  if (!this->ReadVarInt(&length)) {
+    this->read_offset = offset_snapshot;
+    return 0;
+  }
+
+  result.data = (char*)arena.Allocate(length);
+  result.size = length;
+
+  size_t remaining = this->size - this->read_offset;
+
+  if (remaining > length) {
+    remaining = (size_t)length;
+  }
+
+  for (size_t i = 0; i < remaining; ++i) {
+    result.data[i] = this->data[this->read_offset++];
+  }
+
+  if (length - remaining > 0) {
+    this->read_offset = 0;
+
+    for (size_t i = 0; i < (size_t)length - remaining; ++i) {
+      result.data[i + remaining] = this->data[this->read_offset++];
+    }
+  }
+
+  return result;
+}
+
 size_t RingBuffer::ReadString(String* str) {
   u64 length = 0;
   size_t offset_snapshot = this->read_offset;
@@ -396,6 +430,17 @@ size_t RingBuffer::ReadString(String* str) {
   }
 
   return (size_t)length;
+}
+
+String RingBuffer::ReadAllocRawString(MemoryArena& arena, size_t size) {
+  String result = {};
+
+  result.data = (char*)arena.Allocate(size);
+  result.size = size;
+
+  ReadRawString(&result, size);
+
+  return result;
 }
 
 void RingBuffer::ReadRawString(String* str, size_t size) {

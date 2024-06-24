@@ -240,7 +240,8 @@ void GameState::ProcessMovement(float dt, InputState* input) {
       float yaw = Degrees(camera.yaw) - 90.0f;
       float pitch = -Degrees(camera.pitch);
 
-      connection.SendPlayerPositionAndRotation(camera.position - Vector3f(0, 1.62f, 0.0f), yaw, pitch, false);
+      outbound::play::SendPlayerPositionAndRotation(connection, camera.position - Vector3f(0, 1.62f, 0.0f), yaw, pitch,
+                                                    false);
       position_sync_timer = 0.0f;
     }
   }

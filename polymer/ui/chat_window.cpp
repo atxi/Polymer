@@ -114,10 +114,10 @@ void ChatWindow::SendInput(Connection& connection) {
 
   if (input.message[0] == '/') {
     if (input.length > 1) {
-      connection.SendChatCommand(String(utf8.data + 1, utf8.size - 1));
+      outbound::play::SendChatCommand(connection, String(utf8.data + 1, utf8.size - 1));
     }
   } else {
-    connection.SendChatMessage(utf8);
+    outbound::play::SendChatMessage(connection, utf8);
   }
 
   input_cursor_index = 0;
