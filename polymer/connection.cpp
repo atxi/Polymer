@@ -63,27 +63,30 @@ Connection::TickResult Connection::Tick() {
     }
   }
 
-  int bytes_recv = recv(fd, (char*)rb->data + rb->write_offset, (u32)rb->GetFreeSize(), 0);
+  int bytes_recv = 1;
+  while (bytes_recv > 0) {
+    bytes_recv = recv(fd, (char*)rb->data + rb->write_offset, (u32)rb->GetFreeSize(), 0);
 
-  if (bytes_recv == 0) {
-    this->connected = false;
-    return TickResult::ConnectionClosed;
-  } else if (bytes_recv < 0) {
-    int err = GetLastErrorCode();
+    if (bytes_recv == 0) {
+      this->connected = false;
+      return TickResult::ConnectionClosed;
+    } else if (bytes_recv < 0) {
+      int err = GetLastErrorCode();
 
-    if (err == POLY_EWOULDBLOCK) {
-      return TickResult::Success;
+      if (err == POLY_EWOULDBLOCK) {
+        return TickResult::Success;
+      }
+
+      fprintf(stderr, "Unexpected socket error: %d\n", err);
+      this->Disconnect();
+      return TickResult::ConnectionError;
+    } else if (bytes_recv > 0) {
+      rb->write_offset = (rb->write_offset + bytes_recv) % rb->size;
+
+      assert(interpreter);
+
+      if (interpreter->Interpret() == 0) break;
     }
-
-    fprintf(stderr, "Unexpected socket error: %d\n", err);
-    this->Disconnect();
-    return TickResult::ConnectionError;
-  } else if (bytes_recv > 0) {
-    rb->write_offset = (rb->write_offset + bytes_recv) % rb->size;
-
-    assert(interpreter);
-
-    interpreter->Interpret();
   }
 
   return TickResult::Success;

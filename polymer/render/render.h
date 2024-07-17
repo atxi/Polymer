@@ -65,6 +65,7 @@ struct DescriptorSet {
 
 struct VulkanRenderer {
   Platform* platform = nullptr;
+  RenderConfig render_config;
 
   MemoryArena* trans_arena = nullptr;
   MemoryArena* perm_arena = nullptr;
@@ -109,7 +110,7 @@ struct VulkanRenderer {
   VmaAllocation staging_allocs[2048];
   size_t staging_buffer_count = 0;
 
-  bool Initialize(PolymerWindow window);
+  bool Initialize(PolymerWindow window, RenderConfig cfg);
   void RecreateSwapchain();
   bool BeginFrame();
 

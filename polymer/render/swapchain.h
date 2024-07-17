@@ -1,6 +1,7 @@
 #ifndef POLYMER_RENDER_H_
 #define POLYMER_RENDER_H_
 
+#include <polymer/render/render_config.h>
 #include <polymer/render/vulkan.h>
 #include <polymer/types.h>
 
@@ -30,6 +31,8 @@ struct FramebufferSet {
 };
 
 struct Swapchain {
+  RenderConfig* render_cfg = nullptr;
+
   VmaAllocator allocator;
   VkSwapchainKHR swapchain;
   VkDevice device;

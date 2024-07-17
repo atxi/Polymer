@@ -82,7 +82,13 @@ int Polymer::Run(InputState* input) {
 
   this->window = platform.WindowCreate(kWidth, kHeight);
 
-  renderer.Initialize(window);
+  render::RenderConfig render_config = {};
+
+  render_config.desired_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+  // Enable this for vsync
+  // render_config.desired_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+
+  renderer.Initialize(window, render_config);
 
   {
     auto start = std::chrono::high_resolution_clock::now();

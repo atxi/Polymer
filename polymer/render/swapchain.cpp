@@ -248,21 +248,28 @@ void Swapchain::Cleanup() {
 }
 
 VkPresentModeKHR Swapchain::ChooseSwapPresentMode(VkPresentModeKHR* present_modes, u32 present_mode_count) {
-  VkPresentModeKHR best_mode = VK_PRESENT_MODE_FIFO_KHR;
+  VkPresentModeKHR desired_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+  // Fall back to VK_PRESENT_MODE_FIFO_KHR since it's required to exist.
+  // We change this to immediate if that's found but desired isn't.
+  VkPresentModeKHR fallback_mode = VK_PRESENT_MODE_FIFO_KHR;
+
+  if (render_cfg) {
+    desired_mode = render_cfg->desired_present_mode;
+  }
 
   for (u32 i = 0; i < present_mode_count; ++i) {
     VkPresentModeKHR mode = present_modes[i];
 
-    if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+    if (mode == desired_mode) {
       return mode;
     }
 
     if (mode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
-      best_mode = mode;
+      fallback_mode = mode;
     }
   }
 
-  return best_mode;
+  return fallback_mode;
 }
 
 VkSurfaceFormatKHR Swapchain::ChooseSwapSurfaceFormat(VkPhysicalDevice physical_device, VkSurfaceFormatKHR* formats,
