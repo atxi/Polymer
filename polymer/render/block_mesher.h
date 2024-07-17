@@ -17,11 +17,13 @@ struct BlockRegistry;
 namespace render {
 
 struct ChunkBuildQueue {
+  bool dirty = false;
   size_t count;
   world::ChunkCoord data[1024];
 
   inline void Enqueue(s32 chunk_x, s32 chunk_z) {
     data[count++] = {chunk_x, chunk_z};
+    dirty = true;
   }
 
   inline void Dequeue(s32 chunk_x, s32 chunk_z) {
@@ -45,6 +47,7 @@ struct ChunkBuildQueue {
 
   inline void Clear() {
     count = 0;
+    dirty = false;
   }
 };
 

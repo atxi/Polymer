@@ -248,11 +248,12 @@ void GameState::ProcessMovement(float dt, InputState* input) {
 }
 
 void GameState::ProcessBuildQueue() {
+  if (!build_queue.dirty) return;
+
   for (size_t i = 0; i < build_queue.count;) {
     s32 chunk_x = build_queue.data[i].x;
     s32 chunk_z = build_queue.data[i].z;
 
-    // TODO: Put a cap on the distance away so it's not constantly grabbing the neighbors of the outer unmeshed chunks.
     render::ChunkBuildContext ctx(chunk_x, chunk_z);
 
     if (ctx.GetNeighbors(&world)) {
@@ -262,6 +263,8 @@ void GameState::ProcessBuildQueue() {
       ++i;
     }
   }
+
+  build_queue.dirty = false;
 }
 
 void GameState::OnWindowMouseMove(s32 dx, s32 dy) {
@@ -318,10 +321,7 @@ void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 
 }
 
 void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx) {
-  // TODO:
-  // This should probably be done on a separate thread or in a compute shader ideally.
-  // Either an index buffer or face merging should be done to reduce buffer size.
-
+  // TODO: This should probably be done on a separate thread
   u32 x_index = world.GetChunkCacheIndex(ctx->chunk_x);
   u32 z_index = world.GetChunkCacheIndex(ctx->chunk_z);
 

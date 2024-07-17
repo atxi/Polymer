@@ -16,7 +16,8 @@ struct PacketInterpreter {
 
   PacketInterpreter(GameState* game);
 
-  void Interpret();
+  // Returns the packet interpreted count.
+  size_t Interpret();
 
 private:
   void InterpretStatus(RingBuffer* rb, u64 pkt_id, size_t pkt_size);

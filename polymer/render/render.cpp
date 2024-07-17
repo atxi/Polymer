@@ -69,7 +69,8 @@ void UniformBuffer::Set(size_t frame, void* data, size_t data_size) {
   vmaUnmapMemory(allocator, uniform_allocations[frame]);
 }
 
-bool VulkanRenderer::Initialize(PolymerWindow window) {
+bool VulkanRenderer::Initialize(PolymerWindow window, RenderConfig cfg) {
+  this->render_config = cfg;
   this->hwnd = window;
   this->extension_request = platform->GetExtensionRequest();
   this->render_paused = false;
@@ -85,6 +86,7 @@ bool VulkanRenderer::Initialize(PolymerWindow window) {
   }
 
   swapchain.swapchain = VK_NULL_HANDLE;
+  swapchain.render_cfg = &this->render_config;
 
   if (!CreateInstance()) {
     return false;
@@ -166,8 +168,8 @@ bool VulkanRenderer::Initialize(PolymerWindow window) {
   return true;
 }
 
-VulkanTexture* VulkanRenderer::CreateTexture(TextureConfig cfg, u32 width, u32 height, VkImageType image_type, VkImageViewType view_type,
-                                             VkFormat format, VkImageTiling tiling) {
+VulkanTexture* VulkanRenderer::CreateTexture(TextureConfig cfg, u32 width, u32 height, VkImageType image_type,
+                                             VkImageViewType view_type, VkFormat format, VkImageTiling tiling) {
   VulkanTexture* result = texture_manager.CreateTexture(*perm_arena);
 
   if (result == nullptr) {

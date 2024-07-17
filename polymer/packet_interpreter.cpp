@@ -940,10 +940,12 @@ void PacketInterpreter::InterpretStatus(RingBuffer* rb, u64 pkt_id, size_t pkt_s
 #endif
 }
 
-void PacketInterpreter::Interpret() {
+size_t PacketInterpreter::Interpret() {
   MemoryArena* trans_arena = game->trans_arena;
   Connection* connection = &game->connection;
   RingBuffer* rb = &connection->read_buffer;
+
+  size_t processed_count = 0;
 
   do {
     size_t offset_snapshot = rb->read_offset;
@@ -1018,7 +1020,10 @@ void PacketInterpreter::Interpret() {
 
     // Always skip to the next packet in case some data wasn't read.
     rb->read_offset = target_offset;
+    ++processed_count;
   } while (rb->read_offset != rb->write_offset);
+
+  return processed_count;
 }
 
 } // namespace polymer
