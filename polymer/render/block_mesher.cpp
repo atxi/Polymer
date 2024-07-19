@@ -2,6 +2,7 @@
 
 #include <polymer/math.h>
 #include <polymer/world/block.h>
+#include <polymer/world/world.h>
 
 #include <assert.h>
 #include <math.h>
@@ -20,6 +21,43 @@ using polymer::world::RenderableFace;
 
 namespace polymer {
 namespace render {
+
+bool ChunkBuildContext::IsBuildable() const {
+  return (east_section->info->loaded && east_section->info->x == chunk_x + 1 && east_section->info->z == chunk_z) &&
+         (west_section->info->loaded && west_section->info->x == chunk_x - 1 && west_section->info->z == chunk_z) &&
+         (north_section->info->loaded && north_section->info->z == chunk_z - 1 && north_section->info->x == chunk_x) &&
+         (south_section->info->loaded && south_section->info->z == chunk_z + 1 && south_section->info->x == chunk_x) &&
+         (south_east_section->info->loaded && south_east_section->info->z == chunk_z + 1 &&
+          south_east_section->info->x == chunk_x + 1) &&
+         (south_west_section->info->loaded && south_west_section->info->z == chunk_z + 1 &&
+          south_west_section->info->x == chunk_x - 1) &&
+         (north_east_section->info->loaded && north_east_section->info->z == chunk_z - 1 &&
+          north_east_section->info->x == chunk_x + 1) &&
+         (north_west_section->info->loaded && north_west_section->info->z == chunk_z - 1 &&
+          north_west_section->info->x == chunk_x - 1);
+}
+
+bool ChunkBuildContext::GetNeighbors(world::World* world) {
+  x_index = world->GetChunkCacheIndex(chunk_x);
+  z_index = world->GetChunkCacheIndex(chunk_z);
+
+  u32 xeast_index = world->GetChunkCacheIndex(chunk_x + 1);
+  u32 xwest_index = world->GetChunkCacheIndex(chunk_x - 1);
+  u32 znorth_index = world->GetChunkCacheIndex(chunk_z - 1);
+  u32 zsouth_index = world->GetChunkCacheIndex(chunk_z + 1);
+
+  section = &world->chunks[z_index][x_index];
+  east_section = &world->chunks[z_index][xeast_index];
+  west_section = &world->chunks[z_index][xwest_index];
+  north_section = &world->chunks[znorth_index][x_index];
+  south_section = &world->chunks[zsouth_index][x_index];
+  south_east_section = &world->chunks[zsouth_index][xeast_index];
+  south_west_section = &world->chunks[zsouth_index][xwest_index];
+  north_east_section = &world->chunks[znorth_index][xeast_index];
+  north_west_section = &world->chunks[znorth_index][xwest_index];
+
+  return IsBuildable();
+}
 
 struct BorderedChunk {
   constexpr static size_t kElementCount = 18 * 18 * 18;
@@ -1054,8 +1092,7 @@ struct FluidTextures {
   asset::BlockTextureDescriptor lava_flow_texture;
 };
 
-ChunkVertexData BlockMesher::CreateMesh(asset::AssetSystem& assets, BlockRegistry& block_registry,
-                                        ChunkBuildContext* ctx, s32 chunk_y) {
+ChunkVertexData BlockMesher::CreateMesh(ChunkBuildContext* ctx, s32 chunk_y) {
   ChunkVertexData vertex_data;
 
   s32 chunk_x = ctx->chunk_x;
@@ -1148,8 +1185,10 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       for (s64 x = 0; x < 16; ++x) {
         size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + (x + 1));
 
-        bordered_chunk->blocks[index] = section->chunks[chunk_y].blocks[y][z][x];
-        bordered_chunk->lightmap[index] = section->chunks[chunk_y].lightmap[y][z][x];
+        if (!section->chunks[chunk_y]) continue;
+
+        bordered_chunk->blocks[index] = section->chunks[chunk_y]->blocks[y][z][x];
+        bordered_chunk->lightmap[index] = section->chunks[chunk_y]->lightmap[y][z][x];
       }
     }
   }
@@ -1159,8 +1198,10 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     for (s64 z = 0; z < 16; ++z) {
       size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 0);
 
-      bordered_chunk->blocks[index] = west_section->chunks[chunk_y].blocks[y][z][15];
-      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y].lightmap[y][z][15];
+      if (!west_section->chunks[chunk_y]) continue;
+
+      bordered_chunk->blocks[index] = west_section->chunks[chunk_y]->blocks[y][z][15];
+      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y]->lightmap[y][z][15];
     }
   }
 
@@ -1169,8 +1210,10 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     for (s64 z = 0; z < 16; ++z) {
       size_t index = (size_t)((y + 1) * 18 * 18 + (z + 1) * 18 + 17);
 
-      bordered_chunk->blocks[index] = east_section->chunks[chunk_y].blocks[y][z][0];
-      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y].lightmap[y][z][0];
+      if (!east_section->chunks[chunk_y]) continue;
+
+      bordered_chunk->blocks[index] = east_section->chunks[chunk_y]->blocks[y][z][0];
+      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y]->lightmap[y][z][0];
     }
   }
 
@@ -1179,8 +1222,10 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     for (s64 x = 0; x < 16; ++x) {
       size_t index = (size_t)((y + 1) * 18 * 18 + (x + 1));
 
-      bordered_chunk->blocks[index] = north_section->chunks[chunk_y].blocks[y][15][x];
-      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y].lightmap[y][15][x];
+      if (!north_section->chunks[chunk_y]) continue;
+
+      bordered_chunk->blocks[index] = north_section->chunks[chunk_y]->blocks[y][15][x];
+      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y]->lightmap[y][15][x];
     }
   }
 
@@ -1189,8 +1234,10 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     for (s64 x = 0; x < 16; ++x) {
       size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + (x + 1));
 
-      bordered_chunk->blocks[index] = south_section->chunks[chunk_y].blocks[y][0][x];
-      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y].lightmap[y][0][x];
+      if (!south_section->chunks[chunk_y]) continue;
+
+      bordered_chunk->blocks[index] = south_section->chunks[chunk_y]->blocks[y][0][x];
+      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y]->lightmap[y][0][x];
     }
   }
 
@@ -1198,32 +1245,40 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
   for (size_t y = 0; y < 16; ++y) {
     size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + 17);
 
-    bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y].blocks[y][0][0];
-    bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y].lightmap[y][0][0];
+    if (!south_east_section->chunks[chunk_y]) continue;
+
+    bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y]->blocks[y][0][0];
+    bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y]->lightmap[y][0][0];
   }
 
   // North-east corner
   for (size_t y = 0; y < 16; ++y) {
     size_t index = (size_t)((y + 1) * 18 * 18 + 0 * 18 + 17);
 
-    bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y].blocks[y][15][0];
-    bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y].lightmap[y][15][0];
+    if (!north_east_section->chunks[chunk_y]) continue;
+
+    bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y]->blocks[y][15][0];
+    bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y]->lightmap[y][15][0];
   }
 
   // South-west corner
   for (size_t y = 0; y < 16; ++y) {
     size_t index = (size_t)((y + 1) * 18 * 18 + 17 * 18 + 0);
 
-    bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y].blocks[y][0][15];
-    bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y].lightmap[y][0][15];
+    if (!south_west_section->chunks[chunk_y]) continue;
+
+    bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y]->blocks[y][0][15];
+    bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y]->lightmap[y][0][15];
   }
 
   // North-west corner
   for (size_t y = 0; y < 16; ++y) {
     size_t index = (size_t)((y + 1) * 18 * 18 + 0 * 18 + 0);
 
-    bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y].blocks[y][15][15];
-    bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y].lightmap[y][15][15];
+    if (!north_west_section->chunks[chunk_y]) continue;
+
+    bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y]->blocks[y][15][15];
+    bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y]->lightmap[y][15][15];
   }
 
   if (chunk_y < kChunkColumnCount) {
@@ -1232,8 +1287,10 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       for (s64 x = 0; x < 16; ++x) {
         size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + (x + 1));
 
-        bordered_chunk->blocks[index] = section->chunks[chunk_y + 1].blocks[0][z][x];
-        bordered_chunk->lightmap[index] = section->chunks[chunk_y + 1].lightmap[0][z][x];
+        if (!section->chunks[chunk_y + 1]) continue;
+
+        bordered_chunk->blocks[index] = section->chunks[chunk_y + 1]->blocks[0][z][x];
+        bordered_chunk->lightmap[index] = section->chunks[chunk_y + 1]->lightmap[0][z][x];
       }
     }
 
@@ -1241,64 +1298,80 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     for (s64 x = 0; x < 16; ++x) {
       size_t index = (size_t)(17 * 18 * 18 + 17 * 18 + (x + 1));
 
-      bordered_chunk->blocks[index] = south_section->chunks[chunk_y + 1].blocks[0][0][x];
-      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y + 1].lightmap[0][0][x];
+      if (!south_section->chunks[chunk_y + 1]) continue;
+
+      bordered_chunk->blocks[index] = south_section->chunks[chunk_y + 1]->blocks[0][0][x];
+      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y + 1]->lightmap[0][0][x];
     }
 
     // Load above-north
     for (s64 x = 0; x < 16; ++x) {
       size_t index = (size_t)(17 * 18 * 18 + 0 * 18 + (x + 1));
 
-      bordered_chunk->blocks[index] = north_section->chunks[chunk_y + 1].blocks[0][15][x];
-      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y + 1].lightmap[0][15][x];
+      if (!north_section->chunks[chunk_y + 1]) continue;
+
+      bordered_chunk->blocks[index] = north_section->chunks[chunk_y + 1]->blocks[0][15][x];
+      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y + 1]->lightmap[0][15][x];
     }
 
     // Load above-east
     for (s64 z = 0; z < 16; ++z) {
       size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + 17);
 
-      bordered_chunk->blocks[index] = east_section->chunks[chunk_y + 1].blocks[0][z][0];
-      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y + 1].lightmap[0][z][0];
+      if (!east_section->chunks[chunk_y + 1]) continue;
+
+      bordered_chunk->blocks[index] = east_section->chunks[chunk_y + 1]->blocks[0][z][0];
+      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y + 1]->lightmap[0][z][0];
     }
 
     // Load above-west
     for (s64 z = 0; z < 16; ++z) {
       size_t index = (size_t)(17 * 18 * 18 + (z + 1) * 18 + 0);
 
-      bordered_chunk->blocks[index] = west_section->chunks[chunk_y + 1].blocks[0][z][15];
-      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y + 1].lightmap[0][z][15];
+      if (!west_section->chunks[chunk_y + 1]) continue;
+
+      bordered_chunk->blocks[index] = west_section->chunks[chunk_y + 1]->blocks[0][z][15];
+      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y + 1]->lightmap[0][z][15];
     }
 
     {
       // Load above-south-east
       size_t index = (size_t)(17 * 18 * 18 + 17 * 18 + 17);
 
-      bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y + 1].blocks[0][0][0];
-      bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y + 1].lightmap[0][0][0];
+      if (south_east_section->chunks[chunk_y + 1]) {
+        bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y + 1]->blocks[0][0][0];
+        bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y + 1]->lightmap[0][0][0];
+      }
     }
 
     {
+      // Load above-south-west
       size_t index = (size_t)(17 * 18 * 18 + 17 * 18 + 0);
 
-      // Load above-south-west
-      bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y + 1].blocks[0][0][15];
-      bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y + 1].lightmap[0][0][15];
+      if (south_west_section->chunks[chunk_y + 1]) {
+        bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y + 1]->blocks[0][0][15];
+        bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y + 1]->lightmap[0][0][15];
+      }
     }
 
     {
+      // Load above-north-east
       size_t index = (size_t)(17 * 18 * 18 + 0 * 18 + 17);
 
-      // Load above-north-east
-      bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y + 1].blocks[0][15][0];
-      bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y + 1].lightmap[0][15][0];
+      if (north_east_section->chunks[chunk_y + 1]) {
+        bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y + 1]->blocks[0][15][0];
+        bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y + 1]->lightmap[0][15][0];
+      }
     }
 
     {
+      // Load above-north-west
       size_t index = (size_t)(17 * 18 * 18 + 0 * 18 + 0);
 
-      // Load above-north-west
-      bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y + 1].blocks[0][15][15];
-      bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y + 1].lightmap[0][15][15];
+      if (north_west_section->chunks[chunk_y + 1]) {
+        bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y + 1]->blocks[0][15][15];
+        bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y + 1]->lightmap[0][15][15];
+      }
     }
   }
 
@@ -1308,8 +1381,10 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
       for (s64 x = 0; x < 16; ++x) {
         size_t index = (size_t)((z + 1) * 18 + (x + 1));
 
-        bordered_chunk->blocks[index] = section->chunks[chunk_y - 1].blocks[15][z][x];
-        bordered_chunk->lightmap[index] = section->chunks[chunk_y - 1].lightmap[15][z][x];
+        if (!section->chunks[chunk_y - 1]) continue;
+
+        bordered_chunk->blocks[index] = section->chunks[chunk_y - 1]->blocks[15][z][x];
+        bordered_chunk->lightmap[index] = section->chunks[chunk_y - 1]->lightmap[15][z][x];
       }
     }
 
@@ -1317,64 +1392,80 @@ BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s
     for (s64 x = 0; x < 16; ++x) {
       size_t index = (size_t)(0 * 18 * 18 + 17 * 18 + (x + 1));
 
-      bordered_chunk->blocks[index] = south_section->chunks[chunk_y - 1].blocks[15][0][x];
-      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y - 1].lightmap[15][0][x];
+      if (!south_section->chunks[chunk_y - 1]) continue;
+
+      bordered_chunk->blocks[index] = south_section->chunks[chunk_y - 1]->blocks[15][0][x];
+      bordered_chunk->lightmap[index] = south_section->chunks[chunk_y - 1]->lightmap[15][0][x];
     }
 
     // Load below-north
     for (s64 x = 0; x < 16; ++x) {
       size_t index = (size_t)(0 * 18 * 18 + 0 * 18 + (x + 1));
 
-      bordered_chunk->blocks[index] = north_section->chunks[chunk_y - 1].blocks[15][15][x];
-      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y - 1].lightmap[15][15][x];
+      if (!north_section->chunks[chunk_y - 1]) continue;
+
+      bordered_chunk->blocks[index] = north_section->chunks[chunk_y - 1]->blocks[15][15][x];
+      bordered_chunk->lightmap[index] = north_section->chunks[chunk_y - 1]->lightmap[15][15][x];
     }
 
     // Load below-east
     for (s64 z = 0; z < 16; ++z) {
       size_t index = (size_t)(0 * 18 * 18 + (z + 1) * 18 + 17);
 
-      bordered_chunk->blocks[index] = east_section->chunks[chunk_y - 1].blocks[15][z][0];
-      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y - 1].lightmap[15][z][0];
+      if (!east_section->chunks[chunk_y - 1]) continue;
+
+      bordered_chunk->blocks[index] = east_section->chunks[chunk_y - 1]->blocks[15][z][0];
+      bordered_chunk->lightmap[index] = east_section->chunks[chunk_y - 1]->lightmap[15][z][0];
     }
 
     // Load below-west
     for (s64 z = 0; z < 16; ++z) {
       size_t index = (size_t)(0 * 18 * 18 + (z + 1) * 18 + 0);
 
-      bordered_chunk->blocks[index] = west_section->chunks[chunk_y - 1].blocks[15][z][15];
-      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y - 1].lightmap[15][z][15];
+      if (!west_section->chunks[chunk_y - 1]) continue;
+
+      bordered_chunk->blocks[index] = west_section->chunks[chunk_y - 1]->blocks[15][z][15];
+      bordered_chunk->lightmap[index] = west_section->chunks[chunk_y - 1]->lightmap[15][z][15];
     }
 
     {
+      // Load below-south-east
       size_t index = (size_t)(0 * 18 * 18 + 17 * 18 + 17);
 
-      // Load below-south-east
-      bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y - 1].blocks[15][0][0];
-      bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y - 1].lightmap[15][0][0];
+      if (south_east_section->chunks[chunk_y - 1]) {
+        bordered_chunk->blocks[index] = south_east_section->chunks[chunk_y - 1]->blocks[15][0][0];
+        bordered_chunk->lightmap[index] = south_east_section->chunks[chunk_y - 1]->lightmap[15][0][0];
+      }
     }
 
     {
+      // Load below-south-west
       size_t index = (size_t)(0 * 18 * 18 + 17 * 18 + 0);
 
-      // Load below-south-west
-      bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y - 1].blocks[15][0][15];
-      bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y - 1].lightmap[15][0][15];
+      if (south_west_section->chunks[chunk_y - 1]) {
+        bordered_chunk->blocks[index] = south_west_section->chunks[chunk_y - 1]->blocks[15][0][15];
+        bordered_chunk->lightmap[index] = south_west_section->chunks[chunk_y - 1]->lightmap[15][0][15];
+      }
     }
 
     {
+      // Load below-north-east
       size_t index = (size_t)(0 * 18 * 18 + 0 * 18 + 17);
 
-      // Load below-north-east
-      bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y - 1].blocks[15][15][0];
-      bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y - 1].lightmap[15][15][0];
+      if (north_east_section->chunks[chunk_y - 1]) {
+        bordered_chunk->blocks[index] = north_east_section->chunks[chunk_y - 1]->blocks[15][15][0];
+        bordered_chunk->lightmap[index] = north_east_section->chunks[chunk_y - 1]->lightmap[15][15][0];
+      }
     }
 
     {
+      // Load below-north-west
       size_t index = (size_t)(0 * 18 * 18 + 0 * 18 + 0);
 
-      // Load below-north-west
-      bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y - 1].blocks[15][15][15];
-      bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y - 1].lightmap[15][15][15];
+      if (north_west_section->chunks[chunk_y - 1]) {
+        bordered_chunk->blocks[index] = north_west_section->chunks[chunk_y - 1]->blocks[15][15][15];
+        bordered_chunk->lightmap[index] = north_west_section->chunks[chunk_y - 1]->lightmap[15][15][15];
+      }
     }
   }
 

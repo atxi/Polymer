@@ -227,7 +227,7 @@ static PolymerWindow Win32WindowCreate(int width, int height) {
   return (PolymerWindow)hwnd;
 }
 
-static bool Win32WindowCreateSurface(PolymerWindow window, VkSurfaceKHR* surface) {
+static bool Win32WindowCreateSurface(PolymerWindow window, void* surface) {
   HWND hwnd = (HWND)window;
 
   VkWin32SurfaceCreateInfoKHR surface_info = {};
@@ -235,7 +235,8 @@ static bool Win32WindowCreateSurface(PolymerWindow window, VkSurfaceKHR* surface
   surface_info.hinstance = GetModuleHandle(nullptr);
   surface_info.hwnd = hwnd;
 
-  return vkCreateWin32SurfaceKHR(g_application->renderer.instance, &surface_info, nullptr, surface) == VK_SUCCESS;
+  return vkCreateWin32SurfaceKHR(g_application->renderer.instance, &surface_info, nullptr, (VkSurfaceKHR*)surface) ==
+         VK_SUCCESS;
 }
 
 static IntRect Win32WindowGetRect(PolymerWindow window) {

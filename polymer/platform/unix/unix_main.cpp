@@ -198,8 +198,9 @@ static PolymerWindow UnixWindowCreate(int width, int height) {
   return (PolymerWindow)window;
 }
 
-static bool UnixWindowCreateSurface(PolymerWindow window, VkSurfaceKHR* surface) {
-  VkResult result = glfwCreateWindowSurface(g_application->renderer.instance, (GLFWwindow*)window, nullptr, surface);
+static bool UnixWindowCreateSurface(PolymerWindow window, void* surface) {
+  VkResult result =
+      glfwCreateWindowSurface(g_application->renderer.instance, (GLFWwindow*)window, nullptr, (VkSurfaceKHR*)surface);
 
   return result == VK_SUCCESS;
 }

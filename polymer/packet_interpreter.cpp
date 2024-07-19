@@ -42,7 +42,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     // TODO: Measure
   } break;
   case ProtocolId::ChunkBatchFinished: {
-    outbound::play::SendChunkBatchReceived(*connection, 8.0f);
+    outbound::play::SendChunkBatchReceived(*connection, 16.0f);
   } break;
   case ProtocolId::SystemChatMessage: {
     MemoryRevert revert = trans_arena->GetReverter();
@@ -347,8 +347,14 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     ChunkSection* section = &game->world.chunks[z_index][x_index];
     ChunkSectionInfo* section_info = &game->world.chunk_infos[z_index][x_index];
 
-    section_info->x = chunk_x;
-    section_info->z = chunk_z;
+    for (size_t i = 0; i < kChunkColumnCount; ++i) {
+      if (section->chunks[i]) {
+        game->world.chunk_pool.Free(section->chunks[i]);
+        section->chunks[i] = nullptr;
+      }
+    }
+
+    section_info->ClearQueued();
     section_info->bitmask = 0;
 
     if (data_size > 0) {
@@ -390,7 +396,9 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           }
         }
 
-        u32* chunk = (u32*)section->chunks[chunk_y].blocks;
+        section->chunks[chunk_y] = game->world.chunk_pool.Allocate();
+
+        u32* chunk = (u32*)section->chunks[chunk_y]->blocks;
 
         u64 data_array_length;
         rb->ReadVarInt(&data_array_length);
@@ -521,7 +529,9 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     }
 
     for (size_t i = 0; i < kChunkColumnCount; ++i) {
-      memset(section->chunks[i].lightmap, 0, sizeof(section->chunks[i].lightmap));
+      if (section->chunks[i]) {
+        memset(section->chunks[i]->lightmap, 0, sizeof(section->chunks[i]->lightmap));
+      }
     }
 
     u64 skylight_array_count = 0;
@@ -545,10 +555,13 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       for (size_t index = 0; index < skylight_length; ++index) {
         size_t block_data_index = index * 2;
-        u8* lightmap = (u8*)section->chunks[chunk_y].lightmap;
 
-        lightmap[block_data_index] = scratch_str.data[index] & 0x0F;
-        lightmap[block_data_index + 1] = (scratch_str.data[index] & 0xF0) >> 4;
+        if (section->chunks[chunk_y]) {
+          u8* lightmap = (u8*)section->chunks[chunk_y]->lightmap;
+
+          lightmap[block_data_index] = scratch_str.data[index] & 0x0F;
+          lightmap[block_data_index + 1] = (scratch_str.data[index] & 0xF0) >> 4;
+        }
       }
     }
 
@@ -569,11 +582,14 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
       for (size_t index = 0; index < blocklight_length; ++index) {
         size_t block_data_index = index * 2;
-        u8* lightmap = (u8*)section->chunks[chunk_y].lightmap;
 
-        // Merge the block lightmap into the packed chunk lightmap
-        lightmap[block_data_index] |= (scratch_str.data[index] & 0x0F) << 4;
-        lightmap[block_data_index + 1] |= (scratch_str.data[index] & 0xF0);
+        if (section->chunks[chunk_y]) {
+          u8* lightmap = (u8*)section->chunks[chunk_y]->lightmap;
+
+          // Merge the block lightmap into the packed chunk lightmap
+          lightmap[block_data_index] |= (scratch_str.data[index] & 0x0F) << 4;
+          lightmap[block_data_index + 1] |= (scratch_str.data[index] & 0xF0);
+        }
       }
     }
   } break;
@@ -742,7 +758,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     s64 time_tick = rb->ReadU64();
 
     // TODO: Fixed time with negative values
-    game->world_tick = (u32)time_tick % 24000;
+    game->world.world_tick = (u32)time_tick % 24000;
   } break;
   default:
     break;

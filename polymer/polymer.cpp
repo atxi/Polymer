@@ -109,7 +109,7 @@ int Polymer::Run(InputState* input) {
     game->font_renderer.glyph_page_texture = game->assets.glyph_page_texture;
     game->font_renderer.glyph_size_table = game->assets.glyph_size_table;
 
-    game->block_mesher.mapping.Initialize(game->block_registry);
+    game->world.block_mesher.mapping.Initialize(game->block_registry);
   }
 
   game->chunk_renderer.CreateLayoutSet(renderer, renderer.device);
@@ -188,7 +188,7 @@ int Polymer::Run(InputState* input) {
       debug.Write("fps: %d", fps);
       debug.Write("(%.02f, %.02f, %.02f)", game->camera.position.x, game->camera.position.y, game->camera.position.z);
 
-      debug.Write("world tick: %u", game->world_tick);
+      debug.Write("world tick: %u", game->world.world_tick);
 
 #if DISPLAY_PERF_STATS
       debug.Write("chunks rendered: %u", game->chunk_renderer.stats.chunk_render_count);
@@ -214,7 +214,7 @@ int Polymer::Run(InputState* input) {
   }
 
   vkDeviceWaitIdle(renderer.device);
-  game->FreeMeshes();
+  game->world.FreeMeshes();
 
   game->font_renderer.Shutdown(renderer.device);
   game->chunk_renderer.Shutdown(renderer.device);

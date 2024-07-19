@@ -1,12 +1,12 @@
 #pragma once
 
 #include <polymer/math.h>
-#include <polymer/memory.h>
-#include <polymer/render/vulkan.h>
 
 namespace polymer {
 
 using PolymerWindow = void*;
+
+struct MemoryArena;
 
 struct ExtensionRequest {
   const char** extensions;
@@ -22,7 +22,7 @@ struct ExtensionRequest {
 using PlatformGetPlatformName = const char* (*)();
 
 using PlatformWindowCreate = PolymerWindow (*)(int width, int height);
-using PlatformWindowCreateSurface = bool (*)(PolymerWindow window, VkSurfaceKHR* surface);
+using PlatformWindowCreateSurface = bool (*)(PolymerWindow window, void* surface);
 using PlatformWindowGetRect = IntRect (*)(PolymerWindow window);
 using PlatformWindowPump = void (*)(PolymerWindow window);
 
