@@ -341,8 +341,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
 
     size_t new_offset = (rb->read_offset + data_size) % rb->size;
 
-    u32 x_index = game->world.GetChunkCacheIndex(chunk_x);
-    u32 z_index = game->world.GetChunkCacheIndex(chunk_z);
+    u32 x_index = world::GetChunkCacheIndex(chunk_x);
+    u32 z_index = world::GetChunkCacheIndex(chunk_z);
 
     ChunkSection* section = &game->world.chunks[z_index][x_index];
     ChunkSectionInfo* section_info = &game->world.chunk_infos[z_index][x_index];
@@ -396,33 +396,38 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
           }
         }
 
-        section->chunks[chunk_y] = game->world.chunk_pool.Allocate();
-
-        u32* chunk = (u32*)section->chunks[chunk_y]->blocks;
-
         u64 data_array_length;
         rb->ReadVarInt(&data_array_length);
 
         u64 id_mask = (1LL << bpb) - 1;
         u64 block_index = 0;
 
-        // Fill out entire chunk with the one block palette
-        if (data_array_length == 0 && bpb == 0) {
-          for (int i = 0; i < 16 * 16 * 16; ++i) {
-            chunk[i] = (u32)single_palette;
+        u32* chunk = nullptr;
+        
+        if (block_count > 0) {
+          section->chunks[chunk_y] = game->world.chunk_pool.Allocate();
+          chunk = (u32*)section->chunks[chunk_y]->blocks;
+
+          // Fill out entire chunk with the one block palette
+          if (data_array_length == 0 && bpb == 0) {
+            for (int i = 0; i < 16 * 16 * 16; ++i) {
+              chunk[i] = (u32)single_palette;
+            }
           }
         }
 
         for (u64 i = 0; i < data_array_length; ++i) {
           u64 data_value = rb->ReadU64();
 
-          for (u64 j = 0; j < 64 / bpb; ++j) {
-            size_t palette_index = (size_t)((data_value >> (j * bpb)) & id_mask);
+          if (block_count > 0) {
+            for (u64 j = 0; j < 64 / bpb; ++j) {
+              size_t palette_index = (size_t)((data_value >> (j * bpb)) & id_mask);
 
-            if (palette) {
-              chunk[block_index++] = (u32)palette[palette_index];
-            } else {
-              chunk[block_index++] = (u32)palette_index;
+              if (palette) {
+                chunk[block_index++] = (u32)palette[palette_index];
+              } else {
+                chunk[block_index++] = (u32)palette_index;
+              }
             }
           }
         }

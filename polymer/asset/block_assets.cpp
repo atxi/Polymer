@@ -300,8 +300,10 @@ bool BlockAssetLoader::Load(render::VulkanRenderer& renderer, ZipArchive& archiv
 
   render::TextureConfig cfg;
 
+  cfg.enable_mipping = true;
+
   for (size_t i = 0; i < texture_count; ++i) {
-    cfg.enable_mipping = parser.texture_mipping_configs[i];
+    cfg.brighten_mipping = parser.texture_mipping_configs[i];
 
     renderer.PushArrayTexture(trans_arena, push_state, parser.GetTexture(i), i, cfg);
   }

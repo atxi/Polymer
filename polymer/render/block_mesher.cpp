@@ -38,13 +38,13 @@ bool ChunkBuildContext::IsBuildable() const {
 }
 
 bool ChunkBuildContext::GetNeighbors(world::World* world) {
-  x_index = world->GetChunkCacheIndex(chunk_x);
-  z_index = world->GetChunkCacheIndex(chunk_z);
+  x_index = world::GetChunkCacheIndex(chunk_x);
+  z_index = world::GetChunkCacheIndex(chunk_z);
 
-  u32 xeast_index = world->GetChunkCacheIndex(chunk_x + 1);
-  u32 xwest_index = world->GetChunkCacheIndex(chunk_x - 1);
-  u32 znorth_index = world->GetChunkCacheIndex(chunk_z - 1);
-  u32 zsouth_index = world->GetChunkCacheIndex(chunk_z + 1);
+  u32 xeast_index = world::GetChunkCacheIndex(chunk_x + 1);
+  u32 xwest_index = world::GetChunkCacheIndex(chunk_x - 1);
+  u32 znorth_index = world::GetChunkCacheIndex(chunk_z - 1);
+  u32 zsouth_index = world::GetChunkCacheIndex(chunk_z + 1);
 
   section = &world->chunks[z_index][x_index];
   east_section = &world->chunks[z_index][xeast_index];
@@ -1168,7 +1168,9 @@ ChunkVertexData BlockMesher::CreateMesh(ChunkBuildContext* ctx, s32 chunk_y) {
 BorderedChunk* CreateBorderedChunk(MemoryArena& arena, ChunkBuildContext* ctx, s32 chunk_y) {
   BorderedChunk* bordered_chunk = memory_arena_push_type(&arena, BorderedChunk);
 
-  memset(bordered_chunk, 0, sizeof(BorderedChunk));
+  memset(bordered_chunk->blocks, 0, sizeof(bordered_chunk->blocks));
+  // Default lightmap to fully bright skylight so we can ignore completely empty chunks surrounding it.
+  memset(bordered_chunk->lightmap, 0x0F, sizeof(bordered_chunk->lightmap));
 
   ChunkSection* section = ctx->section;
   ChunkSection* east_section = ctx->east_section;
