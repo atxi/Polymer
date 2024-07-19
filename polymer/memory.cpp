@@ -1,7 +1,6 @@
 #include <polymer/memory.h>
 
 #include <assert.h>
-#include <polymer/platform/platform.h>
 #include <stdio.h>
 #include <stdlib.h>
 

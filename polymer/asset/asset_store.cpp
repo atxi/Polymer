@@ -1,6 +1,6 @@
 #include "asset_store.h"
 
-#include <polymer/render/util.h>
+#include <polymer/render/render_util.h>
 
 #include <stdarg.h>
 #include <stdio.h>

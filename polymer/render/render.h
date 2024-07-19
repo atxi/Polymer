@@ -2,9 +2,9 @@
 #define POLYMER_RENDER_RENDER_H_
 
 #include <polymer/render/render_pass.h>
+#include <polymer/render/render_util.h>
 #include <polymer/render/swapchain.h>
 #include <polymer/render/texture.h>
-#include <polymer/render/util.h>
 
 #include <polymer/buffer.h>
 #include <polymer/math.h>

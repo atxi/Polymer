@@ -76,24 +76,8 @@ void OnSwapchainCleanup(render::Swapchain& swapchain, void* user_data) {
 
 GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, MemoryArena* trans_arena)
     : perm_arena(perm_arena), trans_arena(trans_arena), connection(*perm_arena), renderer(renderer),
-      block_registry(*perm_arena), block_mesher(*trans_arena), chat_window(*trans_arena) {
-  for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
-    for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
-      ChunkSection* section = &world.chunks[chunk_z][chunk_x];
-      ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
-
-      section->info = section_info;
-
-      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
-
-      for (u32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        for (s32 i = 0; i < kRenderLayerCount; ++i) {
-          meshes[chunk_y].meshes[i].vertex_count = 0;
-        }
-      }
-    }
-  }
-
+      block_registry(*perm_arena), assets(), world(*trans_arena, *renderer, assets, block_registry),
+      chat_window(*trans_arena) {
   camera.near = 0.1f;
   camera.far = 1024.0f;
   camera.fov = Radians(80.0f);
@@ -101,7 +85,6 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
   position_sync_timer = 0.0f;
   animation_accumulator = 0.0f;
   time_accumulator = 0.0f;
-  world_tick = 0;
 
   renderer->swapchain.RegisterCreateCallback(this, OnSwapchainCreate);
   renderer->swapchain.RegisterCleanupCallback(this, OnSwapchainCleanup);
@@ -110,7 +93,7 @@ GameState::GameState(render::VulkanRenderer* renderer, MemoryArena* perm_arena, 
 void GameState::Update(float dt, InputState* input) {
   ProcessMovement(dt, input);
 
-  float sunlight = GetSunlight();
+  float sunlight = world.GetSunlight();
 
   VkClearValue clears[] = {{0.71f * sunlight, 0.816f * sunlight, 1.0f * sunlight, 1.0f}, {1.0f, 0}};
 
@@ -144,12 +127,12 @@ void GameState::Update(float dt, InputState* input) {
   if (time_accumulator >= 1.0f / 20.0f) {
     time_accumulator -= 1.0f / 20.0f;
 
-    if (world_tick++ >= 24000) {
-      world_tick = 0;
+    if (world.world_tick++ >= 24000) {
+      world.world_tick = 0;
     }
   }
 
-  ProcessBuildQueue();
+  world.Update(dt);
 
   chunk_renderer.Draw(command_buffer, renderer->current_frame, world, camera, animation_accumulator, sunlight);
 }
@@ -247,26 +230,6 @@ void GameState::ProcessMovement(float dt, InputState* input) {
   }
 }
 
-void GameState::ProcessBuildQueue() {
-  if (!build_queue.dirty) return;
-
-  for (size_t i = 0; i < build_queue.count;) {
-    s32 chunk_x = build_queue.data[i].x;
-    s32 chunk_z = build_queue.data[i].z;
-
-    render::ChunkBuildContext ctx(chunk_x, chunk_z);
-
-    if (ctx.GetNeighbors(&world)) {
-      BuildChunkMesh(&ctx);
-      build_queue.data[i] = build_queue.data[--build_queue.count];
-    } else {
-      ++i;
-    }
-  }
-
-  build_queue.dirty = false;
-}
-
 void GameState::OnWindowMouseMove(s32 dx, s32 dy) {
   const float kSensitivity = 0.005f;
   constexpr float kMaxPitch = Radians(89.0f);
@@ -287,261 +250,20 @@ void GameState::OnPlayerPositionAndLook(const Vector3f& position, float yaw, flo
   camera.pitch = -Radians(pitch);
 }
 
-void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z) {
-  u8* arena_snapshot = trans_arena->current;
-
-  render::ChunkVertexData vertex_data = block_mesher.CreateMesh(assets, block_registry, ctx, chunk_y);
-
-  ChunkMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
-
-  for (s32 i = 0; i < kRenderLayerCount; ++i) {
-    if (meshes[chunk_y].meshes[i].vertex_count > 0) {
-      // TODO: This should be done in a better way
-      renderer->WaitForIdle();
-      renderer->FreeMesh(&meshes[chunk_y].meshes[i]);
-      meshes[chunk_y].meshes[i].vertex_count = 0;
-    }
-
-    if (vertex_data.vertex_count[i] > 0) {
-      assert(vertex_data.vertex_count[i] <= 0xFFFFFFFF);
-
-      const size_t data_size = sizeof(render::ChunkVertex) * vertex_data.vertex_count[i];
-
-      meshes[chunk_y].meshes[i].vertex_count = (u32)vertex_data.vertex_count[i];
-      meshes[chunk_y].meshes[i] =
-          renderer->AllocateMesh(vertex_data.vertices[i], data_size, vertex_data.vertex_count[i],
-                                 vertex_data.indices[i], vertex_data.index_count[i]);
-    }
-  }
-
-  // Reset the arena to where it was before this allocation. The data was already sent to the GPU so it's no longer
-  // useful.
-  trans_arena->current = arena_snapshot;
-  block_mesher.Reset();
-}
-
-void GameState::BuildChunkMesh(render::ChunkBuildContext* ctx) {
-  // TODO: This should probably be done on a separate thread
-  u32 x_index = world.GetChunkCacheIndex(ctx->chunk_x);
-  u32 z_index = world.GetChunkCacheIndex(ctx->chunk_z);
-
-  ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
-
-  renderer->BeginMeshAllocation();
-
-  ChunkMesh* meshes = world.meshes[ctx->z_index][ctx->x_index];
-
-  for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-    if (!(section_info->bitmask & (1 << chunk_y))) {
-      for (s32 i = 0; i < kRenderLayerCount; ++i) {
-        meshes[chunk_y].meshes[i].vertex_count = 0;
-      }
-
-      continue;
-    }
-
-    BuildChunkMesh(ctx, ctx->chunk_x, chunk_y, ctx->chunk_z);
-  }
-
-  renderer->EndMeshAllocation();
-}
-
 void GameState::OnDimensionChange() {
-  renderer->WaitForIdle();
-
-  for (s32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
-    for (s32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
-      ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
-      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
-
-      section_info->loaded = false;
-      section_info->bitmask = 0;
-
-      for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        ChunkMesh* mesh = meshes + chunk_y;
-
-        for (s32 i = 0; i < kRenderLayerCount; ++i) {
-          if (mesh->meshes[i].vertex_count > 0) {
-            renderer->FreeMesh(&mesh->meshes[i]);
-            mesh->meshes[i].vertex_count = 0;
-          }
-        }
-      }
-    }
-  }
-
-  build_queue.Clear();
+  world.OnDimensionChange();
 }
 
 void GameState::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
-  u32 x_index = world.GetChunkCacheIndex(chunk_x);
-  u32 z_index = world.GetChunkCacheIndex(chunk_z);
-
-  ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
-  ChunkMesh* meshes = world.meshes[z_index][x_index];
-
-  if (section_info->loaded) {
-    renderer->WaitForIdle();
-
-    build_queue.Dequeue(section_info->x, section_info->z);
-
-    // Force clear any existing meshes
-    for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-      ChunkMesh* mesh = meshes + chunk_y;
-
-      for (s32 i = 0; i < kRenderLayerCount; ++i) {
-        if (mesh->meshes[i].vertex_count > 0) {
-          renderer->FreeMesh(&mesh->meshes[i]);
-          mesh->meshes[i].vertex_count = 0;
-        }
-      }
-    }
-  }
-
-  section_info->loaded = true;
-  section_info->x = chunk_x;
-  section_info->z = chunk_z;
-
-  build_queue.Enqueue(chunk_x, chunk_z);
+  world.OnChunkLoad(chunk_x, chunk_z);
 }
 
 void GameState::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
-  u32 x_index = world.GetChunkCacheIndex(chunk_x);
-  u32 z_index = world.GetChunkCacheIndex(chunk_z);
-  ChunkSection* section = &world.chunks[z_index][x_index];
-  ChunkSectionInfo* section_info = &world.chunk_infos[z_index][x_index];
-
-  build_queue.Dequeue(chunk_x, chunk_z);
-
-  // It's possible to receive an unload packet after receiving a new chunk that would take this chunk's position in
-  // the cache, so it needs to be checked before anything is changed in the cache.
-  if (section_info->x != chunk_x || section_info->z != chunk_z) {
-    return;
-  }
-
-  section_info->loaded = false;
-
-  for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-    if (section_info->bitmask & (1 << chunk_y)) {
-      memset(section->chunks[chunk_y].blocks, 0, sizeof(section->chunks[chunk_y].blocks));
-    }
-  }
-
-  section_info->bitmask = 0;
-  ChunkMesh* meshes = world.meshes[z_index][x_index];
-
-  renderer->WaitForIdle();
-
-  for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-    for (s32 i = 0; i < kRenderLayerCount; ++i) {
-      if (meshes[chunk_y].meshes[i].vertex_count > 0) {
-        renderer->FreeMesh(&meshes[chunk_y].meshes[i]);
-        meshes[chunk_y].meshes[i].vertex_count = 0;
-      }
-    }
-  }
+  world.OnChunkUnload(chunk_x, chunk_z);
 }
 
 void GameState::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
-  s32 chunk_x = (s32)floorf(x / 16.0f);
-  s32 chunk_z = (s32)floorf(z / 16.0f);
-  s32 chunk_y = (s32)floorf(y / 16.0f) + 4;
-
-  ChunkSection* section = &world.chunks[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
-
-  s32 relative_x = x % 16;
-  s32 relative_y = y % 16;
-  s32 relative_z = z % 16;
-
-  if (relative_x < 0) {
-    relative_x += 16;
-  }
-
-  if (relative_y < 0) {
-    relative_y += 16;
-  }
-
-  if (relative_z < 0) {
-    relative_z += 16;
-  }
-
-  u32 old_bid = section->chunks[chunk_y].blocks[relative_y][relative_z][relative_x];
-
-  section->chunks[chunk_y].blocks[relative_y][relative_z][relative_x] = (u32)new_bid;
-
-  if (new_bid != 0) {
-    ChunkSectionInfo* section_info =
-        &world.chunk_infos[world.GetChunkCacheIndex(chunk_z)][world.GetChunkCacheIndex(chunk_x)];
-    section_info->bitmask |= (1 << chunk_y);
-  }
-
-  // TODO: Block changes should be batched to update a chunk once in the frame when it changes
-  renderer->BeginMeshAllocation();
-
-  render::ChunkBuildContext ctx(chunk_x, chunk_z);
-  ImmediateRebuild(&ctx, chunk_y);
-
-  if (relative_x == 0) {
-    // Rebuild west
-    render::ChunkBuildContext nearby_ctx(chunk_x - 1, chunk_z);
-    ImmediateRebuild(&nearby_ctx, chunk_y);
-  } else if (relative_x == 15) {
-    // Rebuild east
-    render::ChunkBuildContext nearby_ctx(chunk_x + 1, chunk_z);
-    ImmediateRebuild(&nearby_ctx, chunk_y);
-  }
-
-  if (relative_z == 0) {
-    // Rebuild north
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z - 1);
-    ImmediateRebuild(&nearby_ctx, chunk_y);
-  } else if (relative_z == 15) {
-    // Rebuild south
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z + 1);
-    ImmediateRebuild(&nearby_ctx, chunk_y);
-  }
-
-  if (relative_y == 0 && chunk_y > 0) {
-    // Rebuild below
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z);
-    ImmediateRebuild(&nearby_ctx, chunk_y - 1);
-  } else if (relative_y == 15 && chunk_y < 15) {
-    // Rebuild above
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z);
-    ImmediateRebuild(&nearby_ctx, chunk_y + 1);
-  }
-
-  renderer->EndMeshAllocation();
-}
-
-void GameState::ImmediateRebuild(render::ChunkBuildContext* ctx, s32 chunk_y) {
-  s32 chunk_x = ctx->chunk_x;
-  s32 chunk_z = ctx->chunk_z;
-
-  if (build_queue.IsInQueue(chunk_x, chunk_z)) return;
-  // It should always have neighbors if it's not in the build queue, but sanity check anyway.
-  if (!ctx->GetNeighbors(&world)) return;
-
-  BuildChunkMesh(ctx, chunk_x, chunk_y, chunk_z);
-}
-
-void GameState::FreeMeshes() {
-  for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
-    for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
-      ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
-
-      for (u32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-        ChunkMesh* mesh = meshes + chunk_y;
-
-        for (s32 i = 0; i < kRenderLayerCount; ++i) {
-          if (mesh->meshes[i].vertex_count > 0) {
-            renderer->FreeMesh(&mesh->meshes[i]);
-            mesh->meshes[i].vertex_count = 0;
-          }
-        }
-      }
-    }
-  }
+  world.OnBlockChange(x, y, z, new_bid);
 }
 
 void PlayerManager::AddPlayer(const String& name, const String& uuid, u8 ping, u8 gamemode) {

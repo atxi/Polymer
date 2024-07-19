@@ -3,53 +3,20 @@
 
 #include <polymer/asset/asset_system.h>
 #include <polymer/memory.h>
+#include <polymer/render/chunk_renderer.h>
 #include <polymer/types.h>
-#include <polymer/world/world.h>
 
 namespace polymer {
 
 namespace world {
 
 struct BlockRegistry;
+struct ChunkSection;
+struct World;
 
 } // namespace world
 
 namespace render {
-
-struct ChunkBuildQueue {
-  bool dirty = false;
-  size_t count;
-  world::ChunkCoord data[1024];
-
-  inline void Enqueue(s32 chunk_x, s32 chunk_z) {
-    data[count++] = {chunk_x, chunk_z};
-    dirty = true;
-  }
-
-  inline void Dequeue(s32 chunk_x, s32 chunk_z) {
-    for (size_t i = 0; i < count; ++i) {
-      if (data[i].x == chunk_x && data[i].z == chunk_z) {
-        data[i] = data[--count];
-        return;
-      }
-    }
-  }
-
-  inline bool IsInQueue(s32 chunk_x, s32 chunk_z) {
-    for (size_t i = 0; i < count; ++i) {
-      if (data[i].x == chunk_x && data[i].z == chunk_z) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  inline void Clear() {
-    count = 0;
-    dirty = false;
-  }
-};
 
 struct ChunkBuildContext {
   s32 chunk_x;
@@ -70,44 +37,8 @@ struct ChunkBuildContext {
 
   ChunkBuildContext(s32 chunk_x, s32 chunk_z) : chunk_x(chunk_x), chunk_z(chunk_z) {}
 
-  bool IsBuildable() {
-    return (east_section->info->loaded && east_section->info->x == chunk_x + 1 && east_section->info->z == chunk_z) &&
-           (west_section->info->loaded && west_section->info->x == chunk_x - 1 && west_section->info->z == chunk_z) &&
-           (north_section->info->loaded && north_section->info->z == chunk_z - 1 &&
-            north_section->info->x == chunk_x) &&
-           (south_section->info->loaded && south_section->info->z == chunk_z + 1 &&
-            south_section->info->x == chunk_x) &&
-           (south_east_section->info->loaded && south_east_section->info->z == chunk_z + 1 &&
-            south_east_section->info->x == chunk_x + 1) &&
-           (south_west_section->info->loaded && south_west_section->info->z == chunk_z + 1 &&
-            south_west_section->info->x == chunk_x - 1) &&
-           (north_east_section->info->loaded && north_east_section->info->z == chunk_z - 1 &&
-            north_east_section->info->x == chunk_x + 1) &&
-           (north_west_section->info->loaded && north_west_section->info->z == chunk_z - 1 &&
-            north_west_section->info->x == chunk_x - 1);
-  }
-
-  bool GetNeighbors(world::World* world) {
-    x_index = world->GetChunkCacheIndex(chunk_x);
-    z_index = world->GetChunkCacheIndex(chunk_z);
-
-    u32 xeast_index = world->GetChunkCacheIndex(chunk_x + 1);
-    u32 xwest_index = world->GetChunkCacheIndex(chunk_x - 1);
-    u32 znorth_index = world->GetChunkCacheIndex(chunk_z - 1);
-    u32 zsouth_index = world->GetChunkCacheIndex(chunk_z + 1);
-
-    section = &world->chunks[z_index][x_index];
-    east_section = &world->chunks[z_index][xeast_index];
-    west_section = &world->chunks[z_index][xwest_index];
-    north_section = &world->chunks[znorth_index][x_index];
-    south_section = &world->chunks[zsouth_index][x_index];
-    south_east_section = &world->chunks[zsouth_index][xeast_index];
-    south_west_section = &world->chunks[zsouth_index][xwest_index];
-    north_east_section = &world->chunks[znorth_index][xeast_index];
-    north_west_section = &world->chunks[znorth_index][xwest_index];
-
-    return IsBuildable();
-  }
+  bool IsBuildable() const;
+  bool GetNeighbors(world::World* world);
 };
 
 struct ChunkVertexData {
@@ -172,7 +103,17 @@ private:
 };
 
 struct BlockMesher {
-  BlockMesher(MemoryArena& trans_arena) : trans_arena(trans_arena) {
+  MemoryArena& trans_arena;
+  asset::AssetSystem& assets;
+  world::BlockRegistry& block_registry;
+
+  MemoryArena vertex_arenas[render::kRenderLayerCount];
+  MemoryArena index_arenas[render::kRenderLayerCount];
+
+  BlockMesherMapping mapping;
+
+  BlockMesher(MemoryArena& trans_arena, asset::AssetSystem& assets, world::BlockRegistry& block_registry)
+      : trans_arena(trans_arena), assets(assets), block_registry(block_registry) {
     for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
       vertex_arenas[i] = CreateArena(Megabytes(16));
       index_arenas[i] = CreateArena(Megabytes(4));
@@ -193,14 +134,7 @@ struct BlockMesher {
     }
   }
 
-  MemoryArena& trans_arena;
-  MemoryArena vertex_arenas[render::kRenderLayerCount];
-  MemoryArena index_arenas[render::kRenderLayerCount];
-
-  BlockMesherMapping mapping;
-
-  ChunkVertexData CreateMesh(asset::AssetSystem& assets, world::BlockRegistry& block_registry, ChunkBuildContext* ctx,
-                             s32 chunk_y);
+  ChunkVertexData CreateMesh(ChunkBuildContext* ctx, s32 chunk_y);
 };
 
 } // namespace render
