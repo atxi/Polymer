@@ -522,6 +522,8 @@ void ChunkRenderer::Draw(VkCommandBuffer command_buffer, size_t current_frame, w
 
   for (s32 chunk_z = 0; chunk_z < (s32)world::kChunkCacheSize; ++chunk_z) {
     for (s32 chunk_x = 0; chunk_x < (s32)world::kChunkCacheSize; ++chunk_x) {
+      if (!world.occupy_set.HasChunk(chunk_x, chunk_z)) continue;
+
       world::ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
 
       if (!section_info->loaded) {

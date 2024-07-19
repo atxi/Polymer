@@ -34,6 +34,7 @@ void World::Update(float dt) {
 
     if (ctx.GetNeighbors(this)) {
       BuildChunkMesh(&ctx);
+      ctx.section->info->ClearQueued();
       build_queue.data[i] = build_queue.data[--build_queue.count];
     } else {
       ++i;
@@ -181,6 +182,7 @@ void World::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
   section_info->ClearQueued();
   section_info->loaded = false;
   section_info->bitmask = 0;
+  occupy_set.ClearChunk(chunk_x, chunk_z);
 
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (section->chunks[chunk_y]) {
@@ -228,6 +230,7 @@ void World::OnDimensionChange() {
     }
   }
 
+  occupy_set.Clear();
   build_queue.Clear();
 }
 
@@ -260,15 +263,12 @@ void World::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 chun
 }
 
 void World::EnqueueChunk(render::ChunkBuildContext* ctx, s32 chunk_y) {
-  s32 chunk_x = ctx->x_index;
-  s32 chunk_z = ctx->z_index;
-
-  ChunkSectionInfo* section_info = &chunk_infos[chunk_z][chunk_x];
-
   if (!ctx->GetNeighbors(this)) return;
 
+  ChunkSectionInfo* section_info = &chunk_infos[ctx->z_index][ctx->x_index];
+
   if (!section_info->IsQueued()) {
-    build_queue.Enqueue(chunk_x, chunk_z);
+    build_queue.Enqueue(ctx->chunk_x, ctx->chunk_z);
   }
 
   section_info->SetQueued(chunk_y);
@@ -293,6 +293,7 @@ void World::BuildChunkMesh(render::ChunkBuildContext* ctx) {
 
     if (section_info->IsQueued(chunk_y)) {
       BuildChunkMesh(ctx, ctx->chunk_x, chunk_y, ctx->chunk_z);
+      occupy_set.SetChunk(ctx->chunk_x, ctx->chunk_z);
     }
   }
 
