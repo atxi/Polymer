@@ -38,17 +38,22 @@ void OnSwapchainCreate(render::Swapchain& swapchain, void* user_data) {
   VkAttachmentDescription color_attachment = {};
 
   color_attachment.format = swapchain.format;
-  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+  color_attachment.samples = swapchain.multisample.samples;
   color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
   color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
   color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
   color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+  if (swapchain.multisample.samples & VK_SAMPLE_COUNT_1_BIT) {
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  }
 
   VkAttachmentDescription depth_attachment = {};
   depth_attachment.format = VK_FORMAT_D32_SFLOAT;
-  depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+  depth_attachment.samples = swapchain.multisample.samples;
   depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
   depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
   depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -56,7 +61,18 @@ void OnSwapchainCreate(render::Swapchain& swapchain, void* user_data) {
   depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-  gamestate->render_pass.CreateSimple(swapchain, color_attachment, depth_attachment);
+  VkAttachmentDescription color_attachment_resolve = {};
+
+  color_attachment_resolve.format = swapchain.format;
+  color_attachment_resolve.samples = VK_SAMPLE_COUNT_1_BIT;
+  color_attachment_resolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  color_attachment_resolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+  gamestate->render_pass.CreateSimple(swapchain, color_attachment, depth_attachment, color_attachment_resolve);
 
   gamestate->font_renderer.render_pass = &gamestate->render_pass;
   gamestate->chunk_renderer.render_pass = &gamestate->render_pass;
