@@ -7,7 +7,8 @@ namespace polymer {
 namespace render {
 
 struct RenderConfig {
-  VkPresentModeKHR desired_present_mode;
+  VkPresentModeKHR desired_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+  VkSampleCountFlagBits desired_msaa_samples = VK_SAMPLE_COUNT_4_BIT;
 };
 
 } // namespace render

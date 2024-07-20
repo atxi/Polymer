@@ -10,11 +10,11 @@
 namespace polymer {
 namespace render {
 
-void Swapchain::Create(MemoryArena& trans_arena, VkPhysicalDevice physical_device, VkDevice device,
-                       VkSurfaceKHR surface, VkExtent2D extent, QueueFamilyIndices& indices) {
+void Swapchain::InitializeFormat(MemoryArena& trans_arena, VkPhysicalDevice physical_device, VkDevice device,
+                                 VkSurfaceKHR surface) {
   this->device = device;
 
-  SwapChainSupportDetails swapchain_support = QuerySwapChainSupport(trans_arena, physical_device, surface);
+  swapchain_support = QuerySwapChainSupport(trans_arena, physical_device, surface);
 
   if (swapchain_support.format_count == 0) {
     fprintf(stderr, "Failed to initialize swapchain. No formats supported.\n");
@@ -22,10 +22,8 @@ void Swapchain::Create(MemoryArena& trans_arena, VkPhysicalDevice physical_devic
     exit(1);
   }
 
-  VkSurfaceFormatKHR surface_format =
-      ChooseSwapSurfaceFormat(physical_device, swapchain_support.formats, swapchain_support.format_count);
-  VkPresentModeKHR present_mode =
-      ChooseSwapPresentMode(swapchain_support.present_modes, swapchain_support.present_mode_count);
+  surface_format = ChooseSwapSurfaceFormat(physical_device, swapchain_support.formats, swapchain_support.format_count);
+  present_mode = ChooseSwapPresentMode(swapchain_support.present_modes, swapchain_support.present_mode_count);
 
   VkFormatProperties format_properties;
   vkGetPhysicalDeviceFormatProperties(physical_device, surface_format.format, &format_properties);
@@ -37,6 +35,11 @@ void Swapchain::Create(MemoryArena& trans_arena, VkPhysicalDevice physical_devic
     printf("Chose surface format without support for linear mipmap filtering.\n");
     fflush(stdout);
   }
+}
+
+void Swapchain::Create(MemoryArena& trans_arena, VkPhysicalDevice physical_device, VkDevice device,
+                       VkSurfaceKHR surface, VkExtent2D extent, QueueFamilyIndices& indices) {
+  InitializeFormat(trans_arena, physical_device, device, surface);
 
   if (swapchain_support.capabilities.currentExtent.width != UINT32_MAX) {
     extent = swapchain_support.capabilities.currentExtent;
@@ -136,7 +139,7 @@ void Swapchain::Create(MemoryArena& trans_arena, VkPhysicalDevice physical_devic
     }
   }
 
-  CreateDepthBuffer();
+  CreateViewBuffers();
 
   this->image_count = image_count;
 }
@@ -153,12 +156,18 @@ FramebufferSet Swapchain::CreateFramebuffers(VkRenderPass render_pass) {
   FramebufferSet set = {};
 
   for (u32 i = 0; i < image_count; i++) {
-    VkImageView attachments[] = {image_views[i], depth_image_view};
+    VkImageView attachments[] = {multisample.color_image_view, depth_image_view, image_views[i]};
+    u32 attachment_count = polymer_array_count(attachments);
+
+    if (multisample.samples & VK_SAMPLE_COUNT_1_BIT) {
+      attachments[0] = image_views[i];
+      attachment_count--;
+    }
 
     VkFramebufferCreateInfo framebuffer_info = {};
     framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebuffer_info.renderPass = render_pass;
-    framebuffer_info.attachmentCount = polymer_array_count(attachments);
+    framebuffer_info.attachmentCount = attachment_count;
     framebuffer_info.pAttachments = attachments;
     framebuffer_info.width = extent.width;
     framebuffer_info.height = extent.height;
@@ -174,7 +183,7 @@ FramebufferSet Swapchain::CreateFramebuffers(VkRenderPass render_pass) {
   return set;
 }
 
-void Swapchain::CreateDepthBuffer() {
+void Swapchain::CreateViewBuffers() {
   VkImageCreateInfo image_create_info = {};
 
   image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -184,12 +193,24 @@ void Swapchain::CreateDepthBuffer() {
   image_create_info.extent.depth = 1;
   image_create_info.mipLevels = 1;
   image_create_info.arrayLayers = 1;
-  image_create_info.format = VK_FORMAT_D32_SFLOAT;
   image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
   image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
   image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+  image_create_info.samples = multisample.samples;
+  image_create_info.format = this->format;
+  image_create_info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+  multisample.color_image = nullptr;
+
+  if (multisample.samples != VK_SAMPLE_COUNT_1_BIT) {
+    if (vkCreateImage(device, &image_create_info, nullptr, &multisample.color_image) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create color buffer image.\n");
+    }
+  }
+
+  image_create_info.format = VK_FORMAT_D32_SFLOAT;
+  image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
   if (vkCreateImage(device, &image_create_info, nullptr, &depth_image) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create depth buffer image.\n");
@@ -197,14 +218,14 @@ void Swapchain::CreateDepthBuffer() {
 
   VkImageViewCreateInfo view_create_info = {};
   view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  view_create_info.image = depth_image;
+  view_create_info.image = multisample.color_image;
   view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  view_create_info.format = VK_FORMAT_D32_SFLOAT;
+  view_create_info.format = this->format;
   view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
   view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
   view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
   view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-  view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   view_create_info.subresourceRange.baseMipLevel = 0;
   view_create_info.subresourceRange.levelCount = 1;
   view_create_info.subresourceRange.baseArrayLayer = 0;
@@ -213,6 +234,23 @@ void Swapchain::CreateDepthBuffer() {
   VmaAllocationCreateInfo alloc_create_info = {};
   alloc_create_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
   alloc_create_info.flags = 0;
+
+  if (multisample.samples != VK_SAMPLE_COUNT_1_BIT) {
+    if (vmaAllocateMemoryForImage(allocator, multisample.color_image, &alloc_create_info,
+                                  &multisample.color_image_allocation, nullptr) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to allocate memory for color buffer.\n");
+    }
+
+    vmaBindImageMemory(allocator, multisample.color_image_allocation, multisample.color_image);
+
+    if (vkCreateImageView(device, &view_create_info, nullptr, &multisample.color_image_view) != VK_SUCCESS) {
+      fprintf(stderr, "Failed to create color image view.\n");
+    }
+  }
+
+  view_create_info.image = depth_image;
+  view_create_info.format = VK_FORMAT_D32_SFLOAT;
+  view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 
   if (vmaAllocateMemoryForImage(allocator, depth_image, &alloc_create_info, &depth_allocation, nullptr) != VK_SUCCESS) {
     fprintf(stderr, "Failed to allocate memory for depth buffer.\n");
@@ -223,6 +261,8 @@ void Swapchain::CreateDepthBuffer() {
   if (vkCreateImageView(device, &view_create_info, nullptr, &depth_image_view) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create depth image view.\n");
   }
+
+  printf("Swapchain multisample count: %d\n", multisample.samples);
 }
 
 void Swapchain::Cleanup() {
@@ -233,6 +273,13 @@ void Swapchain::Cleanup() {
   vmaFreeMemory(allocator, depth_allocation);
   vkDestroyImageView(device, depth_image_view, nullptr);
   vkDestroyImage(device, depth_image, nullptr);
+
+  if (multisample.color_image) {
+    vmaFreeMemory(allocator, multisample.color_image_allocation);
+    vkDestroyImageView(device, multisample.color_image_view, nullptr);
+    vkDestroyImage(device, multisample.color_image, nullptr);
+    multisample.color_image = nullptr;
+  }
 
   for (size_t i = 0; i < cleanup_callback_size; ++i) {
     CallbackRegistration* reg = this->cleanup_callbacks + i;

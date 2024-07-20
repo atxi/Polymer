@@ -165,6 +165,8 @@ bool VulkanRenderer::Initialize(PolymerWindow window, RenderConfig cfg) {
     return false;
   }
 
+  swapchain.InitializeFormat(*trans_arena, physical_device, device, surface);
+
   return true;
 }
 
@@ -1070,6 +1072,24 @@ bool VulkanRenderer::DeviceHasExtensions(VkPhysicalDevice device) {
   return true;
 }
 
+static VkSampleCountFlagBits FindMaxMSAASampleCount(VkPhysicalDevice physical_device) {
+  VkPhysicalDeviceProperties properties;
+
+  vkGetPhysicalDeviceProperties(physical_device, &properties);
+
+  VkSampleCountFlags counts =
+      properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;
+
+  if (counts & VK_SAMPLE_COUNT_64_BIT) return VK_SAMPLE_COUNT_64_BIT;
+  if (counts & VK_SAMPLE_COUNT_32_BIT) return VK_SAMPLE_COUNT_32_BIT;
+  if (counts & VK_SAMPLE_COUNT_16_BIT) return VK_SAMPLE_COUNT_16_BIT;
+  if (counts & VK_SAMPLE_COUNT_8_BIT) return VK_SAMPLE_COUNT_8_BIT;
+  if (counts & VK_SAMPLE_COUNT_4_BIT) return VK_SAMPLE_COUNT_4_BIT;
+  if (counts & VK_SAMPLE_COUNT_2_BIT) return VK_SAMPLE_COUNT_2_BIT;
+
+  return VK_SAMPLE_COUNT_1_BIT;
+}
+
 bool VulkanRenderer::PickPhysicalDevice() {
   physical_device = VK_NULL_HANDLE;
   u32 device_count = 0;
@@ -1090,6 +1110,14 @@ bool VulkanRenderer::PickPhysicalDevice() {
 
     if (IsDeviceSuitable(device)) {
       physical_device = device;
+      swapchain.multisample.max_samples = FindMaxMSAASampleCount(device);
+
+      swapchain.multisample.samples = swapchain.multisample.max_samples;
+
+      if (swapchain.multisample.samples > render_config.desired_msaa_samples) {
+        swapchain.multisample.samples = render_config.desired_msaa_samples;
+      }
+
       break;
     }
   }

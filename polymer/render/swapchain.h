@@ -30,6 +30,15 @@ struct FramebufferSet {
   size_t count;
 };
 
+struct MultisampleState {
+  VkImage color_image;
+  VkImageView color_image_view;
+  VmaAllocation color_image_allocation;
+
+  VkSampleCountFlagBits max_samples;
+  VkSampleCountFlagBits samples;
+};
+
 struct Swapchain {
   RenderConfig* render_cfg = nullptr;
 
@@ -41,9 +50,11 @@ struct Swapchain {
   VkSampler sampler;
   VkExtent2D extent;
 
+  MultisampleState multisample;
+
   VkImage depth_image;
-  VmaAllocation depth_allocation;
   VkImageView depth_image_view;
+  VmaAllocation depth_allocation;
 
   u32 image_count;
   VkImage images[kMaxSwapImages];
@@ -51,6 +62,13 @@ struct Swapchain {
   VkFence image_fences[kMaxSwapImages];
 
   bool supports_linear_mipmap;
+
+  VkPresentModeKHR present_mode;
+  VkSurfaceFormatKHR surface_format;
+  SwapChainSupportDetails swapchain_support;
+
+  void InitializeFormat(MemoryArena& trans_arena, VkPhysicalDevice physical_device, VkDevice device,
+                        VkSurfaceKHR surface);
 
   void Create(MemoryArena& trans_arena, VkPhysicalDevice physical_device, VkDevice device, VkSurfaceKHR surface,
               VkExtent2D extent, struct QueueFamilyIndices& indices);
@@ -68,7 +86,7 @@ struct Swapchain {
                                                        VkSurfaceKHR surface);
 
 private:
-  void CreateDepthBuffer();
+  void CreateViewBuffers();
 
   VkPresentModeKHR ChooseSwapPresentMode(VkPresentModeKHR* present_modes, u32 present_mode_count);
   VkSurfaceFormatKHR ChooseSwapSurfaceFormat(VkPhysicalDevice physical_device, VkSurfaceFormatKHR* formats,
