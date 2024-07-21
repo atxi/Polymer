@@ -57,7 +57,7 @@ struct World {
 
   void BuildChunkMesh(render::ChunkBuildContext* ctx);
   void BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z);
-  void EnqueueChunk(render::ChunkBuildContext* ctx, s32 chunk_y);
+  void EnqueueChunk(s32 chunk_x, s32 chunk_y, s32 chunk_z);
   void FreeMeshes();
 };
 

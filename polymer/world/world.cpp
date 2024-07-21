@@ -26,6 +26,8 @@ World::World(MemoryArena& trans_arena, render::VulkanRenderer& renderer, asset::
 }
 
 void World::Update(float dt) {
+  if (!build_queue.dirty) return;
+
   for (size_t i = 0; i < build_queue.count;) {
     s32 chunk_x = build_queue.data[i].x;
     s32 chunk_z = build_queue.data[i].z;
@@ -40,6 +42,8 @@ void World::Update(float dt) {
       ++i;
     }
   }
+
+  build_queue.dirty = false;
 }
 
 void World::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
@@ -51,6 +55,8 @@ void World::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   u32 z_index = GetChunkCacheIndex(chunk_z);
 
   ChunkSection* section = &chunks[z_index][x_index];
+
+  if (!section->info->loaded || (section->info->x != chunk_x || section->info->z != chunk_z)) return;
 
   s32 relative_x = x % 16;
   s32 relative_y = y % 16;
@@ -89,38 +95,30 @@ void World::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
     section->chunks[chunk_y]->blocks[relative_y][relative_z][relative_x] = (u32)new_bid;
   }
 
-  render::ChunkBuildContext ctx(chunk_x, chunk_z);
-
-  EnqueueChunk(&ctx, chunk_y);
+  EnqueueChunk(chunk_x, chunk_y, chunk_z);
 
   if (relative_x == 0) {
     // Rebuild west
-    render::ChunkBuildContext nearby_ctx(chunk_x - 1, chunk_z);
-    EnqueueChunk(&nearby_ctx, chunk_y);
+    EnqueueChunk(chunk_x - 1, chunk_y, chunk_z);
   } else if (relative_x == 15) {
     // Rebuild east
-    render::ChunkBuildContext nearby_ctx(chunk_x + 1, chunk_z);
-    EnqueueChunk(&nearby_ctx, chunk_y);
+    EnqueueChunk(chunk_x + 1, chunk_y, chunk_z);
   }
 
   if (relative_z == 0) {
     // Rebuild north
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z - 1);
-    EnqueueChunk(&nearby_ctx, chunk_y);
+    EnqueueChunk(chunk_x, chunk_y, chunk_z - 1);
   } else if (relative_z == 15) {
     // Rebuild south
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z + 1);
-    EnqueueChunk(&nearby_ctx, chunk_y);
+    EnqueueChunk(chunk_x, chunk_y, chunk_z + 1);
   }
 
   if (relative_y == 0 && chunk_y > 0) {
     // Rebuild below
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z);
-    EnqueueChunk(&nearby_ctx, chunk_y - 1);
+    EnqueueChunk(chunk_x, chunk_y - 1, chunk_z);
   } else if (relative_y == 15 && chunk_y < 15) {
     // Rebuild above
-    render::ChunkBuildContext nearby_ctx(chunk_x, chunk_z);
-    EnqueueChunk(&nearby_ctx, chunk_y + 1);
+    EnqueueChunk(chunk_x, chunk_y + 1, chunk_z);
   }
 }
 
@@ -161,8 +159,14 @@ void World::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   section_info->z = chunk_z;
 
   // TODO: Only queueing up chunks to be meshed when they are requested to be viewed would greatly reduce meshing time.
+  // IMPORTANT: This should be high priority because newly-generated chunks can have fluids that are moving that will
+  // cause unseen chunks to have to be re-meshed a bunch of times.
+  // It might also be worth separating the fluid and solid block mesher so fluid block changes don't require the full
+  // rebuild.
+  if (!section_info->IsQueued()) {
+    build_queue.Enqueue(chunk_x, chunk_z);
+  }
   section_info->SetQueued();
-  build_queue.Enqueue(chunk_x, chunk_z);
 }
 
 void World::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
@@ -262,13 +266,14 @@ void World::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 chun
   block_mesher.Reset();
 }
 
-void World::EnqueueChunk(render::ChunkBuildContext* ctx, s32 chunk_y) {
-  if (!ctx->GetNeighbors(this)) return;
+void World::EnqueueChunk(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
+  u32 x_index = world::GetChunkCacheIndex(chunk_x);
+  u32 z_index = world::GetChunkCacheIndex(chunk_z);
 
-  ChunkSectionInfo* section_info = &chunk_infos[ctx->z_index][ctx->x_index];
+  ChunkSectionInfo* section_info = &chunk_infos[z_index][x_index];
 
   if (!section_info->IsQueued()) {
-    build_queue.Enqueue(ctx->chunk_x, ctx->chunk_z);
+    build_queue.Enqueue(chunk_x, chunk_z);
   }
 
   section_info->SetQueued(chunk_y);

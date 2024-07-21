@@ -261,8 +261,6 @@ void Swapchain::CreateViewBuffers() {
   if (vkCreateImageView(device, &view_create_info, nullptr, &depth_image_view) != VK_SUCCESS) {
     fprintf(stderr, "Failed to create depth image view.\n");
   }
-
-  printf("Swapchain multisample count: %d\n", multisample.samples);
 }
 
 void Swapchain::Cleanup() {
