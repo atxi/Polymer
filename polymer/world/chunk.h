@@ -91,12 +91,14 @@ struct ChunkBuildQueue {
       return;
     }
     data[count++] = {chunk_x, chunk_z};
+    dirty = true;
   }
 
   inline void Dequeue(s32 chunk_x, s32 chunk_z) {
     for (size_t i = 0; i < count; ++i) {
       if (data[i].x == chunk_x && data[i].z == chunk_z) {
         data[i] = data[--count];
+        dirty = true;
         return;
       }
     }

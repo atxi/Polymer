@@ -191,6 +191,8 @@ int Polymer::Run(InputState* input) {
 
       debug.Write("world tick: %u", game->world.world_tick);
 
+      debug.Write("multisampling: %u", game->renderer->swapchain.multisample.samples);
+
 #if DISPLAY_PERF_STATS
       debug.Write("chunks rendered: %u", game->chunk_renderer.stats.chunk_render_count);
 
