@@ -516,14 +516,19 @@ void ChunkRenderer::Draw(VkCommandBuffer command_buffer, size_t current_frame, w
     float z_dot;
   };
 
+  {
+    MemoryRevert trans_revert = renderer->trans_arena->GetReverter();
+    world.connectivity_graph.Update(*renderer->trans_arena, world, camera);
+  }
+
   MemoryRevert trans_revert = renderer->trans_arena->GetReverter();
   AlphaRenderElement* alpha_elements = (AlphaRenderElement*)renderer->trans_arena->Allocate(0, 8);
   size_t alpha_element_count = 0;
 
-  world.connectivity_graph.Update(*renderer->trans_arena, world, camera);
+  Vector3f forward = camera.GetForward();
 
-  for (size_t i = 0; i < world.connectivity_graph.visible_count; ++i) {
-    world::VisibleChunk* visible_chunk = world.connectivity_graph.visible_set + i;
+  for (size_t chunk_index = 0; chunk_index < world.connectivity_graph.visible_count; ++chunk_index) {
+    world::VisibleChunk* visible_chunk = world.connectivity_graph.visible_set + chunk_index;
     s32 chunk_x = visible_chunk->chunk_x;
     s32 chunk_y = visible_chunk->chunk_y;
     s32 chunk_z = visible_chunk->chunk_z;
@@ -542,7 +547,7 @@ void ChunkRenderer::Draw(VkCommandBuffer command_buffer, size_t current_frame, w
           element->vertex_buffer = layer_mesh->vertex_buffer;
           element->index_buffer = layer_mesh->index_buffer;
           element->index_count = layer_mesh->index_count;
-          element->z_dot = Vector3f(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f).Dot(camera.GetForward());
+          element->z_dot = Vector3f(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f).Dot(forward);
           ++alpha_element_count;
         } else {
           VkCommandBuffer current_buffer = buffers.command_buffers[i];

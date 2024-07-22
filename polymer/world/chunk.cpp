@@ -30,6 +30,11 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, const World& world
 
   std::bitset<kChunkCacheSize * kChunkCacheSize * kChunkColumnCount> view_set;
 
+  size_t view_index = (size_t)world::GetChunkCacheIndex(start_chunk->chunk_z) * kChunkCacheSize * kChunkColumnCount +
+                      (size_t)world::GetChunkCacheIndex(start_chunk->chunk_x) * kChunkColumnCount +
+                      start_chunk->chunk_y;
+  view_set.set(view_index);
+
   MemoryRevert revert = trans_arena.GetReverter();
 
   struct ProcessChunk {
@@ -75,7 +80,6 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, const World& world
 
       if ((process_index == 0 && connect_set.HasFaceConnectivity(through_face)) ||
           connect_set.IsConnected((BlockFace)process_chunk.from, through_face)) {
-
         BlockFace from = GetOppositeFace(through_face);
 
         size_t view_index = (size_t)new_z_index * kChunkCacheSize * kChunkColumnCount +
@@ -87,7 +91,6 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, const World& world
           Vector3f chunk_max(chunk_x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, chunk_z * 16.0f + 16.0f);
 
           if (frustum.Intersects(chunk_min, chunk_max)) {
-
             if (world.chunk_infos[new_z_index][new_x_index].bitmask & (1 << chunk_y)) {
               VisibleChunk* next_chunk = visible_set + visible_count++;
 
