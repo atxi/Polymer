@@ -60,21 +60,6 @@ struct ChunkRenderLayout {
   DescriptorSet CreateDescriptors(VkDevice device, VkDescriptorPool descriptor_pool);
 };
 
-#define DISPLAY_PERF_STATS 0
-struct RenderStatistics {
-  u32 chunk_render_count;
-
-  u64 vertex_counts[render::kRenderLayerCount];
-
-  void Reset() {
-    chunk_render_count = 0;
-
-    for (size_t i = 0; i < render::kRenderLayerCount; ++i) {
-      vertex_counts[i] = 0;
-    }
-  }
-};
-
 struct ChunkFrameCommandBuffers {
   VkCommandBuffer command_buffers[kRenderLayerCount];
 };
@@ -97,10 +82,6 @@ struct ChunkRenderer {
   ChunkFrameCommandBuffers frame_command_buffers[kMaxFramesInFlight];
 
   VulkanTexture* block_textures;
-
-#if DISPLAY_PERF_STATS
-  RenderStatistics stats;
-#endif
 
   void Draw(VkCommandBuffer command_buffer, size_t current_frame, world::World& world, Camera& camera, float anim_time,
             float sunlight);

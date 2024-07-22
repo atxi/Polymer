@@ -2,6 +2,7 @@
 #define POLYMER_CHUNK_H_
 
 #include <bitset>
+#include <polymer/camera.h>
 #include <polymer/memory.h>
 #include <polymer/render/block_mesher.h>
 #include <polymer/render/chunk_renderer.h>
@@ -110,6 +111,7 @@ struct ChunkBuildQueue {
   }
 };
 
+// Use a single bit to determine if a chunk exists in the chunk cache.
 struct ChunkOccupySet {
   std::bitset<kChunkCacheSize * kChunkCacheSize> bits;
 
@@ -128,6 +130,60 @@ struct ChunkOccupySet {
   inline void Clear() {
     bits.reset();
   }
+};
+
+// This is the connectivity state for each face of a chunk to other faces.
+// It is used to determine which chunks need to be rendered.
+struct ChunkConnectivitySet {
+  using VisitSet = std::bitset<16 * 16 * 16>;
+
+  std::bitset<36> connectivity;
+
+  // Computes the new connectivity set and returns whether or not it changed.
+  bool Build(const struct World& world, const Chunk& chunk);
+
+  u8 FloodFill(const struct World& world, const Chunk& chunk, VisitSet& visited, s8 start_x, s8 start_y, s8 start_z);
+
+  inline bool HasFaceConnectivity(BlockFace face) const {
+    for (size_t i = 0; i < 6; ++i) {
+      size_t index = (size_t)face * 6 + i;
+
+      if (connectivity.test(index)) return true;
+    }
+
+    return false;
+  }
+
+  inline bool IsConnected(BlockFace from, BlockFace to) const {
+    constexpr size_t kFaceCount = 6;
+
+    // We only need to check one index because it should be set for both when connectivity is set.
+    size_t index = (size_t)from + ((size_t)to * kFaceCount);
+
+    return connectivity.test(index);
+  }
+
+  inline void Clear() {
+    connectivity.reset();
+  }
+};
+
+struct VisibleChunk {
+  s32 chunk_x;
+  s32 chunk_y;
+  s32 chunk_z;
+};
+
+struct ChunkConnectivityGraph {
+  ChunkConnectivitySet chunk_connectivity[kChunkCacheSize][kChunkCacheSize][kChunkColumnCount];
+  VisibleChunk visible_set[kChunkCacheSize * kChunkCacheSize * kChunkColumnCount];
+  size_t visible_count = 0;
+
+  // This computes the connectivity of the provided chunk to the neighboring chunks.
+  void Build(const struct World& world, const Chunk* chunk, size_t x_index, size_t z_index, s32 chunk_y);
+
+  // Rebuilds the visible set.
+  void Update(MemoryArena& trans_arena, const struct World& world, const Camera& camera);
 };
 
 } // namespace world

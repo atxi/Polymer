@@ -192,16 +192,7 @@ int Polymer::Run(InputState* input) {
       debug.Write("world tick: %u", game->world.world_tick);
 
       debug.Write("multisampling: %u", game->renderer->swapchain.multisample.samples);
-
-#if DISPLAY_PERF_STATS
-      debug.Write("chunks rendered: %u", game->chunk_renderer.stats.chunk_render_count);
-
-      for (size_t i = 0; i < polymer::render::kRenderLayerCount; ++i) {
-        const char* name = polymer::render::kRenderLayerNames[i];
-
-        debug.Write("%s vertices rendered: %llu", name, game->chunk_renderer.stats.vertex_counts[i]);
-      }
-#endif
+      debug.Write("visible chunks: %zu", game->world.connectivity_graph.visible_count);
 
       game->font_renderer.Draw(game->command_buffers[renderer.current_frame], renderer.current_frame);
       game->SubmitFrame();

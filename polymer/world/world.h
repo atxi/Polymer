@@ -16,7 +16,9 @@ struct World {
   ChunkSection chunks[kChunkCacheSize][kChunkCacheSize];
   ChunkSectionInfo chunk_infos[kChunkCacheSize][kChunkCacheSize];
   ChunkMesh meshes[kChunkCacheSize][kChunkCacheSize][kChunkColumnCount];
+  ChunkConnectivityGraph connectivity_graph;
 
+  BlockRegistry& block_registry;
   MemoryPool<Chunk> chunk_pool;
   ChunkOccupySet occupy_set;
   ChunkBuildQueue build_queue;
