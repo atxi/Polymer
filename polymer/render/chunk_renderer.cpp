@@ -520,62 +520,36 @@ void ChunkRenderer::Draw(VkCommandBuffer command_buffer, size_t current_frame, w
   AlphaRenderElement* alpha_elements = (AlphaRenderElement*)renderer->trans_arena->Allocate(0, 8);
   size_t alpha_element_count = 0;
 
-  for (s32 chunk_z = 0; chunk_z < (s32)world::kChunkCacheSize; ++chunk_z) {
-    for (s32 chunk_x = 0; chunk_x < (s32)world::kChunkCacheSize; ++chunk_x) {
-      if (!world.occupy_set.HasChunk(chunk_x, chunk_z)) continue;
+  world.connectivity_graph.Update(*renderer->trans_arena, world, camera);
 
-      world::ChunkSectionInfo* section_info = &world.chunk_infos[chunk_z][chunk_x];
+  for (size_t i = 0; i < world.connectivity_graph.visible_count; ++i) {
+    world::VisibleChunk* visible_chunk = world.connectivity_graph.visible_set + i;
+    s32 chunk_x = visible_chunk->chunk_x;
+    s32 chunk_y = visible_chunk->chunk_y;
+    s32 chunk_z = visible_chunk->chunk_z;
+    size_t x_index = world::GetChunkCacheIndex(chunk_x);
+    size_t z_index = world::GetChunkCacheIndex(chunk_z);
 
-      if (!section_info->loaded) {
-        continue;
-      }
+    world::ChunkMesh* mesh = &world.meshes[z_index][x_index][chunk_y];
 
-      world::ChunkMesh* meshes = world.meshes[chunk_z][chunk_x];
+    for (s32 i = 0; i < render::kRenderLayerCount; ++i) {
+      render::RenderMesh* layer_mesh = &mesh->meshes[i];
 
-      for (s32 chunk_y = 0; chunk_y < world::kChunkColumnCount; ++chunk_y) {
-        world::ChunkMesh* mesh = meshes + chunk_y;
+      if (layer_mesh->vertex_count > 0) {
+        if (i == (s32)RenderLayer::Alpha) {
+          AlphaRenderElement* element = memory_arena_push_type(renderer->trans_arena, AlphaRenderElement);
 
-        if ((section_info->bitmask & (1 << chunk_y))) {
-          Vector3f chunk_min(section_info->x * 16.0f, chunk_y * 16.0f - 64.0f, section_info->z * 16.0f);
-          Vector3f chunk_max(section_info->x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, section_info->z * 16.0f + 16.0f);
+          element->vertex_buffer = layer_mesh->vertex_buffer;
+          element->index_buffer = layer_mesh->index_buffer;
+          element->index_count = layer_mesh->index_count;
+          element->z_dot = Vector3f(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f).Dot(camera.GetForward());
+          ++alpha_element_count;
+        } else {
+          VkCommandBuffer current_buffer = buffers.command_buffers[i];
 
-          if (frustum.Intersects(chunk_min, chunk_max)) {
-#if DISPLAY_PERF_STATS
-            bool rendered = false;
-#endif
-            for (s32 i = 0; i < render::kRenderLayerCount; ++i) {
-              render::RenderMesh* layer_mesh = &mesh->meshes[i];
-
-              if (layer_mesh->vertex_count > 0) {
-                if (i == (s32)RenderLayer::Alpha) {
-                  AlphaRenderElement* element = memory_arena_push_type(renderer->trans_arena, AlphaRenderElement);
-
-                  element->vertex_buffer = layer_mesh->vertex_buffer;
-                  element->index_buffer = layer_mesh->index_buffer;
-                  element->index_count = layer_mesh->index_count;
-                  element->z_dot = Vector3f(chunk_x * 16.0f, chunk_y * 16.0f, chunk_z * 16.0f).Dot(camera.GetForward());
-                  ++alpha_element_count;
-                } else {
-                  VkCommandBuffer current_buffer = buffers.command_buffers[i];
-
-                  vkCmdBindVertexBuffers(current_buffer, 0, 1, &layer_mesh->vertex_buffer, offsets);
-                  vkCmdBindIndexBuffer(current_buffer, layer_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
-                  vkCmdDrawIndexed(current_buffer, layer_mesh->index_count, 1, 0, 0, 0);
-                }
-
-#if DISPLAY_PERF_STATS
-                stats.vertex_counts[i] += layer_mesh->vertex_count;
-                rendered = true;
-#endif
-              }
-            }
-
-#if DISPLAY_PERF_STATS
-            if (rendered) {
-              ++stats.chunk_render_count;
-            }
-#endif
-          }
+          vkCmdBindVertexBuffers(current_buffer, 0, 1, &layer_mesh->vertex_buffer, offsets);
+          vkCmdBindIndexBuffer(current_buffer, layer_mesh->index_buffer, offset, VK_INDEX_TYPE_UINT16);
+          vkCmdDrawIndexed(current_buffer, layer_mesh->index_count, 1, 0, 0, 0);
         }
       }
     }

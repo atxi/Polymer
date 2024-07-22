@@ -5,7 +5,8 @@ namespace world {
 
 World::World(MemoryArena& trans_arena, render::VulkanRenderer& renderer, asset::AssetSystem& assets,
              BlockRegistry& block_registry)
-    : trans_arena(trans_arena), renderer(renderer), block_mesher(trans_arena, assets, block_registry) {
+    : trans_arena(trans_arena), renderer(renderer), block_registry(block_registry),
+      block_mesher(trans_arena, assets, block_registry) {
   for (u32 chunk_z = 0; chunk_z < kChunkCacheSize; ++chunk_z) {
     for (u32 chunk_x = 0; chunk_x < kChunkCacheSize; ++chunk_x) {
       ChunkSection* section = &chunks[chunk_z][chunk_x];
@@ -95,6 +96,9 @@ void World::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
     section->chunks[chunk_y]->blocks[relative_y][relative_z][relative_x] = (u32)new_bid;
   }
 
+  // TODO: This should be done once after all block updates are done
+  connectivity_graph.Build(*this, section->chunks[chunk_y], x_index, z_index, chunk_y);
+
   EnqueueChunk(chunk_x, chunk_y, chunk_z);
 
   if (relative_x == 0) {
@@ -158,14 +162,16 @@ void World::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   section_info->x = chunk_x;
   section_info->z = chunk_z;
 
-  // TODO: Only queueing up chunks to be meshed when they are requested to be viewed would greatly reduce meshing time.
-  // IMPORTANT: This should be high priority because newly-generated chunks can have fluids that are moving that will
-  // cause unseen chunks to have to be re-meshed a bunch of times.
-  // It might also be worth separating the fluid and solid block mesher so fluid block changes don't require the full
-  // rebuild.
+  for (size_t chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
+    Chunk* chunk = chunks[z_index][x_index].chunks[chunk_y];
+
+    connectivity_graph.Build(*this, chunk, x_index, z_index, (s32)chunk_y);
+  }
+
   if (!section_info->IsQueued()) {
     build_queue.Enqueue(chunk_x, chunk_z);
   }
+
   section_info->SetQueued();
 }
 
