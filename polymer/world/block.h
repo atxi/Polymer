@@ -138,7 +138,8 @@ struct BlockModel {
   u32 random_horizontal_offset : 1;
   u32 random_vertical_offset : 1;
   u32 random_vertical_uv : 1;
-  u32 padding : 22;
+  u32 is_cube : 1;
+  u32 padding : 21;
 
   inline bool HasOccluding() const {
     return has_occluding;
