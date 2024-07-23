@@ -195,7 +195,7 @@ u8 ChunkConnectivitySet::FloodFill(const World& world, const Chunk& chunk, Visit
     u32 bid = chunk.blocks[y][z][x];
     BlockModel& model = world.block_registry.states[bid].model;
 
-    if (!(model.element_count == 0 || model.HasTransparency())) continue;
+    if (model.is_cube && !model.HasTransparency()) continue;
 
     bool outside = x <= 0 || y <= 0 || z <= 0 || x >= 15 || y >= 15 || z >= 15;
 

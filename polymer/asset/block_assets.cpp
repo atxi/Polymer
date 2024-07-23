@@ -113,10 +113,14 @@ void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
     model.has_leaves = 1;
   }
 
+  bool is_cube = true;
+
   for (size_t i = 0; i < model.element_count; ++i) {
     BlockElement* element = model.elements + i;
 
     element->occluding = element->from == Vector3f(0, 0, 0) && element->to == Vector3f(1, 1, 1);
+
+    if (!element->occluding) is_cube = false;
 
     if (element->occluding) {
       model.has_occluding = 1;
@@ -155,6 +159,8 @@ void AssetParser::AssignModelRenderSettings(ParsedBlockModel& parsed_model) {
       parsed_model.elements[i].faces[j].tintindex = element->faces[j].tintindex;
     }
   }
+
+  model.is_cube = model.element_count > 0 && is_cube;
 
   bool is_glass = poly_contains(path, POLY_STR("/glass.json")) || poly_contains(path, POLY_STR("stained_glass.json"));
   if (is_glass) {
