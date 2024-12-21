@@ -403,7 +403,7 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
         u64 block_index = 0;
 
         u32* chunk = nullptr;
-        
+
         if (block_count > 0) {
           section->chunks[chunk_y] = game->world.chunk_pool.Allocate();
           chunk = (u32*)section->chunks[chunk_y]->blocks;
@@ -930,10 +930,10 @@ void PacketInterpreter::InterpretLogin(RingBuffer* rb, u64 pkt_id, size_t pkt_si
     outbound::login::SendAcknowledged(*connection);
     connection->protocol_state = ProtocolState::Configuration;
 
-    u8 view_distance = 16;
-#ifdef _DEBUG
-    view_distance = 3;
-#endif
+    u8 view_distance = game->renderer->render_config.view_distance;
+
+    if (view_distance > 32) view_distance = 32;
+    if (view_distance < 1) view_distance = 1;
 
     outbound::configuration::SendClientInformation(*connection, view_distance, 0x7F, 1);
   } break;

@@ -111,30 +111,16 @@ struct ChunkBuildQueue {
   }
 };
 
-// Use a single bit to determine if a chunk exists in the chunk cache.
-struct ChunkOccupySet {
-  std::bitset<kChunkCacheSize * kChunkCacheSize> bits;
-
-  inline void SetChunk(s32 chunk_x, s32 chunk_z) {
-    bits.set(GetChunkCacheIndex(chunk_z) * kChunkCacheSize + GetChunkCacheIndex(chunk_x));
-  }
-
-  inline void ClearChunk(s32 chunk_x, s32 chunk_z) {
-    bits.set(GetChunkCacheIndex(chunk_z) * kChunkCacheSize + GetChunkCacheIndex(chunk_x), 0);
-  }
-
-  inline bool HasChunk(s32 chunk_x, s32 chunk_z) const {
-    return bits.test(GetChunkCacheIndex(chunk_z) * kChunkCacheSize + GetChunkCacheIndex(chunk_x));
-  }
-
-  inline void Clear() {
-    bits.reset();
-  }
-};
-
 // This is the connectivity state for each face of a chunk to other faces.
 // It is used to determine which chunks need to be rendered.
 struct ChunkConnectivitySet {
+  struct Coord {
+    s8 x;
+    s8 y;
+    s8 z;
+    s8 pad;
+  };
+
   using VisitSet = std::bitset<16 * 16 * 16>;
 
   std::bitset<36> connectivity;
@@ -142,7 +128,8 @@ struct ChunkConnectivitySet {
   // Computes the new connectivity set and returns whether or not it changed.
   bool Build(const struct World& world, const Chunk& chunk);
 
-  u8 FloodFill(const struct World& world, const Chunk& chunk, VisitSet& visited, s8 start_x, s8 start_y, s8 start_z);
+  u8 FloodFill(const struct World& world, const Chunk& chunk, VisitSet& visited, Coord* queue, s8 start_x, s8 start_y,
+               s8 start_z);
 
   inline bool HasFaceConnectivity(BlockFace face) const {
     for (size_t i = 0; i < 6; ++i) {

@@ -20,7 +20,6 @@ struct World {
 
   BlockRegistry& block_registry;
   MemoryPool<Chunk> chunk_pool;
-  ChunkOccupySet occupy_set;
   ChunkBuildQueue build_queue;
   render::BlockMesher block_mesher;
 
