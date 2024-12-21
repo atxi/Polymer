@@ -969,7 +969,7 @@ void VulkanRenderer::CreateLogicalDevice() {
   }
 
   VkPhysicalDeviceFeatures features = {};
-
+  features.sampleRateShading = render_config.sample_shading;
   features.samplerAnisotropy = VK_TRUE;
 
   VkDeviceCreateInfo create_info{};

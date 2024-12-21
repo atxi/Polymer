@@ -84,10 +84,18 @@ int Polymer::Run(InputState* input) {
 
   render::RenderConfig render_config = {};
 
-  render_config.desired_msaa_samples = VK_SAMPLE_COUNT_4_BIT;
   render_config.desired_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+
   // Enable this for vsync
   // render_config.desired_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+
+  render_config.desired_msaa_samples = VK_SAMPLE_COUNT_4_BIT;
+  render_config.sample_shading = true;
+
+  render_config.view_distance = 16;
+#ifdef _DEBUG
+  render_config.view_distance = 3;
+#endif
 
   renderer.Initialize(window, render_config);
 

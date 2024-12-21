@@ -96,9 +96,6 @@ void World::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
     section->chunks[chunk_y]->blocks[relative_y][relative_z][relative_x] = (u32)new_bid;
   }
 
-  // TODO: This should be done once after all block updates are done
-  connectivity_graph.Build(*this, section->chunks[chunk_y], x_index, z_index, chunk_y);
-
   EnqueueChunk(chunk_x, chunk_y, chunk_z);
 
   if (relative_x == 0) {
@@ -162,12 +159,6 @@ void World::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   section_info->x = chunk_x;
   section_info->z = chunk_z;
 
-  for (size_t chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-    Chunk* chunk = chunks[z_index][x_index].chunks[chunk_y];
-
-    connectivity_graph.Build(*this, chunk, x_index, z_index, (s32)chunk_y);
-  }
-
   if (!section_info->IsQueued()) {
     build_queue.Enqueue(chunk_x, chunk_z);
   }
@@ -192,8 +183,7 @@ void World::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
   section_info->ClearQueued();
   section_info->loaded = false;
   section_info->bitmask = 0;
-  occupy_set.ClearChunk(chunk_x, chunk_z);
-
+  
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (section->chunks[chunk_y]) {
       chunk_pool.Free(section->chunks[chunk_y]);
@@ -240,7 +230,6 @@ void World::OnDimensionChange() {
     }
   }
 
-  occupy_set.Clear();
   build_queue.Clear();
 }
 
@@ -294,6 +283,9 @@ void World::BuildChunkMesh(render::ChunkBuildContext* ctx) {
   ChunkMesh* meshes = this->meshes[ctx->z_index][ctx->x_index];
 
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
+    connectivity_graph.Build(*this, this->chunks[ctx->z_index][ctx->x_index].chunks[chunk_y], ctx->x_index,
+                             ctx->z_index, chunk_y);
+
     if (!(section_info->bitmask & (1 << chunk_y))) {
       for (s32 i = 0; i < render::kRenderLayerCount; ++i) {
         meshes[chunk_y].meshes[i].vertex_count = 0;
@@ -304,7 +296,6 @@ void World::BuildChunkMesh(render::ChunkBuildContext* ctx) {
 
     if (section_info->IsQueued(chunk_y)) {
       BuildChunkMesh(ctx, ctx->chunk_x, chunk_y, ctx->chunk_z);
-      occupy_set.SetChunk(ctx->chunk_x, ctx->chunk_z);
     }
   }
 

@@ -64,7 +64,6 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, const World& world
 
     for (size_t i = 0; i < 6; ++i) {
       BlockFace through_face = (BlockFace)i;
-
       ChunkOffset offset = kOffsets[i];
 
       s32 chunk_x = process_chunk.chunk_x + offset.x;
@@ -131,6 +130,10 @@ bool ChunkConnectivitySet::Build(const World& world, const Chunk& chunk) {
 
   this->Clear();
 
+  MemoryRevert revert = world.trans_arena.GetReverter();
+  // Allocate a buffer that can be used for every flood fill instead of being on the stack.
+  Coord* queue = memory_arena_push_type_count(&world.trans_arena, Coord, 16 * 16 * 16);
+
   for (s8 y = 0; y < 16; ++y) {
     for (s8 z = 0; z < 16; ++z) {
       for (s8 x = 0; x < 16; ++x) {
@@ -143,7 +146,7 @@ bool ChunkConnectivitySet::Build(const World& world, const Chunk& chunk) {
         if (!(model.element_count == 0 || model.HasTransparency())) continue;
 
         if (!visited.test((size_t)z * 16 * 16 + (size_t)y * 16 + (size_t)x)) {
-          u8 current_set = FloodFill(world, chunk, visited, x, y, z);
+          u8 current_set = FloodFill(world, chunk, visited, queue, x, y, z);
 
           for (size_t i = 0; i < 6; ++i) {
             if (current_set & (1 << i)) {
@@ -164,16 +167,8 @@ bool ChunkConnectivitySet::Build(const World& world, const Chunk& chunk) {
   return old_connectivity != connectivity;
 }
 
-u8 ChunkConnectivitySet::FloodFill(const World& world, const Chunk& chunk, VisitSet& visited, s8 start_x, s8 start_y,
-                                   s8 start_z) {
-  struct Coord {
-    s8 x;
-    s8 y;
-    s8 z;
-    s8 pad;
-  };
-
-  Coord queue[16 * 16 * 16];
+u8 ChunkConnectivitySet::FloodFill(const World& world, const Chunk& chunk, VisitSet& visited, Coord* queue, s8 start_x,
+                                   s8 start_y, s8 start_z) {
   size_t queue_count = 0;
   size_t queue_index = 0;
 
