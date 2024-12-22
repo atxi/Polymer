@@ -19,7 +19,7 @@ constexpr ChunkOffset kOffsets[] = {
     ChunkOffset(0, 0, 1),  ChunkOffset(-1, 0, 0), ChunkOffset(1, 0, 0),
 };
 
-void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, const World& world, const Camera& camera) {
+void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, World& world, const Camera& camera) {
   visible_count = 0;
 
   VisibleChunk* start_chunk = visible_set + visible_count++;
@@ -61,6 +61,16 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, const World& world
     size_t z_index = world::GetChunkCacheIndex(process_chunk.chunk_z);
 
     ChunkConnectivitySet& connect_set = this->chunk_connectivity[z_index][x_index][process_chunk.chunk_y];
+    ChunkSectionInfo& info = world.chunk_infos[z_index][x_index];
+
+    if (info.bitmask & (1 << process_chunk.chunk_y)) {
+      if (info.dirty_connectivity_set & (1 << process_chunk.chunk_y)) {
+        connect_set.Build(world, *world.chunks[z_index][x_index].chunks[process_chunk.chunk_y]);
+        info.dirty_connectivity_set &= ~(1 << process_chunk.chunk_y);
+      }
+    } else {
+      connect_set.connectivity.set();
+    }
 
     for (size_t i = 0; i < 6; ++i) {
       BlockFace through_face = (BlockFace)i;
