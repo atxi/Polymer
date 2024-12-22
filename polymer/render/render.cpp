@@ -122,6 +122,8 @@ bool VulkanRenderer::Initialize(PolymerWindow window, RenderConfig cfg) {
 
   VmaVulkanFunctions vma_vulkan_func = {};
 
+  vma_vulkan_func.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+  vma_vulkan_func.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
   vma_vulkan_func.vkAllocateMemory = vkAllocateMemory;
   vma_vulkan_func.vkBindBufferMemory = vkBindBufferMemory;
   vma_vulkan_func.vkBindImageMemory = vkBindImageMemory;
