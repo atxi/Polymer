@@ -57,6 +57,16 @@ void SendClientInformation(Connection& connection, u8 view_distance, u8 skin_bit
   builder.WriteU8(0); // Text filtering
   builder.WriteU8(1); // Allow listing
 
+  enum class ParticleMode {
+    All,
+    Decreased,
+    Minimal,
+  };
+
+  ParticleMode particle_mode = ParticleMode::All;
+
+  builder.WriteVarInt((u64)particle_mode);
+
   builder.Commit(connection.write_buffer, (u32)ProtocolId::ClientInformation);
 }
 
@@ -114,7 +124,7 @@ void SendTeleportConfirm(Connection& connection, u64 id) {
 }
 
 void SendPlayerPositionAndRotation(Connection& connection, const Vector3f& position, float yaw, float pitch,
-                                   bool on_ground) {
+                                   PlayerMoveFlags flags) {
   auto& builder = connection.builder;
 
   builder.WriteDouble(position.x);
@@ -123,7 +133,8 @@ void SendPlayerPositionAndRotation(Connection& connection, const Vector3f& posit
 
   builder.WriteFloat(yaw);
   builder.WriteFloat(pitch);
-  builder.WriteU8(on_ground);
+
+  builder.WriteU8(flags);
 
   builder.Commit(connection.write_buffer, (u32)ProtocolId::PlayPositionAndRotation);
 }

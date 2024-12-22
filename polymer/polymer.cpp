@@ -11,7 +11,7 @@
 
 namespace polymer {
 
-constexpr const char* kBlocksName = "blocks-1.21.json";
+constexpr const char* kBlocksName = "blocks-1.21.4.json";
 
 // Window surface width
 constexpr u32 kWidth = 1280;

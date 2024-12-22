@@ -9,13 +9,32 @@ namespace polymer {
 
 struct Vector3f;
 
-constexpr u32 kProtocolVersion = 767;
+constexpr u32 kProtocolVersion = 769;
 
 enum class ProtocolState { Handshake, Status, Login, Configuration, Play };
 
 enum class ClientStatusAction { Respawn, Stats };
 
 struct Connection;
+
+enum PlayerMoveFlag {
+  PlayerMoveFlag_Position = (1 << 0),
+  PlayerMoveFlag_Look = (1 << 1),
+};
+typedef u8 PlayerMoveFlags;
+
+enum TeleportFlag {
+  TeleportFlag_RelativeX = (1 << 0),
+  TeleportFlag_RelativeY = (1 << 1),
+  TeleportFlag_RelativeZ = (1 << 2),
+  TeleportFlag_RelativeYaw = (1 << 3),
+  TeleportFlag_RelativePitch = (1 << 4),
+  TeleportFlag_RelativeVelocityX = (1 << 5),
+  TeleportFlag_RelativeVelocityY = (1 << 6),
+  TeleportFlag_RelativeVelocityZ = (1 << 7),
+  TeleportFlag_RotateDelta = (1 << 8),
+};
+typedef u32 TeleportFlags;
 
 namespace inbound {
 namespace status {
@@ -26,7 +45,15 @@ enum class ProtocolId { Response, Pong, Count };
 
 namespace login {
 
-enum class ProtocolId { Disconnect, EncryptionRequest, LoginSuccess, SetCompression, LoginPluginRequest, Count };
+enum class ProtocolId {
+  Disconnect,
+  EncryptionRequest,
+  LoginSuccess,
+  SetCompression,
+  LoginPluginRequest,
+  CookieRequest,
+  Count
+};
 
 } // namespace login
 
@@ -48,6 +75,7 @@ enum class ProtocolId {
   UpdateTags,
   KnownPacks,
   CustomReportDetails,
+  ServerLinks,
   Count
 };
 
@@ -88,6 +116,7 @@ enum class ProtocolId {
   Disconnect,
   DisguisedChatMessage,
   EntityEvent,
+  TeleportEntity,
   Explosion,
   UnloadChunk,
   GameEvent,
@@ -104,6 +133,7 @@ enum class ProtocolId {
   MerchantOffers,
   EntityPosition,
   EntityPositionAndRotation,
+  MoveMinecart,
   EntityRotation,
   VehicleMove,
   OpenBook,
@@ -121,7 +151,10 @@ enum class ProtocolId {
   PlayerInfoUpdate,
   LookAt,
   PlayerPositionAndLook,
-  UpdateRecipeBook,
+  PlayerRotation,
+  RecipeBookAdd,
+  RecipeBookRemove,
+  RecipeBookSettings,
   RemoveEntities,
   RemoveEntityEffect,
   ResetScore,
@@ -139,9 +172,9 @@ enum class ProtocolId {
   WorldBorderWarningDelay,
   WorldBorderWarningDistance,
   Camera,
-  SetHeldItem,
   SetCenterChunk,
   SetRenderDistance,
+  SetCursorItem,
   SetDefaultSpawnPosition,
   DisplayObjective,
   EntityMetadata,
@@ -150,9 +183,11 @@ enum class ProtocolId {
   EntityEquipment,
   SetExperience,
   UpdateHealth,
+  SetHeldItem,
   UpdateObjectives,
   SetPassengers,
-  Teams,
+  SetPlayerInventorySlot,
+  UpdateTeams,
   UpdateScore,
   UpdateSimulationDistance,
   SetSubtitleText,
@@ -168,7 +203,7 @@ enum class ProtocolId {
   PlayerListHeaderAndFooter,
   NBTQueryResponse,
   CollectItem,
-  EntityTeleport,
+  SynchronizeVehiclePosition,
   SetTickingState,
   StepTick,
   Transfer,
@@ -232,19 +267,19 @@ namespace play {
 
 enum class ProtocolId {
   TeleportConfirm = 0x00,
-  KeepAlive = 0x18,
-  PlayPositionAndRotation = 0x1B,
-  ChatMessage = 0x06,
-  ChatCommand = 0x04,
-  ChunkBatchReceived = 0x08,
-  ClientStatus = 0x09,
+  KeepAlive = 0x1A,
+  PlayPositionAndRotation = 0x1D,
+  ChatMessage = 0x07,
+  ChatCommand = 0x05,
+  ChunkBatchReceived = 0x09,
+  ClientStatus = 0x0A,
   Count
 };
 
 void SendKeepAlive(Connection& connection, u64 id);
 void SendTeleportConfirm(Connection& connection, u64 id);
 void SendPlayerPositionAndRotation(Connection& connection, const Vector3f& position, float yaw, float pitch,
-                                   bool on_ground);
+                                   PlayerMoveFlags flags);
 void SendChatMessage(Connection& connection, const String& message);
 void SendChatCommand(Connection& connection, const String& message);
 void SendChunkBatchReceived(Connection& connection, float chunks_per_tick);

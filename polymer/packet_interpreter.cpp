@@ -175,20 +175,28 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
     outbound::play::SendKeepAlive(*connection, id);
   } break;
   case ProtocolId::PlayerPositionAndLook: {
-    double x = rb->ReadDouble();
-    double y = rb->ReadDouble();
-    double z = rb->ReadDouble();
-    float yaw = rb->ReadFloat();
-    float pitch = rb->ReadFloat();
-    u8 flags = rb->ReadU8();
-
     u64 teleport_id;
     rb->ReadVarInt(&teleport_id);
 
+    double x = rb->ReadDouble();
+    double y = rb->ReadDouble();
+    double z = rb->ReadDouble();
+    double vel_x = rb->ReadDouble();
+    double vel_y = rb->ReadDouble();
+    double vel_z = rb->ReadDouble();
+
+    float yaw = rb->ReadFloat();
+    float pitch = rb->ReadFloat();
+
     outbound::play::SendTeleportConfirm(*connection, teleport_id);
-    // TODO: Relative/Absolute
-    printf("Position: (%f, %f, %f)\n", x, y, z);
-    game->OnPlayerPositionAndLook(Vector3f((float)x, (float)y, (float)z), yaw, pitch);
+
+    u64 flags;
+    rb->ReadVarInt(&flags);
+
+    Vector3f position((float)x, (float)y, (float)z);
+    Vector3f velocity((float)vel_x, (float)vel_y, (float)vel_z);
+
+    game->OnPlayerPositionAndLook(position, velocity, yaw, pitch, (u32)flags);
   } break;
   case ProtocolId::UpdateHealth: {
     float health = rb->ReadFloat();

@@ -239,8 +239,10 @@ void GameState::ProcessMovement(float dt, InputState* input) {
       float yaw = Degrees(camera.yaw) - 90.0f;
       float pitch = -Degrees(camera.pitch);
 
+      PlayerMoveFlags move_flags = PlayerMoveFlag_Position | PlayerMoveFlag_Look;
+
       outbound::play::SendPlayerPositionAndRotation(connection, camera.position - Vector3f(0, 1.62f, 0.0f), yaw, pitch,
-                                                    false);
+                                                    move_flags);
       position_sync_timer = 0.0f;
     }
   }
@@ -260,10 +262,40 @@ void GameState::OnWindowMouseMove(s32 dx, s32 dy) {
   }
 }
 
-void GameState::OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch) {
-  camera.position = position + Vector3f(0, 1.62f, 0);
-  camera.yaw = Radians(yaw + 90.0f);
-  camera.pitch = -Radians(pitch);
+void GameState::OnPlayerPositionAndLook(const Vector3f& position, const Vector3f& velocity, float yaw, float pitch,
+                                        u32 flags) {
+  if (flags & TeleportFlag_RelativeX) {
+    camera.position.x += position.x;
+  } else {
+    camera.position.x = position.x;
+  }
+
+  if (flags & TeleportFlag_RelativeY) {
+    camera.position.y += position.y;
+  } else {
+    camera.position.y = position.y + 1.62f;
+  }
+
+  if (flags & TeleportFlag_RelativeZ) {
+    camera.position.z += position.z;
+  } else {
+    camera.position.z = position.z;
+  }
+
+  if (flags & TeleportFlag_RelativeYaw) {
+    camera.yaw += Radians(yaw);
+  } else {
+    camera.yaw = Radians(yaw + 90.0f);
+  }
+
+  if (flags & TeleportFlag_RelativePitch) {
+    camera.pitch += Radians(pitch);
+  } else {
+    camera.pitch = -Radians(pitch);
+  }
+
+  // TODO: Velocity
+  // TODO: RotateDelta
 }
 
 void GameState::OnDimensionChange() {

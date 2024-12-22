@@ -78,7 +78,7 @@ struct GameState {
   void OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid);
   void OnChunkLoad(s32 chunk_x, s32 chunk_z);
   void OnChunkUnload(s32 chunk_x, s32 chunk_z);
-  void OnPlayerPositionAndLook(const Vector3f& position, float yaw, float pitch);
+  void OnPlayerPositionAndLook(const Vector3f& position, const Vector3f& velocity, float yaw, float pitch, u32 flags);
   void OnDimensionChange();
 
   void OnWindowMouseMove(s32 dx, s32 dy);
