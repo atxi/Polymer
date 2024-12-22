@@ -29,36 +29,15 @@ struct Chunk {
 
 struct ChunkSectionInfo {
   u32 loaded : 1;
-  u32 queue_bitset : 24;
+  u32 dirty_connectivity_set : 24;
   u32 padding : 7;
+
+  u32 dirty_mesh_set : 24;
+  u32 padding_mesh : 8;
+
   u32 bitmask;
   s32 x;
   s32 z;
-
-  inline bool IsQueued() const {
-    return queue_bitset;
-  }
-
-  inline bool IsQueued(s32 chunk_y) const {
-    if (chunk_y < 0 || chunk_y >= 24) return false;
-
-    return queue_bitset & (1 << chunk_y);
-  }
-
-  inline void SetQueued(s32 chunk_y) {
-    if (chunk_y >= 0 && chunk_y < 24) {
-      queue_bitset |= (1 << chunk_y);
-    }
-  }
-
-  inline void SetQueued() {
-    constexpr u32 kFullBitset = (1 << 24) - 1;
-    queue_bitset = kFullBitset;
-  }
-
-  inline void ClearQueued() {
-    queue_bitset = 0;
-  }
 };
 
 struct ChunkSection {
@@ -77,39 +56,6 @@ constexpr size_t kChunkCacheSize = kMaxViewDistance * 2 + 4;
 inline constexpr u32 GetChunkCacheIndex(s32 v) {
   return ((v % (s32)kChunkCacheSize) + (s32)kChunkCacheSize) % (s32)kChunkCacheSize;
 }
-
-struct ChunkBuildQueue {
-  constexpr static size_t kQueueSize = kChunkCacheSize * kChunkCacheSize * kChunkColumnCount;
-
-  bool dirty = false;
-  u32 count = 0;
-
-  ChunkCoord data[kQueueSize];
-
-  inline void Enqueue(s32 chunk_x, s32 chunk_z) {
-    if (count >= kQueueSize) {
-      fprintf(stderr, "Failed to enqueue chunk in build queue because it was full.\n");
-      return;
-    }
-    data[count++] = {chunk_x, chunk_z};
-    dirty = true;
-  }
-
-  inline void Dequeue(s32 chunk_x, s32 chunk_z) {
-    for (size_t i = 0; i < count; ++i) {
-      if (data[i].x == chunk_x && data[i].z == chunk_z) {
-        data[i] = data[--count];
-        dirty = true;
-        return;
-      }
-    }
-  }
-
-  inline void Clear() {
-    count = 0;
-    dirty = false;
-  }
-};
 
 // This is the connectivity state for each face of a chunk to other faces.
 // It is used to determine which chunks need to be rendered.
@@ -170,7 +116,7 @@ struct ChunkConnectivityGraph {
   void Build(const struct World& world, const Chunk* chunk, size_t x_index, size_t z_index, s32 chunk_y);
 
   // Rebuilds the visible set.
-  void Update(MemoryArena& trans_arena, const struct World& world, const Camera& camera);
+  void Update(MemoryArena& trans_arena, struct World& world, const Camera& camera);
 };
 
 } // namespace world

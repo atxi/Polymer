@@ -362,7 +362,8 @@ void PacketInterpreter::InterpretPlay(RingBuffer* rb, u64 pkt_id, size_t pkt_siz
       }
     }
 
-    section_info->ClearQueued();
+    section_info->dirty_connectivity_set = 0xFFFFFF;
+    section_info->dirty_mesh_set = 0xFFFFFF;
     section_info->bitmask = 0;
 
     if (data_size > 0) {

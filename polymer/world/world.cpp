@@ -26,26 +26,7 @@ World::World(MemoryArena& trans_arena, render::VulkanRenderer& renderer, asset::
   }
 }
 
-void World::Update(float dt) {
-  if (!build_queue.dirty) return;
-
-  for (size_t i = 0; i < build_queue.count;) {
-    s32 chunk_x = build_queue.data[i].x;
-    s32 chunk_z = build_queue.data[i].z;
-
-    render::ChunkBuildContext ctx(chunk_x, chunk_z);
-
-    if (ctx.GetNeighbors(this)) {
-      BuildChunkMesh(&ctx);
-      ctx.section->info->ClearQueued();
-      build_queue.data[i] = build_queue.data[--build_queue.count];
-    } else {
-      ++i;
-    }
-  }
-
-  build_queue.dirty = false;
-}
+void World::Update(float dt) {}
 
 void World::OnBlockChange(s32 x, s32 y, s32 z, u32 new_bid) {
   s32 chunk_x = (s32)floorf(x / 16.0f);
@@ -131,16 +112,8 @@ void World::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   ChunkMesh* meshes = this->meshes[z_index][x_index];
 
   if (section_info->loaded) {
-    if (section_info->x == chunk_x && section_info->z == chunk_z && section_info->IsQueued()) {
-      printf("Got chunk again while in queue.\n");
-      return;
-    }
-
     printf("Got chunk %d, %d with existing chunk %d, %d.\n", chunk_x, chunk_z, section_info->x, section_info->z);
     renderer.WaitForIdle();
-
-    build_queue.Dequeue(section_info->x, section_info->z);
-    section_info->ClearQueued();
 
     // Force clear any existing meshes
     for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
@@ -159,11 +132,8 @@ void World::OnChunkLoad(s32 chunk_x, s32 chunk_z) {
   section_info->x = chunk_x;
   section_info->z = chunk_z;
 
-  if (!section_info->IsQueued()) {
-    build_queue.Enqueue(chunk_x, chunk_z);
-  }
-
-  section_info->SetQueued();
+  section_info->dirty_connectivity_set = 0xFFFFFF;
+  section_info->dirty_mesh_set = 0xFFFFFF;
 }
 
 void World::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
@@ -172,17 +142,16 @@ void World::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
   ChunkSection* section = &chunks[z_index][x_index];
   ChunkSectionInfo* section_info = &chunk_infos[z_index][x_index];
 
-  build_queue.Dequeue(chunk_x, chunk_z);
-
   // It's possible to receive an unload packet after receiving a new chunk that would take this chunk's position in
   // the cache, so it needs to be checked before anything is changed in the cache.
   if (section_info->x != chunk_x || section_info->z != chunk_z) {
     return;
   }
 
-  section_info->ClearQueued();
   section_info->loaded = false;
   section_info->bitmask = 0;
+  section_info->dirty_connectivity_set = 0;
+  section_info->dirty_mesh_set = 0;
 
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (section->chunks[chunk_y]) {
@@ -214,8 +183,9 @@ void World::OnDimensionChange() {
       ChunkMesh* meshes = this->meshes[chunk_z][chunk_x];
 
       section_info->loaded = false;
+      section_info->dirty_connectivity_set = 0;
+      section_info->dirty_mesh_set = 0;
       section_info->bitmask = 0;
-      section_info->ClearQueued();
 
       for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
         ChunkMesh* mesh = meshes + chunk_y;
@@ -229,8 +199,6 @@ void World::OnDimensionChange() {
       }
     }
   }
-
-  build_queue.Clear();
 }
 
 void World::BuildChunkMesh(render::ChunkBuildContext* ctx, s32 chunk_x, s32 chunk_y, s32 chunk_z) {
@@ -267,15 +235,11 @@ void World::EnqueueChunk(s32 chunk_x, s32 chunk_y, s32 chunk_z) {
 
   ChunkSectionInfo* section_info = &chunk_infos[z_index][x_index];
 
-  if (!section_info->IsQueued()) {
-    build_queue.Enqueue(chunk_x, chunk_z);
-  }
-
-  section_info->SetQueued(chunk_y);
+  section_info->dirty_mesh_set |= (1 << chunk_y);
+  section_info->dirty_connectivity_set |= (1 << chunk_y);
 }
 
 void World::BuildChunkMesh(render::ChunkBuildContext* ctx) {
-  // TODO: This should probably be done on a separate thread
   ChunkSectionInfo* section_info = &chunk_infos[ctx->z_index][ctx->x_index];
 
   renderer.BeginMeshAllocation();
@@ -283,8 +247,10 @@ void World::BuildChunkMesh(render::ChunkBuildContext* ctx) {
   ChunkMesh* meshes = this->meshes[ctx->z_index][ctx->x_index];
 
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
-    connectivity_graph.Build(*this, this->chunks[ctx->z_index][ctx->x_index].chunks[chunk_y], ctx->x_index,
-                             ctx->z_index, chunk_y);
+    if (section_info->dirty_connectivity_set & (1 << chunk_y)) {
+      connectivity_graph.Build(*this, this->chunks[ctx->z_index][ctx->x_index].chunks[chunk_y], ctx->x_index,
+                               ctx->z_index, chunk_y);
+    }
 
     if (!(section_info->bitmask & (1 << chunk_y))) {
       for (s32 i = 0; i < render::kRenderLayerCount; ++i) {
@@ -294,12 +260,14 @@ void World::BuildChunkMesh(render::ChunkBuildContext* ctx) {
       continue;
     }
 
-    if (section_info->IsQueued(chunk_y)) {
+    if (section_info->dirty_mesh_set & (1 << chunk_y)) {
       BuildChunkMesh(ctx, ctx->chunk_x, chunk_y, ctx->chunk_z);
     }
   }
 
-  section_info->ClearQueued();
+  section_info->dirty_mesh_set = 0;
+  section_info->dirty_connectivity_set = 0;
+
   renderer.EndMeshAllocation();
 }
 

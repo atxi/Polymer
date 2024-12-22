@@ -20,7 +20,6 @@ struct World {
 
   BlockRegistry& block_registry;
   MemoryPool<Chunk> chunk_pool;
-  ChunkBuildQueue build_queue;
   render::BlockMesher block_mesher;
 
   MemoryArena& trans_arena;

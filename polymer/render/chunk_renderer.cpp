@@ -527,6 +527,35 @@ void ChunkRenderer::Draw(VkCommandBuffer command_buffer, size_t current_frame, w
 
   Vector3f forward = camera.GetForward();
 
+  constexpr size_t kMaxMeshBuildPerFrame = 24;
+  size_t mesh_build_count = 0;
+
+  renderer->BeginMeshAllocation();
+  // Loop through the chunks and build any dirty meshes up to a certain amount.
+  // TODO: This part could be threaded eventually.
+  for (size_t chunk_index = 0;
+       chunk_index < world.connectivity_graph.visible_count && mesh_build_count < kMaxMeshBuildPerFrame;
+       ++chunk_index) {
+    world::VisibleChunk* visible_chunk = world.connectivity_graph.visible_set + chunk_index;
+    s32 chunk_x = visible_chunk->chunk_x;
+    s32 chunk_y = visible_chunk->chunk_y;
+    s32 chunk_z = visible_chunk->chunk_z;
+    size_t x_index = world::GetChunkCacheIndex(chunk_x);
+    size_t z_index = world::GetChunkCacheIndex(chunk_z);
+
+    if (world.chunk_infos[z_index][x_index].dirty_mesh_set & (1 << chunk_y)) {
+      ChunkBuildContext ctx(chunk_x, chunk_z);
+
+      if (ctx.GetNeighbors(&world)) {
+        world.BuildChunkMesh(&ctx, chunk_x, chunk_y, chunk_z);
+        world.chunk_infos[z_index][x_index].dirty_mesh_set &= ~(1 << chunk_y);
+        ++mesh_build_count;
+      }
+    }
+  }
+
+  renderer->EndMeshAllocation();
+
   for (size_t chunk_index = 0; chunk_index < world.connectivity_graph.visible_count; ++chunk_index) {
     world::VisibleChunk* visible_chunk = world.connectivity_graph.visible_set + chunk_index;
     s32 chunk_x = visible_chunk->chunk_x;
