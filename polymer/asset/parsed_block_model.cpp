@@ -1,6 +1,6 @@
 #include <polymer/asset/parsed_block_model.h>
 
-#include <polymer/json.h>
+#include <lib/json.h>
 #include <polymer/memory.h>
 #include <polymer/render/render.h>
 

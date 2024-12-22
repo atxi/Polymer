@@ -9,11 +9,10 @@
 #include <polymer/render/chunk_renderer.h>
 #include <polymer/render/render.h>
 #include <polymer/world/block.h>
-
-#include <polymer/json.h>
 #include <polymer/zip_archive.h>
 
-#include <polymer/stb_image.h>
+#include <lib/json.h>
+#include <lib/stb_image.h>
 
 using polymer::render::RenderLayer;
 using polymer::world::BlockElement;

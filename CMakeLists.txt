@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.30)
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug" FORCE)
@@ -13,7 +13,7 @@ endif()
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake"
   CACHE STRING "Vcpkg toolchain file")
   
-project(polymer VERSION 0.0.4 LANGUAGES CXX)
+project(polymer VERSION 0.0.5 LANGUAGES CXX)
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 

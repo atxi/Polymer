@@ -1,12 +1,12 @@
 #include <polymer/asset/asset_system.h>
 
+#include <lib/json.h>
 #include <polymer/asset/unihex_font.h>
 #include <polymer/hashmap.h>
-#include <polymer/json.h>
 #include <polymer/render/render.h>
 #include <polymer/zip_archive.h>
 
-#include <polymer/stb_image.h>
+#include <lib/stb_image.h>
 
 #include <stdlib.h>
 
