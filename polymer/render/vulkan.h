@@ -3,7 +3,7 @@
 
 #include <volk.h>
 
-#include <polymer/render/vk_mem_alloc.h>
+#include <lib/vk_mem_alloc.h>
 
 #ifdef near
 #undef near

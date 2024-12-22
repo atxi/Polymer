@@ -17,7 +17,8 @@ struct RenderPass {
   bool valid = false;
 
   void Create(Swapchain& swapchain, VkRenderPassCreateInfo* create_info);
-  void CreateSimple(Swapchain& swapchain, VkAttachmentDescription color, VkAttachmentDescription depth, VkAttachmentDescription color_resolve);
+  void CreateSimple(Swapchain& swapchain, VkAttachmentDescription color, VkAttachmentDescription depth,
+                    VkAttachmentDescription color_resolve);
 
   void Destroy(Swapchain& swapchain);
 

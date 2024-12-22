@@ -1,8 +1,8 @@
 #include <polymer/packet_interpreter.h>
 
+#include <lib/miniz.h>
 #include <polymer/bitset.h>
 #include <polymer/gamestate.h>
-#include <polymer/miniz.h>
 #include <polymer/nbt.h>
 #include <polymer/protocol.h>
 #include <polymer/unicode.h>

@@ -183,7 +183,7 @@ void World::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
   section_info->ClearQueued();
   section_info->loaded = false;
   section_info->bitmask = 0;
-  
+
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
     if (section->chunks[chunk_y]) {
       chunk_pool.Free(section->chunks[chunk_y]);

@@ -28,7 +28,7 @@ The project is configured to use vcpkg as a dependency manager, so follow the di
 
 #### Requirements
 - C++ compiler (tested with MSVC 2022 and Clang)
-- [CMake](https://cmake.org/)
+- [CMake](https://cmake.org/) at least version 3.30.1
 
 #### Windows
 - Open terminal in polymer folder.

@@ -5,10 +5,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include <polymer/json.h>
-
-#pragma warning(disable : 4273)
-#include <tomcrypt.h>
+#include <lib/json.h>
 
 namespace polymer {
 namespace asset {
@@ -60,17 +57,6 @@ static String FindJsonStringValue(json_object_s* obj, const char* name) {
   return {};
 }
 
-HashSha1 GetSha1(const String& contents) {
-  HashSha1 result = {};
-  hash_state state = {};
-
-  sha1_init(&state);
-  sha1_process(&state, (u8*)contents.data, (unsigned long)contents.size);
-  sha1_done(&state, result.hash);
-
-  return result;
-}
-
 HashSha1 GetFileSha1(MemoryArena& trans_arena, const char* name) {
   String entire_file = ReadEntireFile(name, trans_arena);
 
@@ -78,7 +64,7 @@ HashSha1 GetFileSha1(MemoryArena& trans_arena, const char* name) {
     return {};
   }
 
-  return GetSha1(entire_file);
+  return Sha1(entire_file);
 }
 
 inline char* GetAbsolutePath(MemoryArena& arena, const String& path, const char* fmt, ...) {

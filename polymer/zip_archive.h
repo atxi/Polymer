@@ -1,7 +1,7 @@
 #ifndef POLYMER_ZIP_ARCHIVE_H_
 #define POLYMER_ZIP_ARCHIVE_H_
 
-#include <polymer/miniz.h>
+#include <lib/miniz.h>
 #include <polymer/types.h>
 
 namespace polymer {

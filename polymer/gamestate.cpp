@@ -1,8 +1,8 @@
 #include <polymer/gamestate.h>
 
-#include <polymer/json.h>
+#include <lib/json.h>
+#include <lib/stb_image.h>
 #include <polymer/math.h>
-#include <polymer/stb_image.h>
 #include <polymer/zip_archive.h>
 
 #include <polymer/render/block_mesher.h>
