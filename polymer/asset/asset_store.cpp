@@ -10,13 +10,13 @@
 namespace polymer {
 namespace asset {
 
-constexpr const char* kVersionJar = "1.21.jar";
-constexpr const char* kVersionDescriptor = "1.21.json";
-constexpr const char* kVersionIndex = "1.21.json";
+constexpr const char* kVersionJar = "1.21.4.jar";
+constexpr const char* kVersionDescriptor = "1.21.4.json";
+constexpr const char* kVersionIndex = "1.21.4.json";
 constexpr const char* kVersionDescriptorUrl =
-    "https://piston-meta.mojang.com/v1/packages/177e49d3233cb6eac42f0495c0a48e719870c2ae/1.21.json";
+    "https://piston-meta.mojang.com/v1/packages/a3bcba436caa849622fd7e1e5b89489ed6c9ac63/1.21.4.json";
 
-const HashSha1 kVersionDescriptorHash("177e49d3233cb6eac42f0495c0a48e719870c2ae");
+const HashSha1 kVersionDescriptorHash("a3bcba436caa849622fd7e1e5b89489ed6c9ac63");
 const String kResourceApi = POLY_STR("https://resources.download.minecraft.net/");
 
 static json_object_s* FindJsonObjectElement(json_object_s* obj, const char* name) {
