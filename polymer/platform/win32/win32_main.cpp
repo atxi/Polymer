@@ -360,7 +360,7 @@ int main(int argc, char* argv[]) {
   }
 
   constexpr size_t kPermanentSize = Gigabytes(1);
-  constexpr size_t kTransientSize = Megabytes(64);
+  constexpr size_t kTransientSize = Megabytes(256);
 
   u8* perm_memory = (u8*)VirtualAlloc(NULL, kPermanentSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
   u8* trans_memory = (u8*)VirtualAlloc(NULL, kTransientSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
