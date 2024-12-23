@@ -370,7 +370,7 @@ String RingBuffer::ReadAllocString(MemoryArena& arena) {
 
   if (!this->ReadVarInt(&length)) {
     this->read_offset = offset_snapshot;
-    return 0;
+    return {};
   }
 
   result.data = (char*)arena.Allocate(length);

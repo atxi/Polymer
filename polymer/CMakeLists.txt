@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.28)
 
 file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/lib/*.cpp *.cpp)
 

@@ -477,7 +477,7 @@ size_t AssetParser::LoadTextures() {
       {
         MemoryRevert reverter = arena->GetReverter();
         size_t meta_size = 0;
-        char metaname[512];
+        char metaname[520];
 
         sprintf(metaname, "%s.mcmeta", texture_files[i].name);
 
