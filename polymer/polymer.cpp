@@ -6,12 +6,11 @@
 #include <polymer/packet_interpreter.h>
 #include <polymer/protocol.h>
 #include <polymer/ui/debug.h>
+#include <polymer/version.h>
 
 #include <chrono>
 
 namespace polymer {
-
-constexpr const char* kBlocksName = "blocks-1.21.4.json";
 
 // Window surface width
 constexpr u32 kWidth = 1280;
@@ -103,8 +102,8 @@ int Polymer::Run(InputState* input) {
     auto start = std::chrono::high_resolution_clock::now();
 
     char* client_path = game->assets.asset_store->GetClientPath(trans_arena);
-    if (!game->assets.Load(renderer, client_path, kBlocksName, &game->block_registry)) {
-      fprintf(stderr, "Failed to load minecraft assets. Requires %s and %s.\n", kBlocksName, client_path);
+    if (!game->assets.Load(renderer, client_path, BLOCKS_FILENAME, &game->block_registry)) {
+      fprintf(stderr, "Failed to load minecraft assets. Requires %s and %s.\n", BLOCKS_FILENAME, client_path);
       return 1;
     }
 
@@ -186,10 +185,11 @@ int Polymer::Run(InputState* input) {
       debug.position = Vector2f(8, 8);
       debug.color = Vector4f(1.0f, 0.67f, 0.0f, 1.0f);
 
-      debug.Write("Polymer [%s]", game->player_manager.client_name);
+      debug.Write("Polymer %s [%s]", POLYMER_VERSION, game->player_manager.client_name);
 
       debug.color = Vector4f(1, 1, 1, 1);
 
+      debug.Write("minecraft: %s", MINECRAFT_VERSION);
       debug.Write("platform: %s", platform_name);
       debug.Write("dimension: %.*s", (u32)game->dimension.name.size, game->dimension.name.data);
 

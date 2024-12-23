@@ -1,6 +1,7 @@
 #include "asset_store.h"
 
 #include <polymer/render/render_util.h>
+#include <polymer/version.h>
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -10,13 +11,12 @@
 namespace polymer {
 namespace asset {
 
-constexpr const char* kVersionJar = "1.21.4.jar";
-constexpr const char* kVersionDescriptor = "1.21.4.json";
-constexpr const char* kVersionIndex = "1.21.4.json";
+constexpr const char* kVersionJar = MINECRAFT_VERSION ".jar";
+constexpr const char* kVersionIndex = MINECRAFT_VERSION ".json";
 constexpr const char* kVersionDescriptorUrl =
-    "https://piston-meta.mojang.com/v1/packages/a3bcba436caa849622fd7e1e5b89489ed6c9ac63/1.21.4.json";
+    "https://piston-meta.mojang.com/v1/packages/" MINECRAFT_VERSION_HASH "/" MINECRAFT_VERSION ".json";
 
-const HashSha1 kVersionDescriptorHash("a3bcba436caa849622fd7e1e5b89489ed6c9ac63");
+const HashSha1 kVersionDescriptorHash(MINECRAFT_VERSION_HASH);
 const String kResourceApi = POLY_STR("https://resources.download.minecraft.net/");
 
 static json_object_s* FindJsonObjectElement(json_object_s* obj, const char* name) {
@@ -104,14 +104,14 @@ void AssetStore::Initialize() {
 
   // Check local store for version descriptor file
   if (HasAsset(version_info)) {
-    char* filename = GetAbsolutePath(trans_arena, path, "versions/%s", kVersionDescriptor);
+    char* filename = GetAbsolutePath(trans_arena, path, "versions/%s", kVersionIndex);
 
     ProcessVersionDescriptor(filename);
   } else {
     net_queue.PushRequest(kVersionDescriptorUrl, this, [](NetworkRequest* request, NetworkResponse* response) {
       AssetStore* store = (AssetStore*)request->userp;
 
-      char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions/%s", kVersionDescriptor);
+      char* filename = GetAbsolutePath(store->trans_arena, store->path, "versions/%s", kVersionIndex);
 
       response->SaveToFile(filename);
       store->ProcessVersionDescriptor(filename);
@@ -316,7 +316,7 @@ bool AssetStore::HasAsset(AssetInfo& info) {
     char* index_folder = GetAbsolutePath(trans_arena, path, "versions");
     if (!platform.FolderExists(index_folder)) return false;
 
-    filename = GetAbsolutePath(trans_arena, path, "versions/%s", kVersionDescriptor);
+    filename = GetAbsolutePath(trans_arena, path, "versions/%s", kVersionIndex);
   } break;
   case AssetType::Index: {
     char* index_folder = GetAbsolutePath(trans_arena, path, "index");

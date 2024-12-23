@@ -249,6 +249,8 @@ static void AssignFaceRenderSettings(RenderableFace* face, const String& texture
     face->random_flip = 1;
   } else if (poly_strcmp(texture, POLY_STR("sand.png")) == 0) {
     face->random_flip = 1;
+  } else if (poly_strcmp(texture, POLY_STR("red_sand.png")) == 0) {
+    face->random_flip = 1;
   }
 }
 

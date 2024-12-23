@@ -1,0 +1,7 @@
+#pragma once
+
+#define POLYMER_VERSION "0.0.5"
+#define MINECRAFT_VERSION "1.21.4"
+#define MINECRAFT_VERSION_HASH "a3bcba436caa849622fd7e1e5b89489ed6c9ac63"
+
+#define BLOCKS_FILENAME "blocks-" MINECRAFT_VERSION ".json"
