@@ -7,12 +7,19 @@ It uses the original assets that are downloaded from the resources server.
 The downloaded assets will be stored in `%appdata%/Polymer/` on Windows and `~/.polymer/` on Linux.
 
 ### Screenshots
-![Polymer Image](https://i.imgur.com/rAfkvtd.png)
+Typical scene in a village.  
+![Standard scene](.github/screenshot1.png)
+
+Rendering inside a cave.  
+![Cave lighting](.github/screenshot2.png)
+  
+Rendering with a radius of 32 chunks in a very dense area.  
+![Dense chunks](.github/screenshot3.png)
 
 ### Running
 Main development is done on Windows. It can run on Linux, but not tested much.  
 
-- Requires `blocks-1.20.4.json` that is generated from running Minecraft with a [certain flag](https://wiki.vg/Data_Generators#Generators) or from the [polymer release page](https://github.com/atxi/Polymer/releases).
+- Requires `blocks-1.21.4.json` that is generated from running Minecraft with a [certain flag](https://minecraft.fandom.com/wiki/Tutorials/Running_the_data_generator) or from the [polymer release page](https://github.com/atxi/Polymer/releases).
 - Requires compiled shaders. Get them from the release page or read the building section below if manually building.
 - Requires an internet connection on first launch so it can download the necessary assets.
   
@@ -28,7 +35,7 @@ The project is configured to use vcpkg as a dependency manager, so follow the di
 
 #### Requirements
 - C++ compiler (tested with MSVC 2022 and Clang)
-- [CMake](https://cmake.org/) at least version 3.30.1
+- [CMake](https://cmake.org/) at least version 3.28
 
 #### Windows
 - Open terminal in polymer folder.
