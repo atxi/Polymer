@@ -42,20 +42,41 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, World& world, cons
     s32 chunk_y;
     s32 chunk_z;
     u16 from;
-    u16 dirs;
+    u16 traversed;
   };
+
+  // Record the visit state for each chunk, so they are only visited once from each direction
+  struct VisitState {
+    u8 directions;
+
+    inline bool CanVisit(BlockFace through_face) const {
+      return !(directions & (1 << (u8)through_face));
+    }
+
+    inline void VisitThrough(BlockFace through_face) {
+      directions |= (1 << (u8)through_face);
+    }
+  };
+
+  constexpr size_t kVisitStateCount = kChunkCacheSize * kChunkCacheSize * kChunkColumnCount;
+
+  VisitState* visit_states = memory_arena_push_type_count(&trans_arena, VisitState, kVisitStateCount);
+  memset(visit_states, 0, sizeof(VisitState) * kVisitStateCount);
 
   ProcessChunk* process_queue = memory_arena_push_type(&trans_arena, ProcessChunk);
   size_t process_queue_size = 0;
 
-  process_queue[process_queue_size++] = {start_chunk->chunk_x, start_chunk->chunk_y, start_chunk->chunk_z,
-                                         (u16)BlockFace::Down, (u16)0};
+  process_queue[process_queue_size++] = {start_chunk->chunk_x, start_chunk->chunk_y, start_chunk->chunk_z, (u16)0xFF,
+                                         0};
 
   Frustum frustum = camera.GetViewFrustum();
 
-  size_t process_index = 0;
-  while (process_index < process_queue_size) {
-    ProcessChunk process_chunk = process_queue[process_index];
+  size_t largest_queue_size = 1;
+
+  while (process_queue_size > 0) {
+    // Pop front of queue and replace it with the last item so it doesn't grow forever.
+    ProcessChunk process_chunk = process_queue[0];
+    process_queue[0] = process_queue[--process_queue_size];
 
     size_t x_index = world::GetChunkCacheIndex(process_chunk.chunk_x);
     size_t z_index = world::GetChunkCacheIndex(process_chunk.chunk_z);
@@ -64,7 +85,11 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, World& world, cons
     ChunkSectionInfo& info = world.chunk_infos[z_index][x_index];
 
     if (info.bitmask & (1 << process_chunk.chunk_y)) {
-      if (info.dirty_connectivity_set & (1 << process_chunk.chunk_y)) {
+      // We are a non-empty chunk, so check if we are dirty.
+      bool is_dirty = info.dirty_connectivity_set & (1 << process_chunk.chunk_y);
+      bool is_loaded = world.chunks[z_index][x_index].chunks[process_chunk.chunk_y];
+
+      if (is_dirty && is_loaded) {
         connect_set.Build(world, *world.chunks[z_index][x_index].chunks[process_chunk.chunk_y]);
         info.dirty_connectivity_set &= ~(1 << process_chunk.chunk_y);
       }
@@ -75,6 +100,11 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, World& world, cons
     for (size_t i = 0; i < 6; ++i) {
       BlockFace through_face = (BlockFace)i;
       ChunkOffset offset = kOffsets[i];
+      BlockFace opposite_face = GetOppositeFace(through_face);
+
+      // Each processed child can only go in one direction along each axis, so check if the opposite side has been
+      // traversed.
+      if (process_chunk.traversed & (1 << (u16)opposite_face)) continue;
 
       s32 chunk_x = process_chunk.chunk_x + offset.x;
       s32 chunk_y = process_chunk.chunk_y + offset.y;
@@ -85,21 +115,33 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, World& world, cons
       size_t new_x_index = world::GetChunkCacheIndex(chunk_x);
       size_t new_z_index = world::GetChunkCacheIndex(chunk_z);
 
-      if (!world.chunk_infos[new_z_index][new_x_index].loaded) continue;
+      VisitState* visit_state =
+          visit_states + chunk_y * kChunkCacheSize * kChunkCacheSize + new_z_index * kChunkCacheSize + new_x_index;
+      if (!visit_state->CanVisit(through_face)) continue;
 
-      if ((process_index == 0 && connect_set.HasFaceConnectivity(through_face)) ||
-          connect_set.IsConnected((BlockFace)process_chunk.from, through_face)) {
-        BlockFace from = GetOppositeFace(through_face);
+      ChunkSectionInfo& new_info = world.chunk_infos[new_z_index][new_x_index];
 
-        size_t view_index = (size_t)new_z_index * kChunkCacheSize * kChunkColumnCount +
-                            (size_t)new_x_index * kChunkColumnCount + chunk_y;
-        if (!view_set.test(view_index)) {
-          view_set.set(view_index);
+      if (!new_info.loaded) continue;
 
-          Vector3f chunk_min(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
-          Vector3f chunk_max(chunk_x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, chunk_z * 16.0f + 16.0f);
+      // Always travel through camera-connected chunks.
+      bool is_camera_connected = (process_chunk.from == 0xFF && connect_set.HasFaceConnectivity(through_face));
+      // If we can go from the 'from' side that reached here to the new through-side, then we might be able to see
+      // through this chunk.
+      bool visibility_potential =
+          process_chunk.from != 0xFF && connect_set.IsConnected(through_face, (BlockFace)process_chunk.from);
 
-          if (frustum.Intersects(chunk_min, chunk_max)) {
+      if (is_camera_connected || visibility_potential) {
+        Vector3f chunk_min(chunk_x * 16.0f, chunk_y * 16.0f - 64.0f, chunk_z * 16.0f);
+        Vector3f chunk_max(chunk_x * 16.0f + 16.0f, chunk_y * 16.0f - 48.0f, chunk_z * 16.0f + 16.0f);
+
+        if (frustum.Intersects(chunk_min, chunk_max)) {
+          size_t view_index = (size_t)new_z_index * kChunkCacheSize * kChunkColumnCount +
+                              (size_t)new_x_index * kChunkColumnCount + chunk_y;
+
+          // Only add each chunk to the visibility set once.
+          if (!view_set.test(view_index)) {
+            view_set.set(view_index);
+
             if (world.chunk_infos[new_z_index][new_x_index].bitmask & (1 << chunk_y)) {
               VisibleChunk* next_chunk = visible_set + visible_count++;
 
@@ -107,20 +149,20 @@ void ChunkConnectivityGraph::Update(MemoryArena& trans_arena, World& world, cons
               next_chunk->chunk_y = chunk_y;
               next_chunk->chunk_z = chunk_z;
             }
-
-            BlockFace opposite_face = GetOppositeFace(through_face);
-
-            if (!(process_chunk.dirs & (1 << (u16)opposite_face))) {
-              trans_arena.Allocate(sizeof(ProcessChunk), 1);
-              process_queue[process_queue_size++] = {chunk_x, chunk_y, chunk_z, (u16)from,
-                                                     (u16)(process_chunk.dirs | (1 << i))};
-            }
           }
+
+          if (process_queue_size >= largest_queue_size) {
+            largest_queue_size = process_queue_size + 1;
+            trans_arena.Allocate(sizeof(ProcessChunk), 1);
+          }
+
+          u16 new_traversed = process_chunk.traversed | (1 << (u16)through_face);
+          process_queue[process_queue_size++] = {chunk_x, chunk_y, chunk_z, (u16)opposite_face, new_traversed};
+
+          visit_state->VisitThrough(through_face);
         }
       }
     }
-
-    ++process_index;
   }
 }
 
@@ -155,7 +197,7 @@ bool ChunkConnectivitySet::Build(const World& world, const Chunk& chunk) {
 
         if (!(model.element_count == 0 || model.HasTransparency())) continue;
 
-        if (!visited.test((size_t)z * 16 * 16 + (size_t)y * 16 + (size_t)x)) {
+        if (!visited.test((size_t)y * 16 * 16 + (size_t)z * 16 + (size_t)x)) {
           u8 current_set = FloodFill(world, chunk, visited, queue, x, y, z);
 
           for (size_t i = 0; i < 6; ++i) {
@@ -188,7 +230,7 @@ u8 ChunkConnectivitySet::FloodFill(const World& world, const Chunk& chunk, Visit
 
   u8 current_set = 0;
 
-  queue_set.set((size_t)(start_z) * 16 * 16 + (size_t)(start_y) * 16 + (size_t)(start_x));
+  queue_set.set((size_t)(start_y) * 16 * 16 + (size_t)(start_z) * 16 + (size_t)(start_x));
 
   while (queue_index < queue_count) {
     s8 x = queue[queue_index].x;
@@ -224,37 +266,37 @@ u8 ChunkConnectivitySet::FloodFill(const World& world, const Chunk& chunk, Visit
       }
     }
 
-    if (!visited.test((size_t)z * 16 * 16 + (size_t)y * 16 + (size_t)x)) {
-      visited.set((size_t)z * 16 * 16 + (size_t)y * 16 + (size_t)x);
+    if (!visited.test((size_t)y * 16 * 16 + (size_t)z * 16 + (size_t)x)) {
+      visited.set((size_t)y * 16 * 16 + (size_t)z * 16 + (size_t)x);
 
-      if (x > 0 && !queue_set.test((size_t)(z) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x - 1))) {
+      if (x > 0 && !queue_set.test((size_t)(y) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x - 1))) {
         queue[queue_count++] = {(s8)(x - 1), y, z};
-        queue_set.set((size_t)(z) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x - 1));
+        queue_set.set((size_t)(y) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x - 1));
       }
 
-      if (x < 15 && !queue_set.test((size_t)(z) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x + 1))) {
+      if (x < 15 && !queue_set.test((size_t)(y) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x + 1))) {
         queue[queue_count++] = {(s8)(x + 1), y, z};
-        queue_set.set((size_t)(z) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x + 1));
+        queue_set.set((size_t)(y) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x + 1));
       }
 
-      if (y > 0 && !queue_set.test((size_t)(z) * 16 * 16 + (size_t)(y - 1) * 16 + (size_t)(x))) {
+      if (y > 0 && !queue_set.test((size_t)(y - 1) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x))) {
         queue[queue_count++] = {x, (s8)(y - 1), z};
-        queue_set.set((size_t)(z) * 16 * 16 + (size_t)(y - 1) * 16 + (size_t)(x));
+        queue_set.set((size_t)(y - 1) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x));
       }
 
-      if (y < 15 && !queue_set.test((size_t)(z) * 16 * 16 + (size_t)(y + 1) * 16 + (size_t)(x))) {
+      if (y < 15 && !queue_set.test((size_t)(y + 1) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x))) {
         queue[queue_count++] = {x, (s8)(y + 1), z};
-        queue_set.set((size_t)(z) * 16 * 16 + (size_t)(y + 1) * 16 + (size_t)(x));
+        queue_set.set((size_t)(y + 1) * 16 * 16 + (size_t)(z) * 16 + (size_t)(x));
       }
 
-      if (z > 0 && !queue_set.test((size_t)(z - 1) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x))) {
+      if (z > 0 && !queue_set.test((size_t)(y) * 16 * 16 + (size_t)(z - 1) * 16 + (size_t)(x))) {
         queue[queue_count++] = {x, y, (s8)(z - 1)};
-        queue_set.set((size_t)(z - 1) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x));
+        queue_set.set((size_t)(y) * 16 * 16 + (size_t)(z - 1) * 16 + (size_t)(x));
       }
 
-      if (z < 15 && !queue_set.test((size_t)(z + 1) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x))) {
+      if (z < 15 && !queue_set.test((size_t)(y) * 16 * 16 + (size_t)(z + 1) * 16 + (size_t)(x))) {
         queue[queue_count++] = {x, y, (s8)(z + 1)};
-        queue_set.set((size_t)(z + 1) * 16 * 16 + (size_t)(y) * 16 + (size_t)(x));
+        queue_set.set((size_t)(y) * 16 * 16 + (size_t)(z + 1) * 16 + (size_t)(x));
       }
     }
   }

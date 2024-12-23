@@ -150,7 +150,7 @@ void World::OnChunkUnload(s32 chunk_x, s32 chunk_z) {
 
   section_info->loaded = false;
   section_info->bitmask = 0;
-  section_info->dirty_connectivity_set = 0;
+  section_info->dirty_connectivity_set = 0xFFFFFF;
   section_info->dirty_mesh_set = 0;
 
   for (s32 chunk_y = 0; chunk_y < kChunkColumnCount; ++chunk_y) {
@@ -183,7 +183,7 @@ void World::OnDimensionChange() {
       ChunkMesh* meshes = this->meshes[chunk_z][chunk_x];
 
       section_info->loaded = false;
-      section_info->dirty_connectivity_set = 0;
+      section_info->dirty_connectivity_set = 0xFFFFFF;
       section_info->dirty_mesh_set = 0;
       section_info->bitmask = 0;
 

@@ -303,7 +303,7 @@ int main(int argc, char* argv[]) {
   }
 
   constexpr size_t kPermanentSize = Gigabytes(1);
-  constexpr size_t kTransientSize = Megabytes(32);
+  constexpr size_t kTransientSize = Megabytes(256);
 
   u8* perm_memory = (u8*)malloc(kPermanentSize);
   u8* trans_memory = (u8*)malloc(kTransientSize);
